@@ -1,0 +1,24 @@
+# Gowin implementation output
+/impl/
+
+# Simulation output
+/sim/work*/
+*.wlf
+/transcript
+/modelsim.ini
+
+# User-local project state
+*.gprj.user
+
+# Generated IP scratch and netlists not referenced by the project
+/src/advanced_fir_filter/temp/
+*.vo
+
+# Temporary render and analysis files
+/tmp/
+/tmp_clock_page/
+
+# Python cache
+__pycache__/
+*.py[cod]
+

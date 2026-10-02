@@ -1,0 +1,14 @@
+* text=auto
+
+*.v text eol=lf
+*.sdc text eol=lf
+*.cst text eol=lf
+*.do text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.gprj text eol=lf
+
+*.pdf binary
+*.rao binary
+*.ipc binary
