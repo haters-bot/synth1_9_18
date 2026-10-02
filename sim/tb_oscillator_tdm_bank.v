@@ -6,7 +6,6 @@ module tb_oscillator_tdm_bank;
     localparam integer SLOTS_PER_ENGINE   = 32;
     localparam integer TOTAL_SLOTS        = ENGINE_COUNT * SLOTS_PER_ENGINE;
     localparam integer NOTE_WIDTH         = 7;
-    localparam integer OUTPUT_SHIFT       = 5;
     localparam integer ENABLED_SCHEDULES  = 32;
     localparam integer TICK_PERIOD_CLOCKS = 65;
 
@@ -19,6 +18,7 @@ module tb_oscillator_tdm_bank;
     reg [NOTE_WIDTH-1:0] voice_update_note;
     reg voice_update_enable;
     reg voice_update_phase_reset;
+    reg [5:0] active_voice_count;
 
     wire signed [15:0] sample_out;
     wire sample_valid;
@@ -42,8 +42,7 @@ module tb_oscillator_tdm_bank;
         .ENGINE_COUNT(ENGINE_COUNT),
         .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
         .NOTE_WIDTH(NOTE_WIDTH),
-        .OUTPUT_SHIFT(OUTPUT_SHIFT),
-        // 单元测试加速包络；板级默认参数保持约10/100/70%/190 ms。
+        // 单元测试加速包络；板级默认参数保持约10/100/70%/315 ms。
         .ENVELOPE_UPDATE_DIV(1),
         .ATTACK_STEP(16'hFFFF),
         .DECAY_STEP(16'hFFFF),
@@ -60,6 +59,7 @@ module tb_oscillator_tdm_bank;
         .voice_update_note         (voice_update_note),
         .voice_update_enable       (voice_update_enable),
         .voice_update_phase_reset  (voice_update_phase_reset),
+        .active_voice_count        (active_voice_count),
         .sample_out                (sample_out),
         .sample_valid              (sample_valid),
         .schedule_overrun          (schedule_overrun),
@@ -132,6 +132,7 @@ module tb_oscillator_tdm_bank;
         voice_update_note        = {NOTE_WIDTH{1'b0}};
         voice_update_enable      = 1'b0;
         voice_update_phase_reset = 1'b0;
+        active_voice_count = 6'd0;
         errors          = 0;
         expected_slot   = 0;
         commit_count    = 0;
@@ -158,6 +159,8 @@ module tb_oscillator_tdm_bank;
              init_index < TOTAL_SLOTS;
              init_index = init_index + 1)
             update_voice_slot(init_index, 7'd48 + init_index, 1'b1, 1'b1);
+
+        active_voice_count = 6'd32;
 
         for (check_index = 0;
              check_index < TOTAL_SLOTS;
@@ -199,6 +202,12 @@ module tb_oscillator_tdm_bank;
             errors = errors + 1;
         end
 
+        if (dut.target_gain_q16 !== 17'd2048
+            || dut.mix_gain_q16 >= 17'd65536) begin
+            $display("ERROR: dynamic 32-voice normalization did not engage");
+            errors = errors + 1;
+        end
+
         // Note Off进入Release而不是立即关断；在下一次包络更新调度后
         // 电平归零、振荡器停用，并向分配器给出槽位完成脉冲。
         update_voice_slot(5, 7'd53, 1'b0, 1'b0);
@@ -224,6 +233,9 @@ module tb_oscillator_tdm_bank;
             $display("ERROR: released slot did not emit idle completion");
             errors = errors + 1;
         end
+
+        // Release声部在归零之前仍计入活动数；收到idle完成后才从32减为31。
+        active_voice_count = 6'd31;
 
         if (commit_count !== ((ENABLED_SCHEDULES + 3) * TOTAL_SLOTS)) begin
             $display("ERROR: expected %0d slot commits, got %0d",
@@ -261,6 +273,7 @@ module tb_oscillator_tdm_bank;
 
         // 单独重触发槽位5，确认更新接口不会清除其他槽位的相位。
         update_voice_slot(5, 7'd53, 1'b1, 1'b1);
+        active_voice_count = 6'd32;
         #1;
         if (dut.GEN_ENGINE[0].u_oscillator_tdm_core
                 .phase_state[5] !== 32'd0) begin

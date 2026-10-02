@@ -14,7 +14,6 @@ module top #(
     localparam integer ENGINE_COUNT      = 1;
     localparam integer SLOTS_PER_ENGINE  = 32;
     localparam integer TOTAL_OSC_SLOTS   = ENGINE_COUNT * SLOTS_PER_ENGINE;
-    localparam integer BANK_OUTPUT_SHIFT = 5; // 32路混音除以32
 
     wire rst_n_sys;
     wire sample_tick;
@@ -26,6 +25,7 @@ module top #(
     wire               oscillator_mix_valid;
     wire               oscillator_schedule_overrun;
     wire [TOTAL_OSC_SLOTS-1:0] voice_idle_mask;
+    wire [5:0] active_voice_count;
     wire signed [15:0] filtered_sample;
 
     wire       debug_osc_busy;
@@ -97,13 +97,13 @@ module top #(
         .voice_update_slot       (voice_update_slot),
         .voice_update_note       (voice_update_note),
         .voice_update_enable     (voice_update_enable),
-        .voice_update_phase_reset(voice_update_phase_reset)
+        .voice_update_phase_reset(voice_update_phase_reset),
+        .active_voice_count      (active_voice_count)
     );
 
     oscillator_tdm_bank #(
         .ENGINE_COUNT      (ENGINE_COUNT),
-        .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE),
-        .OUTPUT_SHIFT      (BANK_OUTPUT_SHIFT)
+        .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE)
     ) u_oscillator_tdm_bank (
         .clk                       (sys_clk),
         .rst_n                     (rst_n_sys),
@@ -114,6 +114,7 @@ module top #(
         .voice_update_note         (voice_update_note),
         .voice_update_enable       (voice_update_enable),
         .voice_update_phase_reset  (voice_update_phase_reset),
+        .active_voice_count        (active_voice_count),
         .sample_out                (oscillator_mix),
         .sample_valid              (oscillator_mix_valid),
         .schedule_overrun          (oscillator_schedule_overrun),
@@ -123,7 +124,7 @@ module top #(
         .debug_engine0_slot_commit (debug_osc_slot_commit)
     );
 
-    // 引擎组已经为32复音预留了混音余量，不再额外衰减单音输入。
+    // 引擎组按活动声部数完成平滑1/N归一化，此处不再额外衰减。
     assign fir_input_sample = oscillator_mix;
 
     fir_decimator_8x_wrapper u_fir_decimator_8x_wrapper (

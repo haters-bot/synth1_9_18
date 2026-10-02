@@ -16,7 +16,8 @@ module midi_voice_allocator #(
     output reg [7:0]  voice_update_slot,
     output reg [6:0]  voice_update_note,
     output reg        voice_update_enable,
-    output reg        voice_update_phase_reset
+    output reg        voice_update_phase_reset,
+    output reg [5:0]  active_voice_count
 );
 
     reg [6:0] slot_note [0:VOICE_COUNT-1];
@@ -40,10 +41,14 @@ module midi_voice_allocator #(
         matching_slot  = 8'd0;
         free_found     = 1'b0;
         free_slot      = 8'd0;
+        active_voice_count = 6'd0;
 
         for (search_index = 0;
              search_index < VOICE_COUNT;
              search_index = search_index + 1) begin
+            if (slot_active[search_index])
+                active_voice_count = active_voice_count + 6'd1;
+
             if (!matching_found
                 && slot_active[search_index]
                 && (slot_note[search_index] == note_event_note)) begin
