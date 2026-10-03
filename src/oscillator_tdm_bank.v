@@ -33,6 +33,7 @@ module oscillator_tdm_bank #(
     input  wire [NOTE_WIDTH-1:0] voice_update_note,
     input  wire                  voice_update_enable,
     input  wire                  voice_update_phase_reset,
+    input  wire [1:0]            voice_update_unison_lane,
     input  wire [5:0]            active_voice_count,
 
     output reg signed [15:0] sample_out,
@@ -91,6 +92,7 @@ module oscillator_tdm_bank #(
                 .voice_update_note(voice_update_note),
                 .voice_update_enable(voice_update_enable),
                 .voice_update_phase_reset(voice_update_phase_reset),
+                .voice_update_unison_lane(voice_update_unison_lane),
                 .partial_sum      (
                     core_partial_sum_bus[engine_index*CORE_SUM_WIDTH
                                          +: CORE_SUM_WIDTH]),
@@ -234,13 +236,12 @@ module oscillator_tdm_bank #(
                                       + ((target_gain_q16 - mix_gain_q16)
                                          >> GAIN_SMOOTH_SHIFT);
                 end else if (mix_gain_q16 > target_gain_q16) begin
-                    if (((mix_gain_q16 - target_gain_q16)
-                         >> GAIN_SMOOTH_SHIFT) == 17'd0)
-                        mix_gain_q16 <= mix_gain_q16 - 17'd1;
-                    else
-                        mix_gain_q16 <= mix_gain_q16
-                                      - ((mix_gain_q16 - target_gain_q16)
-                                         >> GAIN_SMOOTH_SHIFT);
+                    // A newly started Unison group begins with all lanes in
+                    // phase. Apply attenuation immediately when the physical
+                    // oscillator count rises so the coherent attack cannot
+                    // clip while the ADSR ramps up. Gain recovery after voices
+                    // become idle remains smoothed by the branch above.
+                    mix_gain_q16 <= target_gain_q16;
                 end
             end
         end

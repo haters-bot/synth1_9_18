@@ -14,6 +14,7 @@ module top #(
     localparam integer ENGINE_COUNT      = 1;
     localparam integer SLOTS_PER_ENGINE  = 32;
     localparam integer TOTAL_OSC_SLOTS   = ENGINE_COUNT * SLOTS_PER_ENGINE;
+    localparam integer UNISON_COUNT      = 3;
 
     wire rst_n_sys;
     wire sample_tick;
@@ -37,6 +38,7 @@ module top #(
     wire [6:0] voice_update_note;
     wire       voice_update_enable;
     wire       voice_update_phase_reset;
+    wire [1:0] voice_update_unison_lane;
 
     wire [7:0] uart_byte;
     wire       uart_byte_valid;
@@ -85,7 +87,8 @@ module top #(
     );
 
     midi_voice_allocator #(
-        .VOICE_COUNT(TOTAL_OSC_SLOTS)
+        .VOICE_COUNT (TOTAL_OSC_SLOTS),
+        .UNISON_COUNT(UNISON_COUNT)
     ) u_midi_voice_allocator (
         .clk                     (sys_clk),
         .rst_n                   (rst_n_sys),
@@ -98,6 +101,7 @@ module top #(
         .voice_update_note       (voice_update_note),
         .voice_update_enable     (voice_update_enable),
         .voice_update_phase_reset(voice_update_phase_reset),
+        .voice_update_unison_lane(voice_update_unison_lane),
         .active_voice_count      (active_voice_count)
     );
 
@@ -114,6 +118,7 @@ module top #(
         .voice_update_note         (voice_update_note),
         .voice_update_enable       (voice_update_enable),
         .voice_update_phase_reset  (voice_update_phase_reset),
+        .voice_update_unison_lane  (voice_update_unison_lane),
         .active_voice_count        (active_voice_count),
         .sample_out                (oscillator_mix),
         .sample_valid              (oscillator_mix_valid),
