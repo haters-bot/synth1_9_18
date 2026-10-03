@@ -7,7 +7,7 @@ vmap work_tdm sim/work_tdm
 
 vlog -work work_tdm \
     src/freq_lut.v \
-    src/sine_lut.v \
+    src/triangle_lut.v \
     src/oscillator_tdm_core.v \
     src/oscillator_tdm_bank.v \
     sim/tb_oscillator_tdm_bank.v

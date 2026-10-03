@@ -119,7 +119,7 @@ module oscillator_tdm_core #(
         .data(current_phase_step)
     );
 
-    sine_lut u_shared_sine_lut (
+    triangle_lut u_shared_triangle_lut (
         .addr(current_wave_address),
         .data(current_wave_sample)
     );

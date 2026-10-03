@@ -12,7 +12,7 @@ vlog -work work_top_midi \
     src/midi_note_parser.v \
     src/midi_voice_allocator.v \
     src/freq_lut.v \
-    src/sine_lut.v \
+    src/triangle_lut.v \
     src/oscillator_tdm_core.v \
     src/oscillator_tdm_bank.v \
     src/fir_decimator_8x_wrapper.v \
