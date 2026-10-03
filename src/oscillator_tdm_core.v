@@ -4,14 +4,13 @@
 //
 //   start_tick -> 槽位0 -> 槽位1 -> ... -> 槽位31 -> partial_valid
 //
-// 每个槽位拥有独立的32位相位累加器。当前槽位选择一个相位状态和一个
-// MIDI音符，共享的 freq_lut、相位加法器和波形表每次只计算一个逻辑振荡器。
+// 每个槽位拥有独立的32位相位累加器和相位步进。调度器已经把音符、
+// Unison和Detune转换为普通相位步进，本实体不区分任务来源。
 //
 // 验证版本使用寄存器保存 phase_state，便于观察状态与调度。后续可替换为
 // 同步BSRAM，但届时需要增加一级读流水线。
 module oscillator_tdm_core #(
     parameter integer SLOTS_PER_ENGINE = 4,
-    parameter integer NOTE_WIDTH       = 7,
     parameter integer PARTIAL_SUM_WIDTH = 24,
     parameter integer ENVELOPE_UPDATE_DIV = 16,
     parameter [15:0] ATTACK_STEP       = 16'd137,
@@ -29,12 +28,12 @@ module oscillator_tdm_core #(
     // 清除所有槽位保存的相位，但不会改变音符与使能状态。
     input  wire clear_phase,
 
-    // 单槽位状态更新接口。后续的MIDI音符分配器通过该接口修改指定槽位。
-    input  wire                  voice_update_valid,
-    input  wire [7:0]            voice_update_slot,
-    input  wire [NOTE_WIDTH-1:0] voice_update_note,
-    input  wire                  voice_update_enable,
-    input  wire                  voice_update_phase_reset,
+    // 单槽位状态更新接口。全局任务调度器通过该接口修改指定槽位。
+    input  wire                  task_update_valid,
+    input  wire [7:0]            task_update_slot,
+    input  wire [31:0]           task_update_phase_step,
+    input  wire                  task_update_enable,
+    input  wire                  task_update_phase_reset,
 
     // 本核心所处理的全部逻辑振荡器之和，尚未进行增益缩放。
     output reg signed [PARTIAL_SUM_WIDTH-1:0] partial_sum,
@@ -46,9 +45,9 @@ module oscillator_tdm_core #(
     output reg       debug_slot_commit,
     output reg       schedule_overrun,
 
-    // Release归零后给声部分配器的单周期完成脉冲。
-    output reg       voice_idle_valid,
-    output reg [7:0] voice_idle_slot
+    // Release归零后给全局任务调度器的单周期完成脉冲。
+    output reg       task_idle_valid,
+    output reg [7:0] task_idle_slot
 );
 
     localparam [2:0] ENV_IDLE    = 3'd0;
@@ -60,7 +59,7 @@ module oscillator_tdm_core #(
     localparam [15:0] ENVELOPE_DIV_LAST = ENVELOPE_UPDATE_DIV - 1;
 
     reg [31:0] phase_state [0:SLOTS_PER_ENGINE-1];
-    reg [NOTE_WIDTH-1:0] note_state [0:SLOTS_PER_ENGINE-1];
+    reg [31:0] phase_step_state [0:SLOTS_PER_ENGINE-1];
     reg                  enable_state [0:SLOTS_PER_ENGINE-1];
     reg                  gate_state [0:SLOTS_PER_ENGINE-1];
     reg [2:0]            envelope_stage [0:SLOTS_PER_ENGINE-1];
@@ -70,7 +69,6 @@ module oscillator_tdm_core #(
     reg [15:0] envelope_divider;
     reg        envelope_update_active;
 
-    wire [NOTE_WIDTH-1:0] current_note;
     wire                  current_slot_enabled;
     wire [31:0]           current_phase;
     wire [31:0]           current_phase_step;
@@ -91,9 +89,9 @@ module oscillator_tdm_core #(
 
     integer reset_index;
 
-    assign current_note = note_state[slot_index];
     assign current_slot_enabled = enable_state[slot_index];
     assign current_phase = phase_state[slot_index];
+    assign current_phase_step = phase_step_state[slot_index];
     assign current_wave_address = current_phase[31:24];
     assign current_envelope_stage = envelope_stage[slot_index];
     assign current_envelope_level = envelope_level[slot_index];
@@ -112,13 +110,7 @@ module oscillator_tdm_core #(
     assign current_release_delta
         = current_envelope_level >> RELEASE_SHIFT;
 
-    // 所有槽位共享一个频率查找表和一个波形查找表。
-    // slot_index 是调度器使用的多路选择信号。
-    freq_lut u_shared_freq_lut (
-        .addr(current_note),
-        .data(current_phase_step)
-    );
-
+    // 所有槽位共享一个波形表；slot_index 是TDM多路选择信号。
     square_lut u_shared_square_lut (
         .addr(current_wave_address),
         .data(current_wave_sample)
@@ -141,8 +133,8 @@ module oscillator_tdm_core #(
             debug_slot        <= 8'd0;
             debug_slot_commit <= 1'b0;
             schedule_overrun  <= 1'b0;
-            voice_idle_valid  <= 1'b0;
-            voice_idle_slot   <= 8'd0;
+            task_idle_valid  <= 1'b0;
+            task_idle_slot   <= 8'd0;
             envelope_divider  <= 16'd0;
             envelope_update_active <= 1'b0;
 
@@ -150,7 +142,7 @@ module oscillator_tdm_core #(
                  reset_index < SLOTS_PER_ENGINE;
                  reset_index = reset_index + 1) begin
                 phase_state[reset_index] <= 32'd0;
-                note_state[reset_index] <= {NOTE_WIDTH{1'b0}};
+                phase_step_state[reset_index] <= 32'd0;
                 enable_state[reset_index] <= 1'b0;
                 gate_state[reset_index] <= 1'b0;
                 envelope_stage[reset_index] <= ENV_IDLE;
@@ -160,7 +152,7 @@ module oscillator_tdm_core #(
             // 脉冲输出默认拉低，仅在提交槽位或完成一次引擎调度的对应时钟拉高。
             partial_valid     <= 1'b0;
             debug_slot_commit <= 1'b0;
-            voice_idle_valid  <= 1'b0;
+            task_idle_valid  <= 1'b0;
 
             if (clear_phase) begin
                 for (reset_index = 0;
@@ -250,8 +242,8 @@ module oscillator_tdm_core #(
                                 envelope_level[slot_index] <= 16'd0;
                                 envelope_stage[slot_index] <= ENV_IDLE;
                                 enable_state[slot_index] <= 1'b0;
-                                voice_idle_valid <= 1'b1;
-                                voice_idle_slot  <= slot_index;
+                                task_idle_valid <= 1'b1;
+                                task_idle_slot  <= slot_index;
                             end else if (current_release_delta == 16'd0) begin
                                 envelope_level[slot_index]
                                     <= current_envelope_level - 16'd1;
@@ -285,22 +277,23 @@ module oscillator_tdm_core #(
             end
 
             // 配置写入放在调度逻辑之后，使单槽位相位复位在同拍冲突时优先。
-            if (voice_update_valid
-                && (voice_update_slot < SLOTS_PER_ENGINE)) begin
-                note_state[voice_update_slot] <= voice_update_note;
+            if (task_update_valid
+                && (task_update_slot < SLOTS_PER_ENGINE)) begin
+                phase_step_state[task_update_slot]
+                    <= task_update_phase_step;
 
-                if (voice_update_enable) begin
-                    enable_state[voice_update_slot] <= 1'b1;
-                    gate_state[voice_update_slot] <= 1'b1;
-                    envelope_stage[voice_update_slot] <= ENV_ATTACK;
-                    envelope_level[voice_update_slot] <= 16'd0;
+                if (task_update_enable) begin
+                    enable_state[task_update_slot] <= 1'b1;
+                    gate_state[task_update_slot] <= 1'b1;
+                    envelope_stage[task_update_slot] <= ENV_ATTACK;
+                    envelope_level[task_update_slot] <= 16'd0;
 
-                    if (voice_update_phase_reset && !clear_phase)
-                        phase_state[voice_update_slot] <= 32'd0;
-                end else if (enable_state[voice_update_slot]) begin
+                    if (task_update_phase_reset && !clear_phase)
+                        phase_state[task_update_slot] <= 32'd0;
+                end else if (enable_state[task_update_slot]) begin
                     // Note Off只关闭Gate并进入Release；振荡器继续运行到包络归零。
-                    gate_state[voice_update_slot] <= 1'b0;
-                    envelope_stage[voice_update_slot] <= ENV_RELEASE;
+                    gate_state[task_update_slot] <= 1'b0;
+                    envelope_stage[task_update_slot] <= ENV_RELEASE;
                 end
             end
         end

@@ -11,7 +11,6 @@
 module oscillator_tdm_bank #(
     parameter integer ENGINE_COUNT        = 1,
     parameter integer SLOTS_PER_ENGINE    = 4,
-    parameter integer NOTE_WIDTH          = 7,
     parameter integer CORE_SUM_WIDTH      = 24,
     parameter integer BANK_SUM_WIDTH      = 32,
     parameter integer GAIN_SMOOTH_SHIFT   = 12,
@@ -28,17 +27,17 @@ module oscillator_tdm_bank #(
     input  wire clear_phase,
 
     // 全局单槽位状态更新接口。Bank根据槽位编号把更新发送给对应引擎。
-    input  wire                  voice_update_valid,
-    input  wire [7:0]            voice_update_slot,
-    input  wire [NOTE_WIDTH-1:0] voice_update_note,
-    input  wire                  voice_update_enable,
-    input  wire                  voice_update_phase_reset,
-    input  wire [5:0]            active_voice_count,
+    input  wire                  task_update_valid,
+    input  wire [7:0]            task_update_slot,
+    input  wire [31:0]           task_update_phase_step,
+    input  wire                  task_update_enable,
+    input  wire                  task_update_phase_reset,
+    input  wire [5:0]            active_task_count,
 
     output reg signed [15:0] sample_out,
     output reg               sample_valid,
     output wire              schedule_overrun,
-    output wire [(ENGINE_COUNT*SLOTS_PER_ENGINE)-1:0] voice_idle_mask,
+    output wire [(ENGINE_COUNT*SLOTS_PER_ENGINE)-1:0] task_idle_mask,
 
     // 导出引擎0的调试信号，使仿真器无需探查与实现相关的内部路径，
     // 即可直接观察槽位验证调度过程。
@@ -53,8 +52,8 @@ module oscillator_tdm_bank #(
     wire [(ENGINE_COUNT*8)-1:0]              core_debug_slot_bus;
     wire [ENGINE_COUNT-1:0]                  core_slot_commit;
     wire [ENGINE_COUNT-1:0]                  core_schedule_overrun;
-    wire [ENGINE_COUNT-1:0]                  core_voice_idle_valid;
-    wire [(ENGINE_COUNT*8)-1:0]              core_voice_idle_slot_bus;
+    wire [ENGINE_COUNT-1:0]                  core_task_idle_valid;
+    wire [(ENGINE_COUNT*8)-1:0]              core_task_idle_slot_bus;
 
     genvar engine_index;
     generate
@@ -65,15 +64,14 @@ module oscillator_tdm_bank #(
             wire engine_update_selected;
             wire [7:0] engine_local_slot;
 
-            assign engine_update_selected = voice_update_valid
-                && (voice_update_slot >= engine_index*SLOTS_PER_ENGINE)
-                && (voice_update_slot < (engine_index+1)*SLOTS_PER_ENGINE);
-            assign engine_local_slot = voice_update_slot
+            assign engine_update_selected = task_update_valid
+                && (task_update_slot >= engine_index*SLOTS_PER_ENGINE)
+                && (task_update_slot < (engine_index+1)*SLOTS_PER_ENGINE);
+            assign engine_local_slot = task_update_slot
                                      - engine_index*SLOTS_PER_ENGINE;
 
             oscillator_tdm_core #(
                 .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
-                .NOTE_WIDTH(NOTE_WIDTH),
                 .PARTIAL_SUM_WIDTH(CORE_SUM_WIDTH),
                 .ENVELOPE_UPDATE_DIV(ENVELOPE_UPDATE_DIV),
                 .ATTACK_STEP(ATTACK_STEP),
@@ -86,11 +84,11 @@ module oscillator_tdm_bank #(
                 .rst_n            (rst_n),
                 .start_tick       (start_tick),
                 .clear_phase      (clear_phase),
-                .voice_update_valid(engine_update_selected),
-                .voice_update_slot(engine_local_slot),
-                .voice_update_note(voice_update_note),
-                .voice_update_enable(voice_update_enable),
-                .voice_update_phase_reset(voice_update_phase_reset),
+                .task_update_valid(engine_update_selected),
+                .task_update_slot(engine_local_slot),
+                .task_update_phase_step(task_update_phase_step),
+                .task_update_enable(task_update_enable),
+                .task_update_phase_reset(task_update_phase_reset),
                 .partial_sum      (
                     core_partial_sum_bus[engine_index*CORE_SUM_WIDTH
                                          +: CORE_SUM_WIDTH]),
@@ -101,16 +99,16 @@ module oscillator_tdm_bank #(
                 .debug_slot_commit(core_slot_commit[engine_index]),
                 .schedule_overrun (
                     core_schedule_overrun[engine_index]),
-                .voice_idle_valid(core_voice_idle_valid[engine_index]),
-                .voice_idle_slot(
-                    core_voice_idle_slot_bus[engine_index*8 +: 8])
+                .task_idle_valid(core_task_idle_valid[engine_index]),
+                .task_idle_slot(
+                    core_task_idle_slot_bus[engine_index*8 +: 8])
             );
 
-            assign voice_idle_mask[
+            assign task_idle_mask[
                 engine_index*SLOTS_PER_ENGINE +: SLOTS_PER_ENGINE]
-                = core_voice_idle_valid[engine_index]
+                = core_task_idle_valid[engine_index]
                 ? ({{(SLOTS_PER_ENGINE-1){1'b0}}, 1'b1}
-                   << core_voice_idle_slot_bus[engine_index*8 +: 8])
+                   << core_task_idle_slot_bus[engine_index*8 +: 8])
                 : {SLOTS_PER_ENGINE{1'b0}};
         end
     endgenerate
@@ -182,7 +180,7 @@ module oscillator_tdm_bank #(
                                sum_index*CORE_SUM_WIDTH +: CORE_SUM_WIDTH]);
     end
 
-    assign target_gain_q16 = reciprocal_gain_q16(active_voice_count);
+    assign target_gain_q16 = reciprocal_gain_q16(active_task_count);
     assign signed_mix_gain_q16 = $signed({1'b0, mix_gain_q16});
     assign normalized_product = $signed(combined_sum)
                                 * $signed(signed_mix_gain_q16);
@@ -223,7 +221,7 @@ module oscillator_tdm_bank #(
 
                 // 仅在完成一个内部音频采样时更新一次增益。声部数为0时
                 // 在静音期间立即恢复单位增益，为下一次单音做好准备。
-                if (active_voice_count == 6'd0) begin
+                if (active_task_count == 6'd0) begin
                     mix_gain_q16 <= UNITY_GAIN_Q16;
                 end else if (mix_gain_q16 < target_gain_q16) begin
                     if (((target_gain_q16 - mix_gain_q16)
@@ -234,13 +232,10 @@ module oscillator_tdm_bank #(
                                       + ((target_gain_q16 - mix_gain_q16)
                                          >> GAIN_SMOOTH_SHIFT);
                 end else if (mix_gain_q16 > target_gain_q16) begin
-                    if (((mix_gain_q16 - target_gain_q16)
-                         >> GAIN_SMOOTH_SHIFT) == 17'd0)
-                        mix_gain_q16 <= mix_gain_q16 - 17'd1;
-                    else
-                        mix_gain_q16 <= mix_gain_q16
-                                      - ((mix_gain_q16 - target_gain_q16)
-                                         >> GAIN_SMOOTH_SHIFT);
+                    // A rising task count can make phase-coherent oscillators
+                    // add immediately. Apply attenuation on the first complete
+                    // sample; only gain recovery is smoothed.
+                    mix_gain_q16 <= target_gain_q16;
                 end
             end
         end

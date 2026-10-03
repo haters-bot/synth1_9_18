@@ -5,7 +5,6 @@ module tb_oscillator_tdm_bank;
     localparam integer ENGINE_COUNT       = 1;
     localparam integer SLOTS_PER_ENGINE   = 32;
     localparam integer TOTAL_SLOTS        = ENGINE_COUNT * SLOTS_PER_ENGINE;
-    localparam integer NOTE_WIDTH         = 7;
     localparam integer ENABLED_SCHEDULES  = 32;
     localparam integer TICK_PERIOD_CLOCKS = 65;
 
@@ -13,17 +12,17 @@ module tb_oscillator_tdm_bank;
     reg rst_n;
     reg start_tick;
     reg clear_phase;
-    reg voice_update_valid;
-    reg [7:0] voice_update_slot;
-    reg [NOTE_WIDTH-1:0] voice_update_note;
-    reg voice_update_enable;
-    reg voice_update_phase_reset;
-    reg [5:0] active_voice_count;
+    reg task_update_valid;
+    reg [7:0] task_update_slot;
+    reg [31:0] task_update_phase_step;
+    reg task_update_enable;
+    reg task_update_phase_reset;
+    reg [5:0] active_task_count;
 
     wire signed [15:0] sample_out;
     wire sample_valid;
     wire schedule_overrun;
-    wire [TOTAL_SLOTS-1:0] voice_idle_mask;
+    wire [TOTAL_SLOTS-1:0] task_idle_mask;
     wire debug_busy;
     wire [7:0] debug_slot;
     wire debug_slot_commit;
@@ -41,7 +40,6 @@ module tb_oscillator_tdm_bank;
     oscillator_tdm_bank #(
         .ENGINE_COUNT(ENGINE_COUNT),
         .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
-        .NOTE_WIDTH(NOTE_WIDTH),
         // 单元测试加速包络；板级默认参数保持约10/100/70%/315 ms。
         .ENVELOPE_UPDATE_DIV(1),
         .ATTACK_STEP(16'hFFFF),
@@ -54,16 +52,16 @@ module tb_oscillator_tdm_bank;
         .rst_n                     (rst_n),
         .start_tick                (start_tick),
         .clear_phase               (clear_phase),
-        .voice_update_valid        (voice_update_valid),
-        .voice_update_slot         (voice_update_slot),
-        .voice_update_note         (voice_update_note),
-        .voice_update_enable       (voice_update_enable),
-        .voice_update_phase_reset  (voice_update_phase_reset),
-        .active_voice_count        (active_voice_count),
+        .task_update_valid         (task_update_valid),
+        .task_update_slot          (task_update_slot),
+        .task_update_phase_step    (task_update_phase_step),
+        .task_update_enable        (task_update_enable),
+        .task_update_phase_reset   (task_update_phase_reset),
+        .active_task_count         (active_task_count),
         .sample_out                (sample_out),
         .sample_valid              (sample_valid),
         .schedule_overrun          (schedule_overrun),
-        .voice_idle_mask           (voice_idle_mask),
+        .task_idle_mask            (task_idle_mask),
         .debug_engine0_busy        (debug_busy),
         .debug_engine0_slot        (debug_slot),
         .debug_engine0_slot_commit (debug_slot_commit)
@@ -82,18 +80,18 @@ module tb_oscillator_tdm_bank;
 
     task update_voice_slot;
         input integer slot_number;
-        input [NOTE_WIDTH-1:0] note_number;
+        input [31:0] phase_step_value;
         input enable_value;
         input phase_reset_value;
         begin
             @(negedge clk);
-            voice_update_valid       = 1'b1;
-            voice_update_slot        = slot_number[7:0];
-            voice_update_note        = note_number;
-            voice_update_enable      = enable_value;
-            voice_update_phase_reset = phase_reset_value;
+            task_update_valid       = 1'b1;
+            task_update_slot        = slot_number[7:0];
+            task_update_phase_step  = phase_step_value;
+            task_update_enable      = enable_value;
+            task_update_phase_reset = phase_reset_value;
             @(negedge clk);
-            voice_update_valid       = 1'b0;
+            task_update_valid       = 1'b0;
         end
     endtask
 
@@ -118,7 +116,7 @@ module tb_oscillator_tdm_bank;
         end
 
 
-        if (voice_idle_mask[5])
+        if (task_idle_mask[5])
             saw_slot5_idle = 1'b1;
     end
 
@@ -127,12 +125,12 @@ module tb_oscillator_tdm_bank;
         rst_n           = 1'b0;
         start_tick      = 1'b0;
         clear_phase     = 1'b1;
-        voice_update_valid       = 1'b0;
-        voice_update_slot        = 8'd0;
-        voice_update_note        = {NOTE_WIDTH{1'b0}};
-        voice_update_enable      = 1'b0;
-        voice_update_phase_reset = 1'b0;
-        active_voice_count = 6'd0;
+        task_update_valid       = 1'b0;
+        task_update_slot        = 8'd0;
+        task_update_phase_step  = 32'd0;
+        task_update_enable      = 1'b0;
+        task_update_phase_reset = 1'b0;
+        active_task_count = 6'd0;
         errors          = 0;
         expected_slot   = 0;
         commit_count    = 0;
@@ -158,16 +156,19 @@ module tb_oscillator_tdm_bank;
         for (init_index = 0;
              init_index < TOTAL_SLOTS;
              init_index = init_index + 1)
-            update_voice_slot(init_index, 7'd48 + init_index, 1'b1, 1'b1);
+            update_voice_slot(init_index,
+                              32'h00010000 + init_index*32'h00001000,
+                              1'b1, 1'b1);
 
-        active_voice_count = 6'd32;
+        active_task_count = 6'd32;
 
         for (check_index = 0;
              check_index < TOTAL_SLOTS;
              check_index = check_index + 1) begin
             if (dut.GEN_ENGINE[0].u_oscillator_tdm_core
-                    .note_state[check_index] !== (7'd48 + check_index)) begin
-                $display("ERROR: slot %0d note update failed", check_index);
+                    .phase_step_state[check_index]
+                !== (32'h00010000 + check_index*32'h00001000)) begin
+                $display("ERROR: slot %0d phase-step update failed", check_index);
                 errors = errors + 1;
             end
 
@@ -210,7 +211,7 @@ module tb_oscillator_tdm_bank;
 
         // Note Off进入Release而不是立即关断；在下一次包络更新调度后
         // 电平归零、振荡器停用，并向分配器给出槽位完成脉冲。
-        update_voice_slot(5, 7'd53, 1'b0, 1'b0);
+        update_voice_slot(5, 32'h00015000, 1'b0, 1'b0);
         #1;
         if (dut.GEN_ENGINE[0].u_oscillator_tdm_core.enable_state[5]
             !== 1'b1) begin
@@ -235,7 +236,7 @@ module tb_oscillator_tdm_bank;
         end
 
         // Release声部在归零之前仍计入活动数；收到idle完成后才从32减为31。
-        active_voice_count = 6'd31;
+        active_task_count = 6'd31;
 
         if (commit_count !== ((ENABLED_SCHEDULES + 3) * TOTAL_SLOTS)) begin
             $display("ERROR: expected %0d slot commits, got %0d",
@@ -272,8 +273,8 @@ module tb_oscillator_tdm_bank;
         end
 
         // 单独重触发槽位5，确认更新接口不会清除其他槽位的相位。
-        update_voice_slot(5, 7'd53, 1'b1, 1'b1);
-        active_voice_count = 6'd32;
+        update_voice_slot(5, 32'h00015000, 1'b1, 1'b1);
+        active_task_count = 6'd32;
         #1;
         if (dut.GEN_ENGINE[0].u_oscillator_tdm_core
                 .phase_state[5] !== 32'd0) begin

@@ -24,7 +24,7 @@
 每个槽位保存：
 
 - `phase_state`
-- `note_state`
+- `phase_step_state`
 - `enable_state`
 - `gate_state`
 - `envelope_stage`
@@ -40,7 +40,7 @@
 
 Note On 会启用振荡器、将包络清零并进入 Attack。Note Off 只关闭 Gate 并进入
 Release，不会立即停用振荡器。Release 归零后，振荡器核心通过
-`voice_idle_mask` 通知 MIDI 声部分配器释放对应槽位。
+`task_idle_mask` 通知全局任务调度器释放对应槽位。
 
 ## 定点数据路径
 

@@ -1,48 +1,38 @@
-# 动态声部数归一化
+# Dynamic oscillator-task normalization
 
-固定 `/32` 已替换为根据活动声部数变化的平滑 `1/N` 增益。
+The old fixed `/32` attenuation is replaced by a `1/N` gain, where `N` is the
+number of active physical oscillator tasks. This means every Unison member is
+included in the divisor, just like any other generic oscillator task.
 
-## 活动声部定义
+## Active-task definition
 
-MIDI 分配器输出 `active_voice_count`，统计 `slot_active`：
+`oscillator_task_scheduler` derives `active_task_count` from its task table:
 
-- Note On 后立即计入；
-- Note Off 后进入 Release，仍然计入；
-- 包络归零并收到 `voice_idle_mask` 后才移出计数；
-- 偷音不改变活动声部总数。
+- a task is counted immediately after Note On allocation;
+- a task remains counted during ADSR Release;
+- it is removed only after the engine reports envelope idle;
+- retriggering or reassigning an active context does not momentarily remove it.
 
-这样不会在 Note Off 瞬间提高其余声部的音量。
+Keeping releasing tasks in the divisor avoids an abrupt gain jump at Note Off.
 
-## 增益计算
+## Gain calculation
 
-Bank 使用 17 位 Q1.16 倒数查找表：
+The bank uses a 17-bit Q1.16 reciprocal lookup table:
 
 ```text
-0 或 1 个声部：65536，增益 1.0
-2 个声部：32768，增益 1/2
-3 个声部：21845，增益约 1/3
+0 or 1 task: 65536 (1.0)
+2 tasks:     32768 (1/2)
+3 tasks:     21845 (approximately 1/3)
 ...
-32 个声部：2048，增益 1/32
+32 tasks:     2048 (1/32)
 ```
 
-音频路径不包含动态除法器。声部总和乘以平滑后的 Q1.16 增益，经过半
-LSB 舍入和 16 位饱和后送入 FIR。
+No runtime divider is present in the audio datapath. The engine sum is
+multiplied by the Q1.16 gain, rounded, and saturated to signed 16-bit PCM.
 
-## 增益平滑
-
-目标增益只在完成一个约 `768 kHz` 内部音频采样时更新：
-
-```text
-gain += (target_gain - gain) / 4096
-```
-
-默认 `GAIN_SMOOTH_SHIFT=12`，时间常数约 `5.3 ms`。当活动声部数变为 0
-时，系统处于静音，增益直接恢复为 1.0，以保证下一次单音从满增益开始。
-
-## 验证重点
-
-- 单音 Sustain 峰值不再固定衰减 30 dB；
-- Release 中的单音保持单位归一化增益；
-- 加入或移除声部时没有明显点击；
-- 重新综合后确认归一化乘法器映射到 DSP，并复查 `50 MHz` 时序；
-- 极端同相瞬态仍由最终 16 位饱和器保护。
+When the active task count rises, attenuation is applied on the first complete
+internal sample. This protects against a transient overload when newly started,
+phase-coherent Unison members add together. When the active count falls, gain
+recovery is smoothed with `GAIN_SMOOTH_SHIFT` (default 12) to avoid a sudden
+increase in the remaining sound. With zero active tasks, unity gain is restored
+while the output is silent.

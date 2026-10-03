@@ -10,7 +10,7 @@ vlog -work work_top_midi \
     src/reset_release_sync.v \
     src/uart_rx.v \
     src/midi_note_parser.v \
-    src/midi_voice_allocator.v \
+    src/oscillator_task_scheduler.v \
     src/freq_lut.v \
     src/square_lut.v \
     src/oscillator_tdm_core.v \
@@ -27,9 +27,9 @@ add wave sim:/tb_top_midi_input/dut/uart_byte_valid
 add wave sim:/tb_top_midi_input/dut/midi_note_event_valid
 add wave sim:/tb_top_midi_input/dut/midi_note_event_on
 add wave sim:/tb_top_midi_input/dut/midi_note_event_note
-add wave sim:/tb_top_midi_input/dut/voice_update_valid
-add wave sim:/tb_top_midi_input/dut/voice_update_slot
-add wave sim:/tb_top_midi_input/dut/voice_update_note
-add wave sim:/tb_top_midi_input/dut/voice_update_enable
+add wave sim:/tb_top_midi_input/dut/task_update_valid
+add wave sim:/tb_top_midi_input/dut/task_update_slot
+add wave -radix hexadecimal sim:/tb_top_midi_input/dut/task_update_phase_step
+add wave sim:/tb_top_midi_input/dut/task_update_enable
 
 run -all

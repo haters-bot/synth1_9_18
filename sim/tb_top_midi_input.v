@@ -2,7 +2,6 @@
 
 module tb_top_midi_input;
 
-    // 仿真中提高串口速率，缩短运行时间；RTL默认值仍为标准MIDI 31250 bit/s。
     localparam integer TEST_UART_BAUD = 2500000;
     localparam integer CLKS_PER_BIT   = 50000000 / TEST_UART_BAUD;
 
@@ -19,13 +18,14 @@ module tb_top_midi_input;
     integer update_count;
     integer check_index;
     integer observed_active_count;
-    reg [7:0] update_slot_log [0:15];
-    reg [6:0] update_note_log [0:15];
-    reg       update_enable_log [0:15];
-    reg       update_reset_log [0:15];
+    reg [7:0]  update_slot_log [0:31];
+    reg [31:0] update_phase_step_log [0:31];
+    reg        update_enable_log [0:31];
+    reg        update_reset_log [0:31];
 
     top #(
-        .UART_BAUD_RATE(TEST_UART_BAUD)
+        .UART_BAUD_RATE(TEST_UART_BAUD),
+        .DEFAULT_UNISON_COUNT(3)
     ) dut (
         .sys_clk(sys_clk),
         .rst_n  (rst_n),
@@ -40,11 +40,13 @@ module tb_top_midi_input;
 
     always @(posedge sys_clk) begin
         #1;
-        if (dut.voice_update_valid) begin
-            update_slot_log[update_count]   = dut.voice_update_slot;
-            update_note_log[update_count]   = dut.voice_update_note;
-            update_enable_log[update_count] = dut.voice_update_enable;
-            update_reset_log[update_count]  = dut.voice_update_phase_reset;
+        if (dut.task_update_valid) begin
+            update_slot_log[update_count] = dut.task_update_slot;
+            update_phase_step_log[update_count]
+                = dut.task_update_phase_step;
+            update_enable_log[update_count] = dut.task_update_enable;
+            update_reset_log[update_count]
+                = dut.task_update_phase_reset;
             update_count = update_count + 1;
         end
     end
@@ -57,7 +59,8 @@ module tb_top_midi_input;
             uart_rx = 1'b0;
             repeat (CLKS_PER_BIT) @(negedge sys_clk);
 
-            for (bit_number = 0; bit_number < 8; bit_number = bit_number + 1) begin
+            for (bit_number = 0; bit_number < 8;
+                 bit_number = bit_number + 1) begin
                 uart_rx = value[bit_number];
                 repeat (CLKS_PER_BIT) @(negedge sys_clk);
             end
@@ -70,18 +73,19 @@ module tb_top_midi_input;
     task expect_update;
         input integer log_index;
         input [7:0] expected_slot;
-        input [6:0] expected_note;
+        input [31:0] expected_phase_step;
         input expected_enable;
         input expected_reset;
         begin
             if (update_slot_log[log_index] !== expected_slot
-                || update_note_log[log_index] !== expected_note
+                || update_phase_step_log[log_index]
+                    !== expected_phase_step
                 || update_enable_log[log_index] !== expected_enable
                 || update_reset_log[log_index] !== expected_reset) begin
-                $display("ERROR: update %0d got slot=%0d note=%0d enable=%0d reset=%0d",
+                $display("ERROR: update %0d got slot=%0d phase=%08x enable=%0d reset=%0d",
                          log_index,
                          update_slot_log[log_index],
-                         update_note_log[log_index],
+                         update_phase_step_log[log_index],
                          update_enable_log[log_index],
                          update_reset_log[log_index]);
                 errors = errors + 1;
@@ -101,79 +105,102 @@ module tb_top_midi_input;
         rst_n = 1'b1;
         repeat (6) @(posedge sys_clk);
 
-        // Note On: MIDI 60，力度100，应占用槽位0并复位相位。
+        // Note On 60. Three ordinary tasks are spread across engines.
         send_uart_byte(8'h90);
         send_uart_byte(8'h3C);
         send_uart_byte(8'h64);
 
-        // Running Status：省略第二个状态字节，MIDI 64应占用槽位1。
+        // Running status Note On 64.
         send_uart_byte(8'h40);
         send_uart_byte(8'h50);
 
-        // 实时Clock消息可以插入数据字节之间，且不破坏Running Status。
+        // A realtime Clock byte may be interleaved without breaking status.
         send_uart_byte(8'h43);
         send_uart_byte(8'hF8);
         send_uart_byte(8'h60);
 
-        // Note On velocity=0等价于Note Off，应让槽位0进入Release。
+        // Note On with velocity zero is Note Off for note 60.
         send_uart_byte(8'h3C);
         send_uart_byte(8'h00);
 
-        // 显式Note Off让槽位1进入Release。
+        // Explicit Note Off for note 64.
         send_uart_byte(8'h80);
         send_uart_byte(8'h40);
         send_uart_byte(8'h00);
 
-        // 超出88键查表范围的音符应被忽略。
+        // Outside the supported 88-key lookup-table range: ignored.
         send_uart_byte(8'h90);
         send_uart_byte(8'h05);
         send_uart_byte(8'h64);
 
-        repeat (20) @(posedge sys_clk);
+        repeat (50) @(posedge sys_clk);
 
-        if (update_count !== 5) begin
-            $display("ERROR: expected 5 voice updates, got %0d", update_count);
+        if (update_count !== 15) begin
+            $display("ERROR: expected 15 task updates, got %0d",
+                     update_count);
             errors = errors + 1;
         end
 
-        expect_update(0, 8'd0, 7'd60, 1'b1, 1'b1);
-        expect_update(1, 8'd1, 7'd64, 1'b1, 1'b1);
-        expect_update(2, 8'd2, 7'd67, 1'b1, 1'b1);
-        expect_update(3, 8'd0, 7'd60, 1'b0, 1'b0);
-        expect_update(4, 8'd1, 7'd64, 1'b0, 1'b0);
+        expect_update(0,  8'd0,  32'h0016460E, 1'b1, 1'b1);
+        expect_update(1,  8'd8,  32'h0016534C, 1'b1, 1'b1);
+        expect_update(2,  8'd16, 32'h0016608A, 1'b1, 1'b1);
+        expect_update(3,  8'd24, 32'h001C1021, 1'b1, 1'b1);
+        expect_update(4,  8'd1,  32'h001C20D3, 1'b1, 1'b1);
+        expect_update(5,  8'd9,  32'h001C3185, 1'b1, 1'b1);
+        expect_update(6,  8'd17, 32'h00215F6D, 1'b1, 1'b1);
+        expect_update(7,  8'd25, 32'h00217345, 1'b1, 1'b1);
+        expect_update(8,  8'd2,  32'h0021871D, 1'b1, 1'b1);
+        expect_update(9,  8'd0,  32'h0016460E, 1'b0, 1'b0);
+        expect_update(10, 8'd8,  32'h0016534C, 1'b0, 1'b0);
+        expect_update(11, 8'd16, 32'h0016608A, 1'b0, 1'b0);
+        expect_update(12, 8'd1,  32'h001C20D3, 1'b0, 1'b0);
+        expect_update(13, 8'd9,  32'h001C3185, 1'b0, 1'b0);
+        expect_update(14, 8'd24, 32'h001C1021, 1'b0, 1'b0);
 
-        if (dut.u_oscillator_tdm_bank.GEN_ENGINE[0]
+        if (dut.u_oscillator_task_scheduler.slot_active[2] !== 1'b1
+            || dut.u_oscillator_task_scheduler.slot_active[17] !== 1'b1
+            || dut.u_oscillator_task_scheduler.slot_active[25] !== 1'b1
+            || dut.u_oscillator_tdm_bank.GEN_ENGINE[0]
                 .u_oscillator_tdm_core.enable_state[2] !== 1'b1
-            || dut.u_midi_voice_allocator.slot_active[2] !== 1'b1) begin
-            $display("ERROR: held note did not remain active");
+            || dut.u_oscillator_tdm_bank.GEN_ENGINE[2]
+                .u_oscillator_tdm_core.enable_state[1] !== 1'b1
+            || dut.u_oscillator_tdm_bank.GEN_ENGINE[3]
+                .u_oscillator_tdm_core.enable_state[1] !== 1'b1) begin
+            $display("ERROR: held three-task note did not remain active");
             errors = errors + 1;
         end
 
-        // 加速串口测试期间，短音可能已经完成Release，也可能仍在Release。
-        // 若仍活动，则必须标记为releasing；活动计数必须与槽位状态一致。
-        if ((dut.u_midi_voice_allocator.slot_active[0]
-             && !dut.u_midi_voice_allocator.slot_releasing[0])
-            || (dut.u_midi_voice_allocator.slot_active[1]
-                && !dut.u_midi_voice_allocator.slot_releasing[1])) begin
-            $display("ERROR: Note Off slot is active without Release state");
-            errors = errors + 1;
+        for (check_index = 0; check_index < 32;
+             check_index = check_index + 1) begin
+            if (dut.u_oscillator_task_scheduler.slot_active[check_index]
+                && (dut.u_oscillator_task_scheduler.slot_note[check_index]
+                    == 7'd60
+                    || dut.u_oscillator_task_scheduler.slot_note[check_index]
+                       == 7'd64)
+                && !dut.u_oscillator_task_scheduler
+                    .slot_releasing[check_index]) begin
+                $display("ERROR: released task %0d is not in Release",
+                         check_index);
+                errors = errors + 1;
+            end
         end
 
         observed_active_count = 0;
-        for (check_index = 0; check_index < 32; check_index = check_index + 1)
-            if (dut.u_midi_voice_allocator.slot_active[check_index])
+        for (check_index = 0; check_index < 32;
+             check_index = check_index + 1)
+            if (dut.u_oscillator_task_scheduler.slot_active[check_index])
                 observed_active_count = observed_active_count + 1;
 
-        if (dut.active_voice_count !== observed_active_count[5:0]) begin
-            $display("ERROR: active voice count got %0d, expected %0d",
-                     dut.active_voice_count, observed_active_count);
+        if (dut.active_task_count !== observed_active_count[5:0]) begin
+            $display("ERROR: active task count got %0d, expected %0d",
+                     dut.active_task_count, observed_active_count);
             errors = errors + 1;
         end
 
-        if (dut.active_voice_count < 6'd1
-            || dut.active_voice_count > 6'd3) begin
-            $display("ERROR: active voice count outside expected range: %0d",
-                     dut.active_voice_count);
+        if (dut.active_task_count < 6'd3
+            || dut.active_task_count > 6'd9) begin
+            $display("ERROR: active task count outside expected range: %0d",
+                     dut.active_task_count);
             errors = errors + 1;
         end
 
@@ -182,8 +209,13 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
+        if (dut.oscillator_schedule_overrun !== 1'b0) begin
+            $display("ERROR: four-engine oscillator schedule overrun");
+            errors = errors + 1;
+        end
+
         if (errors == 0)
-            $display("PASS: UART MIDI parsing and voice allocation");
+            $display("PASS: UART MIDI parsing and generic task scheduling");
         else
             $display("FAIL: %0d error(s)", errors);
 

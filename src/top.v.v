@@ -1,6 +1,7 @@
 // 32槽位时分复用振荡器与板载音频输出的工程顶层。
 module top #(
-    parameter integer UART_BAUD_RATE = 31250
+    parameter integer UART_BAUD_RATE = 31250,
+    parameter integer DEFAULT_UNISON_COUNT = 3
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
@@ -11,9 +12,10 @@ module top #(
     output wire PA_EN          // 板载NS4263使能，低电平有效，引脚AB16
 );
 
-    localparam integer ENGINE_COUNT      = 1;
-    localparam integer SLOTS_PER_ENGINE  = 32;
+    localparam integer ENGINE_COUNT      = 4;
+    localparam integer SLOTS_PER_ENGINE  = 8;
     localparam integer TOTAL_OSC_SLOTS   = ENGINE_COUNT * SLOTS_PER_ENGINE;
+    localparam [3:0] UNISON_COUNT_SETTING = DEFAULT_UNISON_COUNT;
 
     wire rst_n_sys;
     wire sample_tick;
@@ -24,19 +26,20 @@ module top #(
     wire signed [15:0] fir_input_sample;
     wire               oscillator_mix_valid;
     wire               oscillator_schedule_overrun;
-    wire [TOTAL_OSC_SLOTS-1:0] voice_idle_mask;
-    wire [5:0] active_voice_count;
+    wire [TOTAL_OSC_SLOTS-1:0] task_idle_mask;
+    wire [5:0] active_task_count;
     wire signed [15:0] filtered_sample;
 
     wire       debug_osc_busy;
     wire [7:0] debug_osc_slot;
     wire       debug_osc_slot_commit;
 
-    wire       voice_update_valid;
-    wire [7:0] voice_update_slot;
-    wire [6:0] voice_update_note;
-    wire       voice_update_enable;
-    wire       voice_update_phase_reset;
+    wire        task_update_valid;
+    wire [7:0]  task_update_slot;
+    wire [31:0] task_update_phase_step;
+    wire        task_update_enable;
+    wire        task_update_phase_reset;
+    wire        task_scheduler_busy;
 
     wire [7:0] uart_byte;
     wire       uart_byte_valid;
@@ -84,21 +87,24 @@ module top #(
         .note_event_velocity(midi_note_event_velocity)
     );
 
-    midi_voice_allocator #(
-        .VOICE_COUNT(TOTAL_OSC_SLOTS)
-    ) u_midi_voice_allocator (
+    oscillator_task_scheduler #(
+        .ENGINE_COUNT    (ENGINE_COUNT),
+        .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE)
+    ) u_oscillator_task_scheduler (
         .clk                     (sys_clk),
         .rst_n                   (rst_n_sys),
         .note_event_valid        (midi_note_event_valid),
         .note_event_on           (midi_note_event_on),
         .note_event_note         (midi_note_event_note),
-        .voice_idle_mask         (voice_idle_mask),
-        .voice_update_valid      (voice_update_valid),
-        .voice_update_slot       (voice_update_slot),
-        .voice_update_note       (voice_update_note),
-        .voice_update_enable     (voice_update_enable),
-        .voice_update_phase_reset(voice_update_phase_reset),
-        .active_voice_count      (active_voice_count)
+        .unison_count            (UNISON_COUNT_SETTING),
+        .task_idle_mask          (task_idle_mask),
+        .task_update_valid       (task_update_valid),
+        .task_update_slot        (task_update_slot),
+        .task_update_phase_step  (task_update_phase_step),
+        .task_update_enable      (task_update_enable),
+        .task_update_phase_reset (task_update_phase_reset),
+        .active_task_count       (active_task_count),
+        .scheduler_busy          (task_scheduler_busy)
     );
 
     oscillator_tdm_bank #(
@@ -109,16 +115,16 @@ module top #(
         .rst_n                     (rst_n_sys),
         .start_tick                (oscillator_start_tick),
         .clear_phase               (1'b0),
-        .voice_update_valid        (voice_update_valid),
-        .voice_update_slot         (voice_update_slot),
-        .voice_update_note         (voice_update_note),
-        .voice_update_enable       (voice_update_enable),
-        .voice_update_phase_reset  (voice_update_phase_reset),
-        .active_voice_count        (active_voice_count),
+        .task_update_valid         (task_update_valid),
+        .task_update_slot          (task_update_slot),
+        .task_update_phase_step    (task_update_phase_step),
+        .task_update_enable        (task_update_enable),
+        .task_update_phase_reset   (task_update_phase_reset),
+        .active_task_count         (active_task_count),
         .sample_out                (oscillator_mix),
         .sample_valid              (oscillator_mix_valid),
         .schedule_overrun          (oscillator_schedule_overrun),
-        .voice_idle_mask           (voice_idle_mask),
+        .task_idle_mask            (task_idle_mask),
         .debug_engine0_busy        (debug_osc_busy),
         .debug_engine0_slot        (debug_osc_slot),
         .debug_engine0_slot_commit (debug_osc_slot_commit)
