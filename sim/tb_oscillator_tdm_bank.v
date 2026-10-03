@@ -18,7 +18,6 @@ module tb_oscillator_tdm_bank;
     reg [NOTE_WIDTH-1:0] voice_update_note;
     reg voice_update_enable;
     reg voice_update_phase_reset;
-    reg [1:0] voice_update_unison_lane;
     reg [5:0] active_voice_count;
 
     wire signed [15:0] sample_out;
@@ -60,7 +59,6 @@ module tb_oscillator_tdm_bank;
         .voice_update_note         (voice_update_note),
         .voice_update_enable       (voice_update_enable),
         .voice_update_phase_reset  (voice_update_phase_reset),
-        .voice_update_unison_lane  (voice_update_unison_lane),
         .active_voice_count        (active_voice_count),
         .sample_out                (sample_out),
         .sample_valid              (sample_valid),
@@ -87,7 +85,6 @@ module tb_oscillator_tdm_bank;
         input [NOTE_WIDTH-1:0] note_number;
         input enable_value;
         input phase_reset_value;
-        input [1:0] unison_lane_value;
         begin
             @(negedge clk);
             voice_update_valid       = 1'b1;
@@ -95,7 +92,6 @@ module tb_oscillator_tdm_bank;
             voice_update_note        = note_number;
             voice_update_enable      = enable_value;
             voice_update_phase_reset = phase_reset_value;
-            voice_update_unison_lane = unison_lane_value;
             @(negedge clk);
             voice_update_valid       = 1'b0;
         end
@@ -136,7 +132,6 @@ module tb_oscillator_tdm_bank;
         voice_update_note        = {NOTE_WIDTH{1'b0}};
         voice_update_enable      = 1'b0;
         voice_update_phase_reset = 1'b0;
-        voice_update_unison_lane = 2'd1;
         active_voice_count = 6'd0;
         errors          = 0;
         expected_slot   = 0;
@@ -163,28 +158,15 @@ module tb_oscillator_tdm_bank;
         for (init_index = 0;
              init_index < TOTAL_SLOTS;
              init_index = init_index + 1)
-            update_voice_slot(init_index, 7'd48 + init_index,
-                              1'b1, 1'b1, 2'd1);
-
-        // Three adjacent slots model one real 3-Unison note. Their phase
-        // increments must be ordered low / center / high while the scheduler
-        // remains fully loaded with all 32 physical oscillator slots.
-        update_voice_slot(0, 7'd60, 1'b1, 1'b1, 2'd0);
-        update_voice_slot(1, 7'd60, 1'b1, 1'b1, 2'd1);
-        update_voice_slot(2, 7'd60, 1'b1, 1'b1, 2'd2);
+            update_voice_slot(init_index, 7'd48 + init_index, 1'b1, 1'b1);
 
         active_voice_count = 6'd32;
 
         for (check_index = 0;
              check_index < TOTAL_SLOTS;
              check_index = check_index + 1) begin
-            if (((check_index < 3)
-                 && (dut.GEN_ENGINE[0].u_oscillator_tdm_core
-                        .note_state[check_index] !== 7'd60))
-                || ((check_index >= 3)
-                    && (dut.GEN_ENGINE[0].u_oscillator_tdm_core
-                        .note_state[check_index]
-                        !== (7'd48 + check_index)))) begin
+            if (dut.GEN_ENGINE[0].u_oscillator_tdm_core
+                    .note_state[check_index] !== (7'd48 + check_index)) begin
                 $display("ERROR: slot %0d note update failed", check_index);
                 errors = errors + 1;
             end
@@ -228,7 +210,7 @@ module tb_oscillator_tdm_bank;
 
         // Note Off进入Release而不是立即关断；在下一次包络更新调度后
         // 电平归零、振荡器停用，并向分配器给出槽位完成脉冲。
-        update_voice_slot(5, 7'd53, 1'b0, 1'b0, 2'd1);
+        update_voice_slot(5, 7'd53, 1'b0, 1'b0);
         #1;
         if (dut.GEN_ENGINE[0].u_oscillator_tdm_core.enable_state[5]
             !== 1'b1) begin
@@ -289,16 +271,8 @@ module tb_oscillator_tdm_bank;
             end
         end
 
-        if (!(dut.GEN_ENGINE[0].u_oscillator_tdm_core.phase_state[0]
-              < dut.GEN_ENGINE[0].u_oscillator_tdm_core.phase_state[1]
-              && dut.GEN_ENGINE[0].u_oscillator_tdm_core.phase_state[1]
-              < dut.GEN_ENGINE[0].u_oscillator_tdm_core.phase_state[2])) begin
-            $display("ERROR: unison phase increments are not low/center/high");
-            errors = errors + 1;
-        end
-
         // 单独重触发槽位5，确认更新接口不会清除其他槽位的相位。
-        update_voice_slot(5, 7'd53, 1'b1, 1'b1, 2'd1);
+        update_voice_slot(5, 7'd53, 1'b1, 1'b1);
         active_voice_count = 6'd32;
         #1;
         if (dut.GEN_ENGINE[0].u_oscillator_tdm_core

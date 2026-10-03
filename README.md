@@ -5,8 +5,8 @@ Gowin FPGA wavetable synthesizer project for the Tang Mega 138K platform.
 Current audio path:
 
 ```text
-USB-UART MIDI -> MIDI parser -> 10-note / 3-oscillator Unison allocator
-              -> 32-slot time-division square-wave oscillator + per-slot ADSR
+USB-UART MIDI -> MIDI parser -> 32-voice allocator
+              -> time-division square-wave oscillator + per-voice ADSR
               -> 8x FIR decimator -> PT8211 stereo DAC interface
 ```
 

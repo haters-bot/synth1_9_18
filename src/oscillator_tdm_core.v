@@ -35,7 +35,6 @@ module oscillator_tdm_core #(
     input  wire [NOTE_WIDTH-1:0] voice_update_note,
     input  wire                  voice_update_enable,
     input  wire                  voice_update_phase_reset,
-    input  wire [1:0]            voice_update_unison_lane,
 
     // 本核心所处理的全部逻辑振荡器之和，尚未进行增益缩放。
     output reg signed [PARTIAL_SUM_WIDTH-1:0] partial_sum,
@@ -62,7 +61,6 @@ module oscillator_tdm_core #(
 
     reg [31:0] phase_state [0:SLOTS_PER_ENGINE-1];
     reg [NOTE_WIDTH-1:0] note_state [0:SLOTS_PER_ENGINE-1];
-    reg [1:0]            unison_lane_state [0:SLOTS_PER_ENGINE-1];
     reg                  enable_state [0:SLOTS_PER_ENGINE-1];
     reg                  gate_state [0:SLOTS_PER_ENGINE-1];
     reg [2:0]            envelope_stage [0:SLOTS_PER_ENGINE-1];
@@ -75,8 +73,6 @@ module oscillator_tdm_core #(
     wire [NOTE_WIDTH-1:0] current_note;
     wire                  current_slot_enabled;
     wire [31:0]           current_phase;
-    wire [31:0]           current_base_phase_step;
-    wire [31:0]           current_detune_delta;
     wire [31:0]           current_phase_step;
     wire [7:0]            current_wave_address;
     wire signed [15:0]    current_wave_sample;
@@ -89,7 +85,6 @@ module oscillator_tdm_core #(
     wire signed [33:0]    envelope_scaled;
     wire signed [15:0]    enveloped_wave_sample;
     wire [15:0]           current_release_delta;
-    wire [1:0]            current_unison_lane;
 
     wire signed [PARTIAL_SUM_WIDTH-1:0] extended_sample;
     wire signed [PARTIAL_SUM_WIDTH-1:0] sum_with_current_slot;
@@ -97,7 +92,6 @@ module oscillator_tdm_core #(
     integer reset_index;
 
     assign current_note = note_state[slot_index];
-    assign current_unison_lane = unison_lane_state[slot_index];
     assign current_slot_enabled = enable_state[slot_index];
     assign current_phase = phase_state[slot_index];
     assign current_wave_address = current_phase[31:24];
@@ -122,21 +116,8 @@ module oscillator_tdm_core #(
     // slot_index 是调度器使用的多路选择信号。
     freq_lut u_shared_freq_lut (
         .addr(current_note),
-        .data(current_base_phase_step)
+        .data(current_phase_step)
     );
-
-    // Approximately four cents of detune using only shifts and additions:
-    // 1/512 + 1/4096 + 1/8192 = 0.0023193359, or about 4.011 cents.
-    assign current_detune_delta = (current_base_phase_step >> 9)
-                                + (current_base_phase_step >> 12)
-                                + (current_base_phase_step >> 13);
-    assign current_phase_step = (current_unison_lane == 2'd0)
-                              ? current_base_phase_step
-                                - current_detune_delta
-                              : (current_unison_lane == 2'd2)
-                              ? current_base_phase_step
-                                + current_detune_delta
-                              : current_base_phase_step;
 
     square_lut u_shared_square_lut (
         .addr(current_wave_address),
@@ -170,7 +151,6 @@ module oscillator_tdm_core #(
                  reset_index = reset_index + 1) begin
                 phase_state[reset_index] <= 32'd0;
                 note_state[reset_index] <= {NOTE_WIDTH{1'b0}};
-                unison_lane_state[reset_index] <= 2'd1;
                 enable_state[reset_index] <= 1'b0;
                 gate_state[reset_index] <= 1'b0;
                 envelope_stage[reset_index] <= ENV_IDLE;
@@ -308,8 +288,6 @@ module oscillator_tdm_core #(
             if (voice_update_valid
                 && (voice_update_slot < SLOTS_PER_ENGINE)) begin
                 note_state[voice_update_slot] <= voice_update_note;
-                unison_lane_state[voice_update_slot]
-                    <= voice_update_unison_lane;
 
                 if (voice_update_enable) begin
                     enable_state[voice_update_slot] <= 1'b1;
