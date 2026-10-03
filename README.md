@@ -6,7 +6,7 @@ Current audio path:
 
 ```text
 USB-UART MIDI -> MIDI parser -> 32-voice allocator
-              -> time-division triangle-wave oscillator + per-voice ADSR
+              -> time-division square-wave oscillator + per-voice ADSR
               -> 8x FIR decimator -> PT8211 stereo DAC interface
 ```
 

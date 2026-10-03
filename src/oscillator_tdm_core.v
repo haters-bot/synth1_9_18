@@ -5,7 +5,7 @@
 //   start_tick -> 槽位0 -> 槽位1 -> ... -> 槽位31 -> partial_valid
 //
 // 每个槽位拥有独立的32位相位累加器。当前槽位选择一个相位状态和一个
-// MIDI音符，共享的 freq_lut、相位加法器和 sine_lut 每次只计算一个逻辑振荡器。
+// MIDI音符，共享的 freq_lut、相位加法器和波形表每次只计算一个逻辑振荡器。
 //
 // 验证版本使用寄存器保存 phase_state，便于观察状态与调度。后续可替换为
 // 同步BSRAM，但届时需要增加一级读流水线。
@@ -119,7 +119,7 @@ module oscillator_tdm_core #(
         .data(current_phase_step)
     );
 
-    triangle_lut u_shared_triangle_lut (
+    square_lut u_shared_square_lut (
         .addr(current_wave_address),
         .data(current_wave_sample)
     );
