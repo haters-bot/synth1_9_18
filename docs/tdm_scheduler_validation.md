@@ -67,13 +67,12 @@ Run the focused tests from ModelSim:
 ```tcl
 do sim/run_task_scheduler_test.do
 do sim/run_tdm_test.do
-do sim/run_top_midi_test.do
+do sim/run_top_fixed_note_test.do
 ```
 
 The tests cover variable Unison counts, balanced 32-task full load, full-pool
 group replacement, phase-step/context updates, 768 kHz scheduling without
-overrun, UART framing, running status, realtime-byte interleaving, Note On,
-and both forms of Note Off.
+overrun, and the current fixed-A4 debug-mode top level.
 
 The RTL was also elaborated and simulated with Icarus Verilog. Gowin synthesis
 and place-and-route are intentionally not part of automated verification.
