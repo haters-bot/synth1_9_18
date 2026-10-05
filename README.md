@@ -12,9 +12,10 @@ fixed A4 debug Note On -> note/Unison task scheduler
 ```
 
 The hardware top level is temporarily in fixed-note debug mode. It emits one
-MIDI-note-69 event after reset, uses one oscillator task by default, and does
-not expose the USB-UART receive pin. The reusable UART receiver and MIDI parser
-sources remain in the repository for restoration after waveform debugging.
+MIDI-note-69 event after reset, expands it into three Unison oscillator tasks
+by default, and does not expose the USB-UART receive pin. The reusable UART
+receiver and MIDI parser sources remain in the repository for restoration
+after waveform debugging.
 
 The repository contains synthesizable RTL, constraints, FIR configuration,
 simulation testbenches, the MIDI UART host tool, and project documentation.

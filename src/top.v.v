@@ -1,7 +1,7 @@
 // 32槽位时分复用振荡器与板载音频输出的工程顶层。
 module top #(
     parameter [6:0] FIXED_MIDI_NOTE = 7'd69,
-    parameter integer DEFAULT_UNISON_COUNT = 1
+    parameter integer DEFAULT_UNISON_COUNT = 3
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13

@@ -15,10 +15,12 @@ module tb_top_fixed_note;
     integer task_update_count;
     integer sample_count;
     reg saw_nonzero_sample;
+    reg [7:0] task_slot_log [0:2];
+    reg [31:0] task_phase_step_log [0:2];
 
     top #(
         .FIXED_MIDI_NOTE(7'd69),
-        .DEFAULT_UNISON_COUNT(1)
+        .DEFAULT_UNISON_COUNT(3)
     ) dut (
         .sys_clk(sys_clk),
         .rst_n  (rst_n),
@@ -35,8 +37,12 @@ module tb_top_fixed_note;
         if (dut.fixed_note_event_valid)
             note_event_count = note_event_count + 1;
 
-        if (dut.task_update_valid)
+        if (dut.task_update_valid) begin
+            task_slot_log[task_update_count] = dut.task_update_slot;
+            task_phase_step_log[task_update_count]
+                = dut.task_update_phase_step;
             task_update_count = task_update_count + 1;
+        end
 
         if (dut.oscillator_mix_valid) begin
             sample_count = sample_count + 1;
@@ -67,22 +73,33 @@ module tb_top_fixed_note;
             errors = errors + 1;
         end
 
-        if (task_update_count != 1) begin
-            $display("ERROR: expected one oscillator task, got %0d",
+        if (task_update_count != 3) begin
+            $display("ERROR: expected three Unison tasks, got %0d",
                      task_update_count);
             errors = errors + 1;
         end
 
-        if (dut.task_update_slot !== 8'd0
-            || dut.u_oscillator_task_scheduler.slot_note[0] !== 7'd69
-            || dut.u_oscillator_task_scheduler.slot_phase_step[0]
-                !== 32'h00258BF2
-            || dut.u_oscillator_task_scheduler.slot_active[0] !== 1'b1) begin
-            $display("ERROR: fixed A4 task was not configured correctly");
+        if (task_slot_log[0] !== 8'd0
+            || task_phase_step_log[0] !== 32'h002575AA
+            || task_slot_log[1] !== 8'd8
+            || task_phase_step_log[1] !== 32'h00258BF2
+            || task_slot_log[2] !== 8'd16
+            || task_phase_step_log[2] !== 32'h0025A23A) begin
+            $display("ERROR: A4 Unison task parameters are incorrect");
             errors = errors + 1;
         end
 
-        if (dut.active_task_count !== 6'd1) begin
+        if (dut.u_oscillator_task_scheduler.slot_note[0] !== 7'd69
+            || dut.u_oscillator_task_scheduler.slot_note[8] !== 7'd69
+            || dut.u_oscillator_task_scheduler.slot_note[16] !== 7'd69
+            || !dut.u_oscillator_task_scheduler.slot_active[0]
+            || !dut.u_oscillator_task_scheduler.slot_active[8]
+            || !dut.u_oscillator_task_scheduler.slot_active[16]) begin
+            $display("ERROR: A4 Unison ownership state is incorrect");
+            errors = errors + 1;
+        end
+
+        if (dut.active_task_count !== 6'd3) begin
             $display("ERROR: active task count is %0d",
                      dut.active_task_count);
             errors = errors + 1;
@@ -99,7 +116,7 @@ module tb_top_fixed_note;
         end
 
         if (errors == 0)
-            $display("PASS: fixed A4 debug note and audio scheduling");
+            $display("PASS: fixed A4 three-member Unison scheduling");
         else
             $display("FAIL: %0d error(s)", errors);
 
