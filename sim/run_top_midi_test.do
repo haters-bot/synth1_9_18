@@ -27,9 +27,11 @@ add wave sim:/tb_top_midi_input/dut/uart_byte_valid
 add wave sim:/tb_top_midi_input/dut/midi_note_event_valid
 add wave sim:/tb_top_midi_input/dut/midi_note_event_on
 add wave sim:/tb_top_midi_input/dut/midi_note_event_note
+add wave sim:/tb_top_midi_input/dut/midi_note_event_velocity
 add wave sim:/tb_top_midi_input/dut/task_update_valid
 add wave sim:/tb_top_midi_input/dut/task_update_slot
 add wave -radix hexadecimal sim:/tb_top_midi_input/dut/task_update_phase_step
+add wave sim:/tb_top_midi_input/dut/task_update_velocity
 add wave sim:/tb_top_midi_input/dut/task_update_enable
 
 run -all

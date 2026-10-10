@@ -39,6 +39,7 @@ module top #(
     wire        task_update_valid;
     wire [7:0]  task_update_slot;
     wire [31:0] task_update_phase_step;
+    wire [6:0]  task_update_velocity;
     wire        task_update_enable;
     wire        task_update_phase_reset;
     wire        task_scheduler_busy;
@@ -100,11 +101,13 @@ module top #(
         .note_event_valid        (midi_note_event_valid),
         .note_event_on           (midi_note_event_on),
         .note_event_note         (midi_note_event_note),
+        .note_event_velocity     (midi_note_event_velocity),
         .unison_count            (UNISON_COUNT_SETTING),
         .task_idle_mask          (task_idle_mask),
         .task_update_valid       (task_update_valid),
         .task_update_slot        (task_update_slot),
         .task_update_phase_step  (task_update_phase_step),
+        .task_update_velocity    (task_update_velocity),
         .task_update_enable      (task_update_enable),
         .task_update_phase_reset (task_update_phase_reset),
         .active_task_count       (active_task_count),
@@ -122,6 +125,7 @@ module top #(
         .task_update_valid         (task_update_valid),
         .task_update_slot          (task_update_slot),
         .task_update_phase_step    (task_update_phase_step),
+        .task_update_velocity      (task_update_velocity),
         .task_update_enable        (task_update_enable),
         .task_update_phase_reset   (task_update_phase_reset),
         .active_task_count         (active_task_count),

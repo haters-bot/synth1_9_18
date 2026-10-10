@@ -30,6 +30,7 @@ module oscillator_tdm_bank #(
     input  wire                  task_update_valid,
     input  wire [7:0]            task_update_slot,
     input  wire [31:0]           task_update_phase_step,
+    input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
     input  wire [5:0]            active_task_count,
@@ -87,6 +88,7 @@ module oscillator_tdm_bank #(
                 .task_update_valid(engine_update_selected),
                 .task_update_slot(engine_local_slot),
                 .task_update_phase_step(task_update_phase_step),
+                .task_update_velocity(task_update_velocity),
                 .task_update_enable(task_update_enable),
                 .task_update_phase_reset(task_update_phase_reset),
                 .partial_sum      (

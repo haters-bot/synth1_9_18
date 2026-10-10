@@ -11,12 +11,14 @@ module tb_oscillator_task_scheduler;
     reg note_event_valid;
     reg note_event_on;
     reg [6:0] note_event_note;
+    reg [6:0] note_event_velocity;
     reg [3:0] unison_count;
     reg [TOTAL_SLOTS-1:0] task_idle_mask;
 
     wire task_update_valid;
     wire [7:0] task_update_slot;
     wire [31:0] task_update_phase_step;
+    wire [6:0] task_update_velocity;
     wire task_update_enable;
     wire task_update_phase_reset;
     wire [5:0] active_task_count;
@@ -39,11 +41,13 @@ module tb_oscillator_task_scheduler;
         .note_event_valid(note_event_valid),
         .note_event_on(note_event_on),
         .note_event_note(note_event_note),
+        .note_event_velocity(note_event_velocity),
         .unison_count(unison_count),
         .task_idle_mask(task_idle_mask),
         .task_update_valid(task_update_valid),
         .task_update_slot(task_update_slot),
         .task_update_phase_step(task_update_phase_step),
+        .task_update_velocity(task_update_velocity),
         .task_update_enable(task_update_enable),
         .task_update_phase_reset(task_update_phase_reset),
         .active_task_count(active_task_count),
@@ -61,6 +65,7 @@ module tb_oscillator_task_scheduler;
         begin
             rst_n = 1'b0;
             note_event_valid = 1'b0;
+            note_event_velocity = 7'd100;
             task_idle_mask = {TOTAL_SLOTS{1'b0}};
             repeat (4) @(posedge clk);
             @(negedge clk);
@@ -116,12 +121,20 @@ module tb_oscillator_task_scheduler;
 
         // Changing Unison count retriggers/reuses the old generic task and
         // allocates the remaining ordinary tasks from the shared pool.
+        note_event_velocity = 7'd37;
         send_note(1'b1, 7'd60, 4'd1);
         if (count_note(7'd60) != 1) begin
             $display("ERROR: one-member allocation failed");
             errors = errors + 1;
         end
+        for (i = 0; i < TOTAL_SLOTS; i = i + 1)
+            if (dut.slot_active[i] && dut.slot_note[i] == 7'd60
+                && dut.slot_velocity[i] != 7'd37) begin
+                $display("ERROR: MIDI velocity was not stored for task %0d", i);
+                errors = errors + 1;
+            end
 
+        note_event_velocity = 7'd100;
         send_note(1'b1, 7'd60, 4'd5);
         if (count_note(7'd60) != 5) begin
             $display("ERROR: same-note resize to five tasks failed");

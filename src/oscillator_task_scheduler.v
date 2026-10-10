@@ -16,12 +16,14 @@ module oscillator_task_scheduler #(
     input  wire       note_event_valid,
     input  wire       note_event_on,
     input  wire [6:0] note_event_note,
+    input  wire [6:0] note_event_velocity,
     input  wire [3:0] unison_count,
     input  wire [(ENGINE_COUNT*SLOTS_PER_ENGINE)-1:0] task_idle_mask,
 
     output reg        task_update_valid,
     output reg [7:0]  task_update_slot,
     output reg [31:0] task_update_phase_step,
+    output reg [6:0]  task_update_velocity,
     output reg        task_update_enable,
     output reg        task_update_phase_reset,
     output reg [5:0]  active_task_count,
@@ -37,10 +39,12 @@ module oscillator_task_scheduler #(
     reg [2:0] state;
     reg [6:0] slot_note [0:TOTAL_SLOTS-1];
     reg [31:0] slot_phase_step [0:TOTAL_SLOTS-1];
+    reg [6:0] slot_velocity [0:TOTAL_SLOTS-1];
     reg slot_active [0:TOTAL_SLOTS-1];
     reg slot_releasing [0:TOTAL_SLOTS-1];
 
     reg [6:0] pending_note;
+    reg [6:0] pending_velocity;
     reg [3:0] pending_unison_count;
     reg [3:0] pending_member_index;
     reg [6:0] victim_note;
@@ -174,9 +178,11 @@ module oscillator_task_scheduler #(
             task_update_valid <= 1'b0;
             task_update_slot <= 8'd0;
             task_update_phase_step <= 32'd0;
+            task_update_velocity <= 7'd0;
             task_update_enable <= 1'b0;
             task_update_phase_reset <= 1'b0;
             pending_note <= 7'd0;
+            pending_velocity <= 7'd0;
             pending_unison_count <= 4'd1;
             pending_member_index <= 4'd0;
             victim_note <= 7'd0;
@@ -189,6 +195,7 @@ module oscillator_task_scheduler #(
                  reset_index = reset_index + 1) begin
                 slot_note[reset_index] <= 7'd0;
                 slot_phase_step[reset_index] <= 32'd0;
+                slot_velocity[reset_index] <= 7'd0;
                 slot_active[reset_index] <= 1'b0;
                 slot_releasing[reset_index] <= 1'b0;
             end
@@ -216,6 +223,7 @@ module oscillator_task_scheduler #(
                         && (note_event_note >= MIN_NOTE)
                         && (note_event_note <= MAX_NOTE)) begin
                         pending_note <= note_event_note;
+                        pending_velocity <= note_event_velocity;
                         pending_unison_count
                             <= clamp_unison_count(unison_count);
                         pending_member_index <= 4'd0;
@@ -249,6 +257,7 @@ module oscillator_task_scheduler #(
                             <= make_phase_step(pending_base_phase_step,
                                                pending_member_index,
                                                pending_unison_count);
+                        task_update_velocity <= pending_velocity;
                         task_update_enable <= 1'b1;
                         task_update_phase_reset <= 1'b1;
 
@@ -257,6 +266,8 @@ module oscillator_task_scheduler #(
                             <= make_phase_step(pending_base_phase_step,
                                                pending_member_index,
                                                pending_unison_count);
+                        slot_velocity[allocation_candidate]
+                            <= pending_velocity;
                         slot_active[allocation_candidate] <= 1'b1;
                         slot_releasing[allocation_candidate] <= 1'b0;
 
@@ -305,6 +316,7 @@ module oscillator_task_scheduler #(
                                 <= make_phase_step(pending_base_phase_step,
                                                    pending_member_index,
                                                    pending_unison_count);
+                            task_update_velocity <= pending_velocity;
                             task_update_enable <= 1'b1;
                             task_update_phase_reset <= 1'b1;
                             slot_note[scan_index] <= pending_note;
@@ -312,12 +324,14 @@ module oscillator_task_scheduler #(
                                 <= make_phase_step(pending_base_phase_step,
                                                    pending_member_index,
                                                    pending_unison_count);
+                            slot_velocity[scan_index] <= pending_velocity;
                             slot_releasing[scan_index] <= 1'b0;
                             pending_member_index
                                 <= pending_member_index + 4'd1;
                         end else begin
                             task_update_phase_step
                                 <= slot_phase_step[scan_index];
+                            task_update_velocity <= slot_velocity[scan_index];
                             task_update_enable <= 1'b0;
                             task_update_phase_reset <= 1'b0;
                             slot_releasing[scan_index] <= 1'b1;
@@ -351,6 +365,7 @@ module oscillator_task_scheduler #(
                         task_update_valid <= 1'b1;
                         task_update_slot <= scan_index;
                         task_update_phase_step <= slot_phase_step[scan_index];
+                        task_update_velocity <= slot_velocity[scan_index];
                         task_update_enable <= 1'b0;
                         task_update_phase_reset <= 1'b0;
                         slot_releasing[scan_index] <= 1'b1;

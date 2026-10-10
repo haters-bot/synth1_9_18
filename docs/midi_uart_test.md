@@ -20,7 +20,9 @@ FPGA默认使用标准MIDI串口格式：`31250 baud, 8N1`。接收所有16个MI
 当前支持Note On、Note Off、Running Status以及`Note On velocity=0`形式的Note Off。
 音符范围为MIDI 21～108；超出88键频率表的音符会被忽略。
 
-当前版本使用力度判断Note On/Off，但尚未把力度映射为振幅；ADSR和力度响应将在后续加入。
+力度会随Note On事件绑定到该音符的全部Unison任务，并在每个振荡器槽位中按
+`velocity/128`近似映射为线性振幅；力度127保持满幅。移动上位机力度滑块只影响
+之后触发的新音符，已经持续发声的音符保持其Note On时的力度。
 
 ## 上位机运行
 

@@ -25,6 +25,7 @@ module tb_top_midi_input;
     integer consecutive_silent_samples;
     reg [7:0]  update_slot_log [0:31];
     reg [31:0] update_phase_step_log [0:31];
+    reg [6:0]  update_velocity_log [0:31];
     reg        update_enable_log [0:31];
     reg        update_reset_log [0:31];
 
@@ -51,6 +52,8 @@ module tb_top_midi_input;
             update_slot_log[update_count] = dut.task_update_slot;
             update_phase_step_log[update_count]
                 = dut.task_update_phase_step;
+            update_velocity_log[update_count]
+                = dut.task_update_velocity;
             update_enable_log[update_count] = dut.task_update_enable;
             update_reset_log[update_count]
                 = dut.task_update_phase_reset;
@@ -81,18 +84,21 @@ module tb_top_midi_input;
         input integer log_index;
         input [7:0] expected_slot;
         input [31:0] expected_phase_step;
+        input [6:0] expected_velocity;
         input expected_enable;
         input expected_reset;
         begin
             if (update_slot_log[log_index] !== expected_slot
                 || update_phase_step_log[log_index]
                     !== expected_phase_step
+                || update_velocity_log[log_index] !== expected_velocity
                 || update_enable_log[log_index] !== expected_enable
                 || update_reset_log[log_index] !== expected_reset) begin
-                $display("ERROR: update %0d got slot=%0d phase=%08x enable=%0d reset=%0d",
+                $display("ERROR: update %0d got slot=%0d phase=%08x velocity=%0d enable=%0d reset=%0d",
                          log_index,
                          update_slot_log[log_index],
                          update_phase_step_log[log_index],
+                         update_velocity_log[log_index],
                          update_enable_log[log_index],
                          update_reset_log[log_index]);
                 errors = errors + 1;
@@ -148,21 +154,21 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
-        expect_update(0,  8'd0,  32'h0016460E, 1'b1, 1'b1);
-        expect_update(1,  8'd8,  32'h0016534C, 1'b1, 1'b1);
-        expect_update(2,  8'd16, 32'h0016608A, 1'b1, 1'b1);
-        expect_update(3,  8'd24, 32'h001C1021, 1'b1, 1'b1);
-        expect_update(4,  8'd1,  32'h001C20D3, 1'b1, 1'b1);
-        expect_update(5,  8'd9,  32'h001C3185, 1'b1, 1'b1);
-        expect_update(6,  8'd17, 32'h00215F6D, 1'b1, 1'b1);
-        expect_update(7,  8'd25, 32'h00217345, 1'b1, 1'b1);
-        expect_update(8,  8'd2,  32'h0021871D, 1'b1, 1'b1);
-        expect_update(9,  8'd0,  32'h0016460E, 1'b0, 1'b0);
-        expect_update(10, 8'd8,  32'h0016534C, 1'b0, 1'b0);
-        expect_update(11, 8'd16, 32'h0016608A, 1'b0, 1'b0);
-        expect_update(12, 8'd1,  32'h001C20D3, 1'b0, 1'b0);
-        expect_update(13, 8'd9,  32'h001C3185, 1'b0, 1'b0);
-        expect_update(14, 8'd24, 32'h001C1021, 1'b0, 1'b0);
+        expect_update(0,  8'd0,  32'h0016460E, 7'd100, 1'b1, 1'b1);
+        expect_update(1,  8'd8,  32'h0016534C, 7'd100, 1'b1, 1'b1);
+        expect_update(2,  8'd16, 32'h0016608A, 7'd100, 1'b1, 1'b1);
+        expect_update(3,  8'd24, 32'h001C1021, 7'd80, 1'b1, 1'b1);
+        expect_update(4,  8'd1,  32'h001C20D3, 7'd80, 1'b1, 1'b1);
+        expect_update(5,  8'd9,  32'h001C3185, 7'd80, 1'b1, 1'b1);
+        expect_update(6,  8'd17, 32'h00215F6D, 7'd96, 1'b1, 1'b1);
+        expect_update(7,  8'd25, 32'h00217345, 7'd96, 1'b1, 1'b1);
+        expect_update(8,  8'd2,  32'h0021871D, 7'd96, 1'b1, 1'b1);
+        expect_update(9,  8'd0,  32'h0016460E, 7'd100, 1'b0, 1'b0);
+        expect_update(10, 8'd8,  32'h0016534C, 7'd100, 1'b0, 1'b0);
+        expect_update(11, 8'd16, 32'h0016608A, 7'd100, 1'b0, 1'b0);
+        expect_update(12, 8'd1,  32'h001C20D3, 7'd80, 1'b0, 1'b0);
+        expect_update(13, 8'd9,  32'h001C3185, 7'd80, 1'b0, 1'b0);
+        expect_update(14, 8'd24, 32'h001C1021, 7'd80, 1'b0, 1'b0);
 
         if (dut.u_oscillator_task_scheduler.slot_active[2] !== 1'b1
             || dut.u_oscillator_task_scheduler.slot_active[17] !== 1'b1
@@ -172,7 +178,13 @@ module tb_top_midi_input;
             || dut.u_oscillator_tdm_bank.GEN_ENGINE[2]
                 .u_oscillator_tdm_core.enable_state[1] !== 1'b1
             || dut.u_oscillator_tdm_bank.GEN_ENGINE[3]
-                .u_oscillator_tdm_core.enable_state[1] !== 1'b1) begin
+                .u_oscillator_tdm_core.enable_state[1] !== 1'b1
+            || dut.u_oscillator_tdm_bank.GEN_ENGINE[0]
+                .u_oscillator_tdm_core.velocity_state[2] !== 7'd96
+            || dut.u_oscillator_tdm_bank.GEN_ENGINE[2]
+                .u_oscillator_tdm_core.velocity_state[1] !== 7'd96
+            || dut.u_oscillator_tdm_bank.GEN_ENGINE[3]
+                .u_oscillator_tdm_core.velocity_state[1] !== 7'd96) begin
             $display("ERROR: held three-task note did not remain active");
             errors = errors + 1;
         end

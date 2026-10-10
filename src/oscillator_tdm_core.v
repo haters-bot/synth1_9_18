@@ -32,6 +32,7 @@ module oscillator_tdm_core #(
     input  wire                  task_update_valid,
     input  wire [7:0]            task_update_slot,
     input  wire [31:0]           task_update_phase_step,
+    input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
 
@@ -64,6 +65,8 @@ module oscillator_tdm_core #(
     reg                  gate_state [0:SLOTS_PER_ENGINE-1];
     reg [2:0]            envelope_stage [0:SLOTS_PER_ENGINE-1];
     reg [15:0]           envelope_level [0:SLOTS_PER_ENGINE-1];
+    reg [15:0]           velocity_envelope_level [0:SLOTS_PER_ENGINE-1];
+    reg [6:0]            velocity_state [0:SLOTS_PER_ENGINE-1];
     reg [7:0]  slot_index;
     reg signed [PARTIAL_SUM_WIDTH-1:0] mix_accumulator;
     reg [15:0] envelope_divider;
@@ -76,6 +79,11 @@ module oscillator_tdm_core #(
     wire signed [15:0]    current_wave_sample;
     wire [2:0]            current_envelope_stage;
     wire [15:0]           current_envelope_level;
+    wire [15:0]           current_velocity_envelope_level;
+    wire [6:0]            current_velocity;
+    wire [22:0]           velocity_product;
+    wire [22:0]           velocity_rounded;
+    wire [15:0]           velocity_scaled_envelope;
     wire signed [16:0]    current_wave_extended;
     wire signed [16:0]    current_envelope_gain;
     wire signed [33:0]    envelope_product;
@@ -95,12 +103,26 @@ module oscillator_tdm_core #(
     assign current_wave_address = current_phase[31:24];
     assign current_envelope_stage = envelope_stage[slot_index];
     assign current_envelope_level = envelope_level[slot_index];
+    assign current_velocity_envelope_level
+        = velocity_envelope_level[slot_index];
+    assign current_velocity = velocity_state[slot_index];
+
+    // MIDI力度采用近似Q0.7增益：velocity/128。最大力度127单独旁路，
+    // 从而保持原有满幅输出；乘法结果只在包络更新时写回寄存器，避免
+    // 与波形乘包络的音频路径形成两个乘法器的组合级联。
+    assign velocity_product = current_envelope_level * current_velocity;
+    assign velocity_rounded = velocity_product + 23'd64;
+    assign velocity_scaled_envelope
+        = (current_velocity == 7'd127)
+        ? current_envelope_level
+        : velocity_rounded[22:7];
 
     // 包络为无符号Q0.16增益。前置0扩展后显式转为正的有符号数，
     // 与16位有符号波形相乘，再算术右移16位恢复PCM量纲。
     assign current_wave_extended = $signed({current_wave_sample[15],
                                             current_wave_sample});
-    assign current_envelope_gain = $signed({1'b0, current_envelope_level});
+    assign current_envelope_gain
+        = $signed({1'b0, current_velocity_envelope_level});
     assign envelope_product = $signed(current_wave_extended)
                             * $signed(current_envelope_gain);
     // 加半个Q0.16 LSB后再右移，避免直接算术截断对负半波产生偏置。
@@ -147,6 +169,8 @@ module oscillator_tdm_core #(
                 gate_state[reset_index] <= 1'b0;
                 envelope_stage[reset_index] <= ENV_IDLE;
                 envelope_level[reset_index] <= 16'd0;
+                velocity_envelope_level[reset_index] <= 16'd0;
+                velocity_state[reset_index] <= 7'd0;
             end
         end else begin
             // 脉冲输出默认拉低，仅在提交槽位或完成一次引擎调度的对应时钟拉高。
@@ -198,6 +222,10 @@ module oscillator_tdm_core #(
                         <= current_phase + current_phase_step;
 
                 if (current_slot_enabled && envelope_update_active) begin
+                    // 缩放后的包络比原包络晚一个包络更新周期，默认配置下
+                    // 约为20.8 us，不影响演奏响应，并切断乘法器级联路径。
+                    velocity_envelope_level[slot_index]
+                        <= velocity_scaled_envelope;
                     case (current_envelope_stage)
                         ENV_ATTACK: begin
                             if (!gate_state[slot_index]) begin
@@ -287,6 +315,9 @@ module oscillator_tdm_core #(
                     gate_state[task_update_slot] <= 1'b1;
                     envelope_stage[task_update_slot] <= ENV_ATTACK;
                     envelope_level[task_update_slot] <= 16'd0;
+                    velocity_envelope_level[task_update_slot] <= 16'd0;
+                    velocity_state[task_update_slot]
+                        <= task_update_velocity;
 
                     if (task_update_phase_reset && !clear_phase)
                         phase_state[task_update_slot] <= 32'd0;

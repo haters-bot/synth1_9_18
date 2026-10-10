@@ -15,6 +15,7 @@ module tb_oscillator_tdm_bank;
     reg task_update_valid;
     reg [7:0] task_update_slot;
     reg [31:0] task_update_phase_step;
+    reg [6:0] task_update_velocity;
     reg task_update_enable;
     reg task_update_phase_reset;
     reg [5:0] active_task_count;
@@ -55,6 +56,7 @@ module tb_oscillator_tdm_bank;
         .task_update_valid         (task_update_valid),
         .task_update_slot          (task_update_slot),
         .task_update_phase_step    (task_update_phase_step),
+        .task_update_velocity      (task_update_velocity),
         .task_update_enable        (task_update_enable),
         .task_update_phase_reset   (task_update_phase_reset),
         .active_task_count         (active_task_count),
@@ -128,6 +130,7 @@ module tb_oscillator_tdm_bank;
         task_update_valid       = 1'b0;
         task_update_slot        = 8'd0;
         task_update_phase_step  = 32'd0;
+        task_update_velocity    = 7'd127;
         task_update_enable      = 1'b0;
         task_update_phase_reset = 1'b0;
         active_task_count = 6'd0;
