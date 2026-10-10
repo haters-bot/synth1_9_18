@@ -10,6 +10,7 @@ vlog -work work_top_midi \
     src/reset_release_sync.v \
     src/uart_rx.v \
     src/midi_note_parser.v \
+    src/synth_control_router.v \
     src/oscillator_task_scheduler.v \
     src/freq_lut.v \
     src/sine_lut.v \
@@ -29,12 +30,18 @@ add wave sim:/tb_top_midi_input/dut/uart_byte
 add wave sim:/tb_top_midi_input/dut/uart_byte_valid
 add wave sim:/tb_top_midi_input/dut/midi_note_event_valid
 add wave sim:/tb_top_midi_input/dut/midi_note_event_on
+add wave sim:/tb_top_midi_input/dut/midi_note_event_channel
 add wave sim:/tb_top_midi_input/dut/midi_note_event_note
 add wave sim:/tb_top_midi_input/dut/midi_note_event_velocity
 add wave sim:/tb_top_midi_input/dut/midi_control_change_valid
+add wave sim:/tb_top_midi_input/dut/midi_control_change_channel
 add wave sim:/tb_top_midi_input/dut/midi_control_change_number
 add wave sim:/tb_top_midi_input/dut/midi_control_change_value
 add wave sim:/tb_top_midi_input/dut/waveform_select
+add wave sim:/tb_top_midi_input/dut/pan_target
+add wave sim:/tb_top_midi_input/dut/wt_position_target
+add wave sim:/tb_top_midi_input/dut/detune_amount
+add wave sim:/tb_top_midi_input/dut/unison_count
 add wave sim:/tb_top_midi_input/dut/task_update_valid
 add wave sim:/tb_top_midi_input/dut/task_update_slot
 add wave -radix hexadecimal sim:/tb_top_midi_input/dut/task_update_phase_step

@@ -17,9 +17,6 @@ module top #(
     localparam integer ENGINE_COUNT      = 4;
     localparam integer SLOTS_PER_ENGINE  = 8;
     localparam integer TOTAL_OSC_SLOTS   = ENGINE_COUNT * SLOTS_PER_ENGINE;
-    localparam [3:0] UNISON_COUNT_SETTING = DEFAULT_UNISON_COUNT;
-    localparam [6:0] WAVEFORM_SELECT_CC = 7'd21;
-
     wire rst_n_sys;
     wire sample_tick;
     wire oversample_tick;
@@ -50,12 +47,22 @@ module top #(
     wire       uart_framing_error;
     wire       midi_note_event_valid;
     wire       midi_note_event_on;
+    wire [3:0] midi_note_event_channel;
     wire [6:0] midi_note_event_note;
     wire [6:0] midi_note_event_velocity;
     wire       midi_control_change_valid;
+    wire [3:0] midi_control_change_channel;
     wire [6:0] midi_control_change_number;
     wire [6:0] midi_control_change_value;
-    reg  [1:0] waveform_select;
+    wire       routed_note_event_valid;
+    wire       routed_note_event_on;
+    wire [6:0] routed_note_event_note;
+    wire [6:0] routed_note_event_velocity;
+    wire [6:0] pan_target;
+    wire [6:0] wt_position_target;
+    wire [1:0] waveform_select;
+    wire [6:0] detune_amount;
+    wire [3:0] unison_count;
 
     wire fir_input_ready;
     wire fir_output_valid;
@@ -93,22 +100,41 @@ module top #(
         .byte_valid         (uart_byte_valid),
         .note_event_valid   (midi_note_event_valid),
         .note_event_on      (midi_note_event_on),
+        .note_event_channel (midi_note_event_channel),
         .note_event_note    (midi_note_event_note),
         .note_event_velocity(midi_note_event_velocity),
         .control_change_valid(midi_control_change_valid),
+        .control_change_channel(midi_control_change_channel),
         .control_change_number(midi_control_change_number),
         .control_change_value(midi_control_change_value)
     );
 
-    // CC21的高两位选择全局波形：正弦、三角、方波、锯齿。
-    // 复位默认选择方波，保持加入波形选择之前的上板行为。
-    always @(posedge sys_clk or negedge rst_n_sys) begin
-        if (!rst_n_sys)
-            waveform_select <= 2'd2;
-        else if (midi_control_change_valid
-                 && (midi_control_change_number == WAVEFORM_SELECT_CC))
-            waveform_select <= midi_control_change_value[6:5];
-    end
+    synth_control_router #(
+        .PERFORMANCE_CHANNEL(4'd0),
+        .CONTROL_CHANNEL    (4'd15),
+        .DEFAULT_UNISON_COUNT(DEFAULT_UNISON_COUNT)
+    ) u_synth_control_router (
+        .clk                       (sys_clk),
+        .rst_n                     (rst_n_sys),
+        .raw_note_event_valid      (midi_note_event_valid),
+        .raw_note_event_on         (midi_note_event_on),
+        .raw_note_event_channel    (midi_note_event_channel),
+        .raw_note_event_note       (midi_note_event_note),
+        .raw_note_event_velocity   (midi_note_event_velocity),
+        .raw_control_change_valid  (midi_control_change_valid),
+        .raw_control_change_channel(midi_control_change_channel),
+        .raw_control_change_number (midi_control_change_number),
+        .raw_control_change_value  (midi_control_change_value),
+        .note_event_valid          (routed_note_event_valid),
+        .note_event_on             (routed_note_event_on),
+        .note_event_note           (routed_note_event_note),
+        .note_event_velocity       (routed_note_event_velocity),
+        .pan_target                (pan_target),
+        .wt_position_target        (wt_position_target),
+        .waveform_select           (waveform_select),
+        .detune_amount             (detune_amount),
+        .unison_count              (unison_count)
+    );
 
     oscillator_task_scheduler #(
         .ENGINE_COUNT    (ENGINE_COUNT),
@@ -116,11 +142,12 @@ module top #(
     ) u_oscillator_task_scheduler (
         .clk                     (sys_clk),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (midi_note_event_valid),
-        .note_event_on           (midi_note_event_on),
-        .note_event_note         (midi_note_event_note),
-        .note_event_velocity     (midi_note_event_velocity),
-        .unison_count            (UNISON_COUNT_SETTING),
+        .note_event_valid        (routed_note_event_valid),
+        .note_event_on           (routed_note_event_on),
+        .note_event_note         (routed_note_event_note),
+        .note_event_velocity     (routed_note_event_velocity),
+        .unison_count            (unison_count),
+        .detune_amount           (detune_amount),
         .task_idle_mask          (task_idle_mask),
         .task_update_valid       (task_update_valid),
         .task_update_slot        (task_update_slot),

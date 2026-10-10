@@ -13,6 +13,7 @@ module tb_oscillator_task_scheduler;
     reg [6:0] note_event_note;
     reg [6:0] note_event_velocity;
     reg [3:0] unison_count;
+    reg [6:0] detune_amount;
     reg [TOTAL_SLOTS-1:0] task_idle_mask;
 
     wire task_update_valid;
@@ -43,6 +44,7 @@ module tb_oscillator_task_scheduler;
         .note_event_note(note_event_note),
         .note_event_velocity(note_event_velocity),
         .unison_count(unison_count),
+        .detune_amount(detune_amount),
         .task_idle_mask(task_idle_mask),
         .task_update_valid(task_update_valid),
         .task_update_slot(task_update_slot),
@@ -66,6 +68,7 @@ module tb_oscillator_task_scheduler;
             rst_n = 1'b0;
             note_event_valid = 1'b0;
             note_event_velocity = 7'd100;
+            detune_amount = 7'd64;
             task_idle_mask = {TOTAL_SLOTS{1'b0}};
             repeat (4) @(posedge clk);
             @(negedge clk);
@@ -116,6 +119,28 @@ module tb_oscillator_task_scheduler;
         task_idle_mask = 32'd0;
         errors = 0;
         update_count = 0;
+
+        reset_dut();
+
+        // Detune=0时，三个Unison成员必须保持完全同频。
+        detune_amount = 7'd0;
+        send_note(1'b1, 7'd60, 4'd3);
+        if (dut.slot_phase_step[0] !== 32'h0016534C
+            || dut.slot_phase_step[8] !== 32'h0016534C
+            || dut.slot_phase_step[16] !== 32'h0016534C) begin
+            $display("ERROR: zero detune did not keep Unison members in tune");
+            errors = errors + 1;
+        end
+
+        // Detune增大后，同一音符的低、中、高成员应形成对称频差。
+        reset_dut();
+        detune_amount = 7'd127;
+        send_note(1'b1, 7'd60, 4'd3);
+        if (!(dut.slot_phase_step[0] < dut.slot_phase_step[8]
+              && dut.slot_phase_step[8] < dut.slot_phase_step[16])) begin
+            $display("ERROR: variable detune did not spread Unison members");
+            errors = errors + 1;
+        end
 
         reset_dut();
 

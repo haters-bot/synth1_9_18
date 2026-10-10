@@ -18,6 +18,7 @@ module oscillator_task_scheduler #(
     input  wire [6:0] note_event_note,
     input  wire [6:0] note_event_velocity,
     input  wire [3:0] unison_count,
+    input  wire [6:0] detune_amount,
     input  wire [(ENGINE_COUNT*SLOTS_PER_ENGINE)-1:0] task_idle_mask,
 
     output reg        task_update_valid,
@@ -46,6 +47,7 @@ module oscillator_task_scheduler #(
     reg [6:0] pending_note;
     reg [6:0] pending_velocity;
     reg [3:0] pending_unison_count;
+    reg [6:0] pending_detune_amount;
     reg [3:0] pending_member_index;
     reg [6:0] victim_note;
     reg [5:0] scan_index;
@@ -116,17 +118,18 @@ module oscillator_task_scheduler #(
         end
     endfunction
 
-    // Symmetric detune around the requested note. One position unit is about
-    // 2.006 cents; three members therefore become approximately -4/0/+4
-    // cents, while four members become approximately -6/-2/+2/+6 cents.
+    // 围绕目标音高对称展开Unison。detune_amount=64保持旧版本间距：
+    // 每个position约2.006 cents；0使全部成员同频，127约为旧间距的两倍。
     function [31:0] make_phase_step;
         input [31:0] base_step;
         input [3:0] member_index;
         input [3:0] member_count;
+        input [6:0] requested_detune;
         integer position;
         integer magnitude;
         reg [31:0] detune_unit;
         reg [34:0] detune_delta;
+        reg [41:0] detune_product;
         begin
             position = member_index*2 - (member_count - 1);
             magnitude = (position < 0) ? -position : position;
@@ -134,6 +137,8 @@ module oscillator_task_scheduler #(
                          + (base_step >> 13)
                          + (base_step >> 14);
             detune_delta = scale_detune_unit(detune_unit, magnitude);
+            detune_product = detune_delta * requested_detune;
+            detune_delta = (detune_product + 42'd32) >> 6;
 
             if (position < 0)
                 make_phase_step = base_step - detune_delta[31:0];
@@ -184,6 +189,7 @@ module oscillator_task_scheduler #(
             pending_note <= 7'd0;
             pending_velocity <= 7'd0;
             pending_unison_count <= 4'd1;
+            pending_detune_amount <= 7'd64;
             pending_member_index <= 4'd0;
             victim_note <= 7'd0;
             scan_index <= 6'd0;
@@ -226,6 +232,7 @@ module oscillator_task_scheduler #(
                         pending_velocity <= note_event_velocity;
                         pending_unison_count
                             <= clamp_unison_count(unison_count);
+                        pending_detune_amount <= detune_amount;
                         pending_member_index <= 4'd0;
                         scan_index <= 6'd0;
                         scan_count <= 6'd0;
@@ -256,7 +263,8 @@ module oscillator_task_scheduler #(
                         task_update_phase_step
                             <= make_phase_step(pending_base_phase_step,
                                                pending_member_index,
-                                               pending_unison_count);
+                                               pending_unison_count,
+                                               pending_detune_amount);
                         task_update_velocity <= pending_velocity;
                         task_update_enable <= 1'b1;
                         task_update_phase_reset <= 1'b1;
@@ -265,7 +273,8 @@ module oscillator_task_scheduler #(
                         slot_phase_step[allocation_candidate]
                             <= make_phase_step(pending_base_phase_step,
                                                pending_member_index,
-                                               pending_unison_count);
+                                               pending_unison_count,
+                                               pending_detune_amount);
                         slot_velocity[allocation_candidate]
                             <= pending_velocity;
                         slot_active[allocation_candidate] <= 1'b1;
@@ -315,7 +324,8 @@ module oscillator_task_scheduler #(
                             task_update_phase_step
                                 <= make_phase_step(pending_base_phase_step,
                                                    pending_member_index,
-                                                   pending_unison_count);
+                                                   pending_unison_count,
+                                                   pending_detune_amount);
                             task_update_velocity <= pending_velocity;
                             task_update_enable <= 1'b1;
                             task_update_phase_reset <= 1'b1;
@@ -323,7 +333,8 @@ module oscillator_task_scheduler #(
                             slot_phase_step[scan_index]
                                 <= make_phase_step(pending_base_phase_step,
                                                    pending_member_index,
-                                                   pending_unison_count);
+                                                   pending_unison_count,
+                                                   pending_detune_amount);
                             slot_velocity[scan_index] <= pending_velocity;
                             slot_releasing[scan_index] <= 1'b0;
                             pending_member_index

@@ -31,7 +31,7 @@ module tb_top_midi_input;
 
     top #(
         .UART_BAUD_RATE(TEST_UART_BAUD),
-        .DEFAULT_UNISON_COUNT(3)
+        .DEFAULT_UNISON_COUNT(1)
     ) dut (
         .sys_clk(sys_clk),
         .rst_n  (rst_n),
@@ -118,8 +118,57 @@ module tb_top_midi_input;
         rst_n = 1'b1;
         repeat (6) @(posedge sys_clk);
 
-        // CC21使用数值高两位选择正弦、三角、方波、锯齿，并支持Running Status。
+        // 演奏通道上的CC不能修改全局合成参数。
         send_uart_byte(8'hB0);
+        send_uart_byte(8'h0A);
+        send_uart_byte(8'h00);
+        repeat (3) @(posedge sys_clk);
+        if (dut.pan_target !== 7'd64) begin
+            $display("ERROR: performance-channel CC changed synth control");
+            errors = errors + 1;
+        end
+
+        // 通道16承载全局参数，并支持Running Status。
+        send_uart_byte(8'hBF);
+        send_uart_byte(8'h0A);
+        send_uart_byte(8'h20);
+        send_uart_byte(8'h14);
+        send_uart_byte(8'h55);
+        send_uart_byte(8'h16);
+        send_uart_byte(8'h40);
+        send_uart_byte(8'h17);
+        send_uart_byte(8'h03);
+        repeat (3) @(posedge sys_clk);
+        if (dut.pan_target !== 7'd32
+            || dut.wt_position_target !== 7'd85
+            || dut.detune_amount !== 7'd64
+            || dut.unison_count !== 4'd3) begin
+            $display("ERROR: channel-16 synth controls were not routed");
+            errors = errors + 1;
+        end
+
+        send_uart_byte(8'h17);
+        send_uart_byte(8'h00);
+        repeat (3) @(posedge sys_clk);
+        if (dut.unison_count !== 4'd1) begin
+            $display("ERROR: zero Unison value was not clamped to one");
+            errors = errors + 1;
+        end
+
+        send_uart_byte(8'h17);
+        send_uart_byte(8'h7F);
+        repeat (3) @(posedge sys_clk);
+        if (dut.unison_count !== 4'd8) begin
+            $display("ERROR: large Unison value was not clamped to eight");
+            errors = errors + 1;
+        end
+
+        // 恢复为3成员，供后续声部分配回归使用。
+        send_uart_byte(8'h17);
+        send_uart_byte(8'h03);
+        repeat (3) @(posedge sys_clk);
+
+        // CC21使用数值高两位选择正弦、三角、方波、锯齿。
         send_uart_byte(8'h15);
         send_uart_byte(8'h00);
         repeat (3) @(posedge sys_clk);
@@ -157,6 +206,16 @@ module tb_top_midi_input;
         send_uart_byte(8'h15);
         send_uart_byte(8'h40);
         repeat (3) @(posedge sys_clk);
+
+        // 控制通道上的音符必须被路由器丢弃。
+        send_uart_byte(8'h9F);
+        send_uart_byte(8'h30);
+        send_uart_byte(8'h7F);
+        repeat (10) @(posedge sys_clk);
+        if (update_count !== 0) begin
+            $display("ERROR: control-channel note reached scheduler");
+            errors = errors + 1;
+        end
 
         // Note On 60. Three ordinary tasks are spread across engines.
         send_uart_byte(8'h90);

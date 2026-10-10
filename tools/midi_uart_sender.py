@@ -31,6 +31,11 @@ KEY_TO_NOTE = {
     "k": 72,
 }
 WAVEFORM_CC = 21
+CONTROL_CHANNEL = 16
+PAN_CC = 10
+WT_POSITION_CC = 20
+DETUNE_CC = 22
+UNISON_CC = 23
 WAVEFORM_VALUES = {
     "正弦波": 0,
     "三角波": 32,
@@ -59,6 +64,10 @@ class MidiUartSender:
         self.channel = tk.IntVar(value=1)
         self.velocity = tk.IntVar(value=100)
         self.waveform = tk.StringVar(value="方波")
+        self.pan = tk.IntVar(value=64)
+        self.wt_position = tk.IntVar(value=0)
+        self.detune = tk.IntVar(value=64)
+        self.unison = tk.IntVar(value=1)
         self.status = tk.StringVar(value="未连接")
 
         self._build_ui()
@@ -98,10 +107,9 @@ class MidiUartSender:
         controls = ttk.LabelFrame(self.root, text="MIDI参数", padding=10)
         controls.grid(row=1, column=0, padx=10, pady=4, sticky="ew")
 
-        ttk.Label(controls, text="通道").grid(row=0, column=0, padx=4)
-        ttk.Spinbox(
-            controls, from_=1, to=16, textvariable=self.channel, width=5
-        ).grid(row=0, column=1, padx=4)
+        ttk.Label(controls, text="演奏通道固定为1").grid(
+            row=0, column=0, columnspan=2, padx=4
+        )
 
         ttk.Label(controls, text="力度").grid(row=0, column=2, padx=(14, 4))
         tk.Scale(
@@ -128,12 +136,49 @@ class MidiUartSender:
         waveform_box.grid(row=1, column=1, padx=4, pady=(8, 0), sticky="w")
         waveform_box.bind("<<ComboboxSelected>>", self._waveform_selected)
 
+        ttk.Label(controls, text="控制通道固定为16").grid(
+            row=1, column=2, columnspan=3, padx=4, pady=(8, 0), sticky="w"
+        )
+
+        parameter_controls = ttk.LabelFrame(
+            self.root, text="合成器全局参数（松开滑块时发送）", padding=10
+        )
+        parameter_controls.grid(row=2, column=0, padx=10, pady=4, sticky="ew")
+
+        parameter_specs = (
+            ("Pan", self.pan, 0, 127, PAN_CC),
+            ("WT Position", self.wt_position, 0, 127, WT_POSITION_CC),
+            ("Detune", self.detune, 0, 127, DETUNE_CC),
+            ("Unison", self.unison, 1, 8, UNISON_CC),
+        )
+        for row, (label, variable, minimum, maximum, controller) in enumerate(
+            parameter_specs
+        ):
+            ttk.Label(parameter_controls, text=label).grid(
+                row=row, column=0, padx=4, sticky="w"
+            )
+            scale = tk.Scale(
+                parameter_controls,
+                from_=minimum,
+                to=maximum,
+                orient=tk.HORIZONTAL,
+                variable=variable,
+                length=300,
+            )
+            scale.grid(row=row, column=1, padx=4)
+            scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event, cc=controller, var=variable: (
+                    self.send_synth_control(cc, var.get())
+                ),
+            )
+
         keyboard = ttk.LabelFrame(
             self.root,
             text="虚拟键盘（鼠标按住发声；电脑键盘 A W S E D F T G Y H U J K）",
             padding=10,
         )
-        keyboard.grid(row=2, column=0, padx=10, pady=8)
+        keyboard.grid(row=3, column=0, padx=10, pady=8)
 
         for column, note in enumerate(range(48, 73)):
             label = f"{note_name(note)}\n{note}"
@@ -151,7 +196,7 @@ class MidiUartSender:
             button.bind("<ButtonRelease-1>", lambda _event, n=note: self.note_off(n))
 
         bottom = ttk.Frame(self.root, padding=(10, 0, 10, 10))
-        bottom.grid(row=3, column=0, sticky="ew")
+        bottom.grid(row=4, column=0, sticky="ew")
         ttk.Label(bottom, textvariable=self.status).pack(side=tk.LEFT)
         self.log = tk.Text(bottom, width=54, height=5, state=tk.DISABLED)
         self.log.pack(side=tk.RIGHT)
@@ -218,7 +263,7 @@ class MidiUartSender:
         self.connect_button.configure(text="断开")
         self.status.set(f"已连接 {device} @ {baud} baud")
         self._append_log(f"连接 {device} @ {baud}")
-        self.send_waveform_selection()
+        self.send_all_synth_controls()
 
     def disconnect(self) -> None:
         if self.port is None:
@@ -268,8 +313,12 @@ class MidiUartSender:
             self.active_notes.discard(note)
             self.status.set(f"Note Off {note_name(note)} ({note})")
 
-    def send_control_change(self, controller: int, value: int) -> bool:
-        channel = max(1, min(16, self.channel.get())) - 1
+    def send_control_change(
+        self, controller: int, value: int, channel_number: int | None = None
+    ) -> bool:
+        if channel_number is None:
+            channel_number = self.channel.get()
+        channel = max(1, min(16, channel_number)) - 1
         controller = max(0, min(127, controller))
         value = max(0, min(127, value))
         return self._send(bytes((0xB0 | channel, controller, value)))
@@ -277,8 +326,19 @@ class MidiUartSender:
     def send_waveform_selection(self) -> None:
         waveform_name = self.waveform.get()
         value = WAVEFORM_VALUES.get(waveform_name, WAVEFORM_VALUES["方波"])
-        if self.send_control_change(WAVEFORM_CC, value):
+        if self.send_control_change(WAVEFORM_CC, value, CONTROL_CHANNEL):
             self.status.set(f"全局波形：{waveform_name}")
+
+    def send_synth_control(self, controller: int, value: int) -> None:
+        if self.send_control_change(controller, value, CONTROL_CHANNEL):
+            self.status.set(f"控制通道16：CC{controller} = {value}")
+
+    def send_all_synth_controls(self) -> None:
+        self.send_waveform_selection()
+        self.send_synth_control(PAN_CC, self.pan.get())
+        self.send_synth_control(WT_POSITION_CC, self.wt_position.get())
+        self.send_synth_control(DETUNE_CC, self.detune.get())
+        self.send_synth_control(UNISON_CC, self.unison.get())
 
     def _waveform_selected(self, _event: tk.Event) -> None:
         self.send_waveform_selection()

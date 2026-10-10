@@ -15,7 +15,8 @@
 
 ## MIDI映射
 
-上位机通过Control Change 21发送全局波形。FPGA使用控制值`[6:5]`：
+上位机通过MIDI通道16的Control Change 21发送全局波形。FPGA使用控制值
+`[6:5]`：
 
 ```text
 00：正弦波
