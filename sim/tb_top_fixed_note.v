@@ -5,9 +5,11 @@ module tb_top_fixed_note;
     reg sys_clk;
     reg rst_n;
 
-    wire HP_BCK;
-    wire HP_WS;
-    wire HP_DIN;
+    wire MAX_SD;
+    wire MAX_GAIN;
+    wire MAX_DIN;
+    wire MAX_BCLK;
+    wire MAX_LRC;
     wire PA_EN;
 
     integer errors;
@@ -24,10 +26,12 @@ module tb_top_fixed_note;
     ) dut (
         .sys_clk(sys_clk),
         .rst_n  (rst_n),
-        .HP_BCK (HP_BCK),
-        .HP_WS  (HP_WS),
-        .HP_DIN (HP_DIN),
-        .PA_EN  (PA_EN)
+        .MAX_SD  (MAX_SD),
+        .MAX_GAIN(MAX_GAIN),
+        .MAX_DIN (MAX_DIN),
+        .MAX_BCLK(MAX_BCLK),
+        .MAX_LRC (MAX_LRC),
+        .PA_EN   (PA_EN)
     );
 
     always #10 sys_clk = ~sys_clk;
@@ -112,6 +116,12 @@ module tb_top_fixed_note;
 
         if (dut.oscillator_schedule_overrun !== 1'b0) begin
             $display("ERROR: oscillator schedule overrun");
+            errors = errors + 1;
+        end
+
+        if (MAX_SD !== 1'b1 || MAX_GAIN !== 1'b1
+            || PA_EN !== 1'b1) begin
+            $display("ERROR: MAX98357A control outputs are incorrect");
             errors = errors + 1;
         end
 

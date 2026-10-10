@@ -1,13 +1,15 @@
-// 32槽位时分复用振荡器与板载音频输出的工程顶层。
+// 32槽位时分复用振荡器与MAX98357A音频输出顶层。
 module top #(
     parameter [6:0] FIXED_MIDI_NOTE = 7'd69,
     parameter integer DEFAULT_UNISON_COUNT = 3
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
-    output wire HP_BCK,        // 板载PT8211位时钟，引脚Y17
-    output wire HP_WS,         // 板载PT8211字选择信号，引脚AB17
-    output wire HP_DIN,        // 板载PT8211串行数据，引脚AA16
+    output wire MAX_SD,        // MAX98357A使能，引脚AB20
+    output wire MAX_GAIN,      // MAX98357A增益选择，引脚AA21
+    output wire MAX_DIN,       // MAX98357A串行音频数据，引脚AB22
+    output wire MAX_BCLK,      // MAX98357A位时钟，引脚Y22
+    output wire MAX_LRC,       // MAX98357A左右声道时钟，引脚Y21
     output wire PA_EN          // 板载NS4263使能，低电平有效，引脚AB16
 );
 
@@ -47,8 +49,10 @@ module top #(
     wire fir_output_valid;
     wire fir_input_overrun;
 
-    // 根据开发板原理图，PA_EN=0时功率放大器开启。
-    assign PA_EN = 1'b0;
+    // 使用外接MAX98357A，关闭板载NS4263。SD和GAIN保持高电平。
+    assign PA_EN    = 1'b1;
+    assign MAX_SD   = 1'b1;
+    assign MAX_GAIN = 1'b1;
 
     reset_release_sync u_reset_release_sync (
         .clk        (sys_clk),
@@ -127,13 +131,13 @@ module top #(
         .input_overrun(fir_input_overrun)
     );
 
-    pt8211_tx u_pt8211_tx (
+    i2s_tx u_max98357a_i2s_tx (
         .sys_clk        (sys_clk),
         .rst_n          (rst_n_sys),
         .sample_data    (filtered_sample),
-        .bck            (HP_BCK),
-        .ws             (HP_WS),
-        .din            (HP_DIN),
+        .bclk           (MAX_BCLK),
+        .lrck           (MAX_LRC),
+        .sdata          (MAX_DIN),
         .sample_tick    (sample_tick),
         .oversample_tick(oversample_tick)
     );

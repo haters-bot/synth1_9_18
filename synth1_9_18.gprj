@@ -15,7 +15,6 @@
         <File path="src/oscillator_task_scheduler.v" type="file.verilog" enable="1"/>
         <File path="src/oscillator_tdm_bank.v" type="file.verilog" enable="1"/>
         <File path="src/oscillator_tdm_core.v" type="file.verilog" enable="1"/>
-        <File path="src/pt8211_tx.v" type="file.verilog" enable="1"/>
         <File path="src/reset_release_sync.v" type="file.verilog" enable="1"/>
         <File path="src/sine_lut.v" type="file.verilog" enable="1"/>
         <File path="src/square_lut.v" type="file.verilog" enable="1"/>

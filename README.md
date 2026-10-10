@@ -8,7 +8,7 @@ Current audio path:
 fixed A4 debug Note On -> note/Unison task scheduler
                        -> 4 generic oscillator engines x 8 TDM slots
                        -> per-task ADSR + engine partial-sum mixer
-                       -> 8x FIR decimator -> PT8211 stereo DAC interface
+                       -> 8x FIR decimator -> MAX98357A standard I2S interface
 ```
 
 The hardware top level is temporarily in fixed-note debug mode. It emits one

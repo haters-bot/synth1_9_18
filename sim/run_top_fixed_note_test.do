@@ -14,7 +14,7 @@ vlog -work work_top_fixed_note \
     src/oscillator_tdm_core.v \
     src/oscillator_tdm_bank.v \
     src/fir_decimator_8x_wrapper.v \
-    src/pt8211_tx.v \
+    src/i2s_tx.v \
     src/top.v.v \
     sim/tb_top_fixed_note.v
 
