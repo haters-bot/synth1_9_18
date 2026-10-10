@@ -25,6 +25,7 @@ module oscillator_tdm_bank #(
     input  wire rst_n,
     input  wire start_tick,
     input  wire clear_phase,
+    input  wire [1:0] waveform_select,
 
     // 全局单槽位状态更新接口。Bank根据槽位编号把更新发送给对应引擎。
     input  wire                  task_update_valid,
@@ -85,6 +86,7 @@ module oscillator_tdm_bank #(
                 .rst_n            (rst_n),
                 .start_tick       (start_tick),
                 .clear_phase      (clear_phase),
+                .waveform_select  (waveform_select),
                 .task_update_valid(engine_update_selected),
                 .task_update_slot(engine_local_slot),
                 .task_update_phase_step(task_update_phase_step),

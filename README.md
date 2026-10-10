@@ -11,7 +11,7 @@ USB-UART MIDI -> MIDI parser -> note/Unison task scheduler
               -> 8x FIR decimator -> MAX98357A standard I2S interface
 ```
 
-The hardware top level accepts MIDI Note On and Note Off messages from the
+The hardware top level accepts MIDI Note On, Note Off, and Control Change messages from the
 board USB-UART input. Each note expands into three Unison oscillator tasks by
 default. Note Off closes the task gates, lets the per-task ADSR envelopes
 finish their Release stage, and then returns those task slots to the idle pool.

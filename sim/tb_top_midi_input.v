@@ -118,6 +118,46 @@ module tb_top_midi_input;
         rst_n = 1'b1;
         repeat (6) @(posedge sys_clk);
 
+        // CC21使用数值高两位选择正弦、三角、方波、锯齿，并支持Running Status。
+        send_uart_byte(8'hB0);
+        send_uart_byte(8'h15);
+        send_uart_byte(8'h00);
+        repeat (3) @(posedge sys_clk);
+        if (dut.waveform_select !== 2'd0) begin
+            $display("ERROR: CC21 did not select sine");
+            errors = errors + 1;
+        end
+
+        send_uart_byte(8'h15);
+        send_uart_byte(8'h20);
+        repeat (3) @(posedge sys_clk);
+        if (dut.waveform_select !== 2'd1) begin
+            $display("ERROR: running-status CC21 did not select triangle");
+            errors = errors + 1;
+        end
+
+        send_uart_byte(8'h15);
+        send_uart_byte(8'hF8);
+        send_uart_byte(8'h40);
+        repeat (3) @(posedge sys_clk);
+        if (dut.waveform_select !== 2'd2) begin
+            $display("ERROR: realtime-interleaved CC21 did not select square");
+            errors = errors + 1;
+        end
+
+        send_uart_byte(8'h15);
+        send_uart_byte(8'h60);
+        repeat (3) @(posedge sys_clk);
+        if (dut.waveform_select !== 2'd3) begin
+            $display("ERROR: running-status CC21 did not select sawtooth");
+            errors = errors + 1;
+        end
+
+        // 后续音频回归继续使用旧版本的默认方波。
+        send_uart_byte(8'h15);
+        send_uart_byte(8'h40);
+        repeat (3) @(posedge sys_clk);
+
         // Note On 60. Three ordinary tasks are spread across engines.
         send_uart_byte(8'h90);
         send_uart_byte(8'h3C);

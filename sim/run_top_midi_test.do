@@ -12,7 +12,10 @@ vlog -work work_top_midi \
     src/midi_note_parser.v \
     src/oscillator_task_scheduler.v \
     src/freq_lut.v \
+    src/sine_lut.v \
+    src/triangle_lut.v \
     src/square_lut.v \
+    src/sawtooth_lut.v \
     src/oscillator_tdm_core.v \
     src/oscillator_tdm_bank.v \
     src/fir_decimator_8x_wrapper.v \
@@ -28,6 +31,10 @@ add wave sim:/tb_top_midi_input/dut/midi_note_event_valid
 add wave sim:/tb_top_midi_input/dut/midi_note_event_on
 add wave sim:/tb_top_midi_input/dut/midi_note_event_note
 add wave sim:/tb_top_midi_input/dut/midi_note_event_velocity
+add wave sim:/tb_top_midi_input/dut/midi_control_change_valid
+add wave sim:/tb_top_midi_input/dut/midi_control_change_number
+add wave sim:/tb_top_midi_input/dut/midi_control_change_value
+add wave sim:/tb_top_midi_input/dut/waveform_select
 add wave sim:/tb_top_midi_input/dut/task_update_valid
 add wave sim:/tb_top_midi_input/dut/task_update_slot
 add wave -radix hexadecimal sim:/tb_top_midi_input/dut/task_update_phase_step

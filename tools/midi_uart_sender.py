@@ -30,6 +30,13 @@ KEY_TO_NOTE = {
     "j": 71,
     "k": 72,
 }
+WAVEFORM_CC = 21
+WAVEFORM_VALUES = {
+    "正弦波": 0,
+    "三角波": 32,
+    "方波": 64,
+    "锯齿波": 96,
+}
 
 
 def note_name(note: int) -> str:
@@ -51,6 +58,7 @@ class MidiUartSender:
         self.baud_rate = tk.StringVar(value="31250")
         self.channel = tk.IntVar(value=1)
         self.velocity = tk.IntVar(value=100)
+        self.waveform = tk.StringVar(value="方波")
         self.status = tk.StringVar(value="未连接")
 
         self._build_ui()
@@ -108,6 +116,17 @@ class MidiUartSender:
         ttk.Button(controls, text="全部停止", command=self.all_notes_off).grid(
             row=0, column=4, padx=(14, 4)
         )
+
+        ttk.Label(controls, text="全局波形").grid(row=1, column=0, padx=4, pady=(8, 0))
+        waveform_box = ttk.Combobox(
+            controls,
+            textvariable=self.waveform,
+            values=tuple(WAVEFORM_VALUES),
+            width=9,
+            state="readonly",
+        )
+        waveform_box.grid(row=1, column=1, padx=4, pady=(8, 0), sticky="w")
+        waveform_box.bind("<<ComboboxSelected>>", self._waveform_selected)
 
         keyboard = ttk.LabelFrame(
             self.root,
@@ -199,6 +218,7 @@ class MidiUartSender:
         self.connect_button.configure(text="断开")
         self.status.set(f"已连接 {device} @ {baud} baud")
         self._append_log(f"连接 {device} @ {baud}")
+        self.send_waveform_selection()
 
     def disconnect(self) -> None:
         if self.port is None:
@@ -247,6 +267,21 @@ class MidiUartSender:
         if self._send(bytes((0x80 | channel, note, 0))):
             self.active_notes.discard(note)
             self.status.set(f"Note Off {note_name(note)} ({note})")
+
+    def send_control_change(self, controller: int, value: int) -> bool:
+        channel = max(1, min(16, self.channel.get())) - 1
+        controller = max(0, min(127, controller))
+        value = max(0, min(127, value))
+        return self._send(bytes((0xB0 | channel, controller, value)))
+
+    def send_waveform_selection(self) -> None:
+        waveform_name = self.waveform.get()
+        value = WAVEFORM_VALUES.get(waveform_name, WAVEFORM_VALUES["方波"])
+        if self.send_control_change(WAVEFORM_CC, value):
+            self.status.set(f"全局波形：{waveform_name}")
+
+    def _waveform_selected(self, _event: tk.Event) -> None:
+        self.send_waveform_selection()
 
     def all_notes_off(self) -> None:
         if self.port is None:

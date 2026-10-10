@@ -18,6 +18,7 @@ module top #(
     localparam integer SLOTS_PER_ENGINE  = 8;
     localparam integer TOTAL_OSC_SLOTS   = ENGINE_COUNT * SLOTS_PER_ENGINE;
     localparam [3:0] UNISON_COUNT_SETTING = DEFAULT_UNISON_COUNT;
+    localparam [6:0] WAVEFORM_SELECT_CC = 7'd21;
 
     wire rst_n_sys;
     wire sample_tick;
@@ -51,6 +52,10 @@ module top #(
     wire       midi_note_event_on;
     wire [6:0] midi_note_event_note;
     wire [6:0] midi_note_event_velocity;
+    wire       midi_control_change_valid;
+    wire [6:0] midi_control_change_number;
+    wire [6:0] midi_control_change_value;
+    reg  [1:0] waveform_select;
 
     wire fir_input_ready;
     wire fir_output_valid;
@@ -89,8 +94,21 @@ module top #(
         .note_event_valid   (midi_note_event_valid),
         .note_event_on      (midi_note_event_on),
         .note_event_note    (midi_note_event_note),
-        .note_event_velocity(midi_note_event_velocity)
+        .note_event_velocity(midi_note_event_velocity),
+        .control_change_valid(midi_control_change_valid),
+        .control_change_number(midi_control_change_number),
+        .control_change_value(midi_control_change_value)
     );
+
+    // CC21的高两位选择全局波形：正弦、三角、方波、锯齿。
+    // 复位默认选择方波，保持加入波形选择之前的上板行为。
+    always @(posedge sys_clk or negedge rst_n_sys) begin
+        if (!rst_n_sys)
+            waveform_select <= 2'd2;
+        else if (midi_control_change_valid
+                 && (midi_control_change_number == WAVEFORM_SELECT_CC))
+            waveform_select <= midi_control_change_value[6:5];
+    end
 
     oscillator_task_scheduler #(
         .ENGINE_COUNT    (ENGINE_COUNT),
@@ -122,6 +140,7 @@ module top #(
         .rst_n                     (rst_n_sys),
         .start_tick                (oscillator_start_tick),
         .clear_phase               (1'b0),
+        .waveform_select           (waveform_select),
         .task_update_valid         (task_update_valid),
         .task_update_slot          (task_update_slot),
         .task_update_phase_step    (task_update_phase_step),

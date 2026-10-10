@@ -27,6 +27,7 @@ module oscillator_tdm_core #(
 
     // 清除所有槽位保存的相位，但不会改变音符与使能状态。
     input  wire clear_phase,
+    input  wire [1:0] waveform_select,
 
     // 单槽位状态更新接口。全局任务调度器通过该接口修改指定槽位。
     input  wire                  task_update_valid,
@@ -76,7 +77,11 @@ module oscillator_tdm_core #(
     wire [31:0]           current_phase;
     wire [31:0]           current_phase_step;
     wire [7:0]            current_wave_address;
-    wire signed [15:0]    current_wave_sample;
+    reg  signed [15:0]    current_wave_sample;
+    wire signed [15:0]    sine_wave_sample;
+    wire signed [15:0]    triangle_wave_sample;
+    wire signed [15:0]    square_wave_sample;
+    wire signed [15:0]    sawtooth_wave_sample;
     wire [2:0]            current_envelope_stage;
     wire [15:0]           current_envelope_level;
     wire [15:0]           current_velocity_envelope_level;
@@ -132,11 +137,37 @@ module oscillator_tdm_core #(
     assign current_release_delta
         = current_envelope_level >> RELEASE_SHIFT;
 
-    // 所有槽位共享一个波形表；slot_index 是TDM多路选择信号。
+    // 一个物理引擎中的所有槽位共享下面四个波形读取单元。
+    // 全局选择只改变采样来源，不改变槽位调度和相位累加时序。
+    sine_lut u_shared_sine_lut (
+        .addr(current_wave_address),
+        .data(sine_wave_sample)
+    );
+
+    triangle_lut u_shared_triangle_lut (
+        .addr(current_wave_address),
+        .data(triangle_wave_sample)
+    );
+
     square_lut u_shared_square_lut (
         .addr(current_wave_address),
-        .data(current_wave_sample)
+        .data(square_wave_sample)
     );
+
+    sawtooth_lut u_shared_sawtooth_lut (
+        .addr(current_wave_address),
+        .data(sawtooth_wave_sample)
+    );
+
+    always @(*) begin
+        case (waveform_select)
+            2'd0: current_wave_sample = sine_wave_sample;
+            2'd1: current_wave_sample = triangle_wave_sample;
+            2'd2: current_wave_sample = square_wave_sample;
+            2'd3: current_wave_sample = sawtooth_wave_sample;
+            default: current_wave_sample = square_wave_sample;
+        endcase
+    end
 
     assign extended_sample = current_slot_enabled
                            ? {{(PARTIAL_SUM_WIDTH-16){enveloped_wave_sample[15]}},
