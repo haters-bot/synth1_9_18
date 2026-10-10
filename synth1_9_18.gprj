@@ -6,6 +6,8 @@
     <Device name="GW5AST-138B" pn="GW5AST-LV138PG484AC1/I0">gw5ast138b-011</Device>
     <FileList>
         <File path="src/advanced_fir_filter/fir_decimator_8x_ip.v" type="file.verilog" enable="1"/>
+        <File path="src/acid_wavetable_rom.v" type="file.verilog" enable="1"/>
+        <File path="src/acid_wavetable_reader.v" type="file.verilog" enable="1"/>
         <File path="src/basic_osc_v1.v" type="file.verilog" enable="1"/>
         <File path="src/fir_decimator_8x_wrapper.v" type="file.verilog" enable="1"/>
         <File path="src/freq_lut.v" type="file.verilog" enable="1"/>

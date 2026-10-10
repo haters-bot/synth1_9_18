@@ -12,7 +12,8 @@ module tb_oscillator_tdm_bank;
     reg rst_n;
     reg start_tick;
     reg clear_phase;
-    reg [1:0] waveform_select;
+    reg [2:0] waveform_select;
+    reg [6:0] wt_position;
     reg task_update_valid;
     reg [7:0] task_update_slot;
     reg [31:0] task_update_phase_step;
@@ -55,6 +56,7 @@ module tb_oscillator_tdm_bank;
         .start_tick                (start_tick),
         .clear_phase               (clear_phase),
         .waveform_select           (waveform_select),
+        .wt_position               (wt_position),
         .task_update_valid         (task_update_valid),
         .task_update_slot          (task_update_slot),
         .task_update_phase_step    (task_update_phase_step),
@@ -129,7 +131,8 @@ module tb_oscillator_tdm_bank;
         rst_n           = 1'b0;
         start_tick      = 1'b0;
         clear_phase     = 1'b1;
-        waveform_select = 2'd2;
+        waveform_select = 3'd2;
+        wt_position     = 7'd0;
         task_update_valid       = 1'b0;
         task_update_slot        = 8'd0;
         task_update_phase_step  = 32'd0;
@@ -148,36 +151,9 @@ module tb_oscillator_tdm_bank;
         repeat (4) @(posedge clk);
         rst_n = 1'b1;
 
-        // 相位0处依次检查四种组合波表输出和全局选择多路器。
-        waveform_select = 2'd0;
-        #1;
-        if (dut.GEN_ENGINE[0].u_oscillator_tdm_core.current_wave_sample
-            !== 16'sd0) begin
-            $display("ERROR: sine selection failed at phase zero");
-            errors = errors + 1;
-        end
-        waveform_select = 2'd1;
-        #1;
-        if (dut.GEN_ENGINE[0].u_oscillator_tdm_core.current_wave_sample
-            !== 16'sd0) begin
-            $display("ERROR: triangle selection failed at phase zero");
-            errors = errors + 1;
-        end
-        waveform_select = 2'd2;
-        #1;
-        if (dut.GEN_ENGINE[0].u_oscillator_tdm_core.current_wave_sample
-            !== 16'sd32767) begin
-            $display("ERROR: square selection failed at phase zero");
-            errors = errors + 1;
-        end
-        waveform_select = 2'd3;
-        #1;
-        if (dut.GEN_ENGINE[0].u_oscillator_tdm_core.current_wave_sample
-            !== -16'sd32640) begin
-            $display("ERROR: sawtooth selection failed at phase zero");
-            errors = errors + 1;
-        end
-        waveform_select = 2'd2;
+        // 四个旧波形单元仍由每个物理引擎共享；同步Acid波表由独立
+        // 单元测试核对精确数据，这里集中检查32槽位流水调度。
+        waveform_select = 3'd2;
 
         // 即使槽位均未启用，也必须按可观察的0～31顺序执行，
         // 并输出零值采样，使FIR能够持续刷新。

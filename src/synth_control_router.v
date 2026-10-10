@@ -31,7 +31,7 @@ module synth_control_router #(
 
     output reg [6:0]  pan_target,
     output reg [6:0]  wt_position_target,
-    output reg [1:0]  waveform_select,
+    output reg [2:0]  waveform_select,
     output reg [6:0]  detune_amount,
     output reg [3:0]  unison_count
 );
@@ -62,7 +62,7 @@ module synth_control_router #(
             note_event_velocity <= 7'd0;
             pan_target          <= 7'd64;
             wt_position_target  <= 7'd0;
-            waveform_select     <= 2'd2;
+            waveform_select     <= 3'd2;
             detune_amount       <= 7'd64;
             unison_count        <= DEFAULT_UNISON_COUNT;
         end else begin
@@ -84,7 +84,11 @@ module synth_control_router #(
                     CC_WT_POSITION:
                         wt_position_target <= raw_control_change_value;
                     CC_WAVEFORM_SELECT:
-                        waveform_select <= raw_control_change_value[6:5];
+                        // 0/32/64/96保持原四种波形；127选择Acid波表。
+                        waveform_select <= (raw_control_change_value == 7'd127)
+                                         ? 3'd4
+                                         : {1'b0,
+                                            raw_control_change_value[6:5]};
                     CC_DETUNE_AMOUNT:
                         detune_amount <= raw_control_change_value;
                     CC_UNISON_COUNT:

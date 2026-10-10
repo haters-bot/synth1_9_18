@@ -60,7 +60,8 @@ module top #(
     wire [6:0] routed_note_event_velocity;
     wire [6:0] pan_target;
     wire [6:0] wt_position_target;
-    wire [1:0] waveform_select;
+    wire [2:0] waveform_select;
+    reg  [6:0] wt_position_current;
     wire [6:0] detune_amount;
     wire [3:0] unison_count;
 
@@ -80,6 +81,19 @@ module top #(
     );
 
     assign oscillator_start_tick = oversample_tick;
+
+    // WT Position在96 kHz边界上每次移动一级，避免串口参数跳变产生突变。
+    // TDM核心会在每个768 kHz批次开始时再次锁存该值，保证一批槽位一致。
+    always @(posedge sys_clk or negedge rst_n_sys) begin
+        if (!rst_n_sys)
+            wt_position_current <= 7'd0;
+        else if (sample_tick) begin
+            if (wt_position_current < wt_position_target)
+                wt_position_current <= wt_position_current + 7'd1;
+            else if (wt_position_current > wt_position_target)
+                wt_position_current <= wt_position_current - 7'd1;
+        end
+    end
 
     uart_rx #(
         .CLK_HZ   (50000000),
@@ -168,6 +182,7 @@ module top #(
         .start_tick                (oscillator_start_tick),
         .clear_phase               (1'b0),
         .waveform_select           (waveform_select),
+        .wt_position               (wt_position_current),
         .task_update_valid         (task_update_valid),
         .task_update_slot          (task_update_slot),
         .task_update_phase_step    (task_update_phase_step),

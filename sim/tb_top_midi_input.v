@@ -23,6 +23,7 @@ module tb_top_midi_input;
     integer release_wait_cycles;
     integer silence_check_count;
     integer consecutive_silent_samples;
+    integer wt_position_before;
     reg [7:0]  update_slot_log [0:31];
     reg [31:0] update_phase_step_log [0:31];
     reg [6:0]  update_velocity_log [0:31];
@@ -147,6 +148,16 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
+        // 目标值经96 kHz采样脉冲逐级逼近，不能直接跳到85。
+        wt_position_before = dut.wt_position_current;
+        @(posedge dut.sample_tick);
+        @(posedge sys_clk);
+        #1;
+        if (dut.wt_position_current !== (wt_position_before + 1)) begin
+            $display("ERROR: WT Position smoother did not advance by one step");
+            errors = errors + 1;
+        end
+
         send_uart_byte(8'h17);
         send_uart_byte(8'h00);
         repeat (3) @(posedge sys_clk);
@@ -172,7 +183,7 @@ module tb_top_midi_input;
         send_uart_byte(8'h15);
         send_uart_byte(8'h00);
         repeat (3) @(posedge sys_clk);
-        if (dut.waveform_select !== 2'd0) begin
+        if (dut.waveform_select !== 3'd0) begin
             $display("ERROR: CC21 did not select sine");
             errors = errors + 1;
         end
@@ -180,7 +191,7 @@ module tb_top_midi_input;
         send_uart_byte(8'h15);
         send_uart_byte(8'h20);
         repeat (3) @(posedge sys_clk);
-        if (dut.waveform_select !== 2'd1) begin
+        if (dut.waveform_select !== 3'd1) begin
             $display("ERROR: running-status CC21 did not select triangle");
             errors = errors + 1;
         end
@@ -189,7 +200,7 @@ module tb_top_midi_input;
         send_uart_byte(8'hF8);
         send_uart_byte(8'h40);
         repeat (3) @(posedge sys_clk);
-        if (dut.waveform_select !== 2'd2) begin
+        if (dut.waveform_select !== 3'd2) begin
             $display("ERROR: realtime-interleaved CC21 did not select square");
             errors = errors + 1;
         end
@@ -197,8 +208,16 @@ module tb_top_midi_input;
         send_uart_byte(8'h15);
         send_uart_byte(8'h60);
         repeat (3) @(posedge sys_clk);
-        if (dut.waveform_select !== 2'd3) begin
+        if (dut.waveform_select !== 3'd3) begin
             $display("ERROR: running-status CC21 did not select sawtooth");
+            errors = errors + 1;
+        end
+
+        send_uart_byte(8'h15);
+        send_uart_byte(8'h7F);
+        repeat (3) @(posedge sys_clk);
+        if (dut.waveform_select !== 3'd4) begin
+            $display("ERROR: CC21 value 127 did not select Acid wavetable");
             errors = errors + 1;
         end
 

@@ -7,7 +7,8 @@ Current audio path:
 ```text
 USB-UART MIDI -> MIDI parser -> channel/control router
               -> note/Unison task scheduler
-              -> 4 generic oscillator engines x 8 TDM slots
+              -> 4 generic oscillator engines x 8 pipelined TDM slots
+              -> basic waveforms or 16-frame Acid wavetable with WT Position
               -> per-task ADSR + engine partial-sum mixer
               -> 8x FIR decimator -> MAX98357A standard I2S interface
 ```
