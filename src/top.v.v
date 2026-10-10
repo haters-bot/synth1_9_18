@@ -1,7 +1,7 @@
 // MIDI控制的32槽位时分复用振荡器与MAX98357A音频输出顶层。
 module top #(
     parameter integer UART_BAUD_RATE = 31250,
-    parameter integer DEFAULT_UNISON_COUNT = 3
+    parameter integer DEFAULT_UNISON_COUNT = 1
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
