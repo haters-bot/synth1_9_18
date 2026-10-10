@@ -25,5 +25,6 @@
         <File path="constraints/tang_mega_138k_audio_test.cst" type="file.cst" enable="1"/>
         <File path="src/timing.sdc" type="file.sdc" enable="1"/>
         <File path="src/synth1_9_18.rao" type="file.gao" enable="0"/>
+        <File path="src/wavecheck.rao" type="file.gao" enable="1"/>
     </FileList>
 </Project>
