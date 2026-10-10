@@ -1,10 +1,11 @@
-// 32槽位时分复用振荡器与MAX98357A音频输出顶层。
+// MIDI控制的32槽位时分复用振荡器与MAX98357A音频输出顶层。
 module top #(
-    parameter [6:0] FIXED_MIDI_NOTE = 7'd69,
+    parameter integer UART_BAUD_RATE = 31250,
     parameter integer DEFAULT_UNISON_COUNT = 3
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
+    input  wire uart_rx,       // 板载USB-UART接收，引脚V14
     output wire MAX_SD,        // MAX98357A使能，引脚AB20
     output wire MAX_GAIN,      // MAX98357A增益选择，引脚AA21
     output wire MAX_DIN,       // MAX98357A串行音频数据，引脚AB22
@@ -42,8 +43,13 @@ module top #(
     wire        task_update_phase_reset;
     wire        task_scheduler_busy;
 
-    reg fixed_note_event_valid;
-    reg fixed_note_pending;
+    wire [7:0] uart_byte;
+    wire       uart_byte_valid;
+    wire       uart_framing_error;
+    wire       midi_note_event_valid;
+    wire       midi_note_event_on;
+    wire [6:0] midi_note_event_note;
+    wire [6:0] midi_note_event_velocity;
 
     wire fir_input_ready;
     wire fir_output_valid;
@@ -62,17 +68,28 @@ module top #(
 
     assign oscillator_start_tick = oversample_tick;
 
-    // Debug mode: emit one Note On after synchronized reset release. This
-    // removes the UART/MIDI input dependency while inspecting live waveforms.
-    always @(posedge sys_clk or negedge rst_n_sys) begin
-        if (!rst_n_sys) begin
-            fixed_note_event_valid <= 1'b0;
-            fixed_note_pending <= 1'b1;
-        end else begin
-            fixed_note_event_valid <= fixed_note_pending;
-            fixed_note_pending <= 1'b0;
-        end
-    end
+    uart_rx #(
+        .CLK_HZ   (50000000),
+        .BAUD_RATE(UART_BAUD_RATE)
+    ) u_uart_rx (
+        .clk          (sys_clk),
+        .rst_n        (rst_n_sys),
+        .rx           (uart_rx),
+        .data         (uart_byte),
+        .data_valid   (uart_byte_valid),
+        .framing_error(uart_framing_error)
+    );
+
+    midi_note_parser u_midi_note_parser (
+        .clk                (sys_clk),
+        .rst_n              (rst_n_sys),
+        .byte_data          (uart_byte),
+        .byte_valid         (uart_byte_valid),
+        .note_event_valid   (midi_note_event_valid),
+        .note_event_on      (midi_note_event_on),
+        .note_event_note    (midi_note_event_note),
+        .note_event_velocity(midi_note_event_velocity)
+    );
 
     oscillator_task_scheduler #(
         .ENGINE_COUNT    (ENGINE_COUNT),
@@ -80,9 +97,9 @@ module top #(
     ) u_oscillator_task_scheduler (
         .clk                     (sys_clk),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (fixed_note_event_valid),
-        .note_event_on           (1'b1),
-        .note_event_note         (FIXED_MIDI_NOTE),
+        .note_event_valid        (midi_note_event_valid),
+        .note_event_on           (midi_note_event_on),
+        .note_event_note         (midi_note_event_note),
         .unison_count            (UNISON_COUNT_SETTING),
         .task_idle_mask          (task_idle_mask),
         .task_update_valid       (task_update_valid),
