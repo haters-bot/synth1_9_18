@@ -33,7 +33,11 @@ module synth_control_router #(
     output reg [6:0]  wt_position_target,
     output reg [2:0]  waveform_select,
     output reg [6:0]  detune_amount,
-    output reg [3:0]  unison_count
+    output reg [3:0]  unison_count,
+    output reg [6:0]  attack_control,
+    output reg [6:0]  decay_control,
+    output reg [6:0]  sustain_control,
+    output reg [6:0]  release_control
 );
 
     localparam [6:0] CC_PAN             = 7'd10;
@@ -41,6 +45,10 @@ module synth_control_router #(
     localparam [6:0] CC_WAVEFORM_SELECT = 7'd21;
     localparam [6:0] CC_DETUNE_AMOUNT   = 7'd22;
     localparam [6:0] CC_UNISON_COUNT    = 7'd23;
+    localparam [6:0] CC_ATTACK           = 7'd24;
+    localparam [6:0] CC_DECAY            = 7'd25;
+    localparam [6:0] CC_SUSTAIN          = 7'd26;
+    localparam [6:0] CC_RELEASE          = 7'd27;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -65,6 +73,11 @@ module synth_control_router #(
             waveform_select     <= 3'd2;
             detune_amount       <= 7'd64;
             unison_count        <= DEFAULT_UNISON_COUNT;
+            // 默认值分别约为10 ms、102 ms、70%和315 ms，保持原音色。
+            attack_control      <= 7'd27;
+            decay_control       <= 7'd54;
+            sustain_control     <= 7'd89;
+            release_control     <= 7'd67;
         end else begin
             note_event_valid <= 1'b0;
 
@@ -94,6 +107,14 @@ module synth_control_router #(
                     CC_UNISON_COUNT:
                         unison_count
                             <= clamp_unison_count(raw_control_change_value);
+                    CC_ATTACK:
+                        attack_control <= raw_control_change_value;
+                    CC_DECAY:
+                        decay_control <= raw_control_change_value;
+                    CC_SUSTAIN:
+                        sustain_control <= raw_control_change_value;
+                    CC_RELEASE:
+                        release_control <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

@@ -36,6 +36,10 @@ PAN_CC = 10
 WT_POSITION_CC = 20
 DETUNE_CC = 22
 UNISON_CC = 23
+ATTACK_CC = 24
+DECAY_CC = 25
+SUSTAIN_CC = 26
+RELEASE_CC = 27
 WAVEFORM_VALUES = {
     "正弦波": 0,
     "三角波": 32,
@@ -69,6 +73,11 @@ class MidiUartSender:
         self.wt_position = tk.IntVar(value=0)
         self.detune = tk.IntVar(value=64)
         self.unison = tk.IntVar(value=1)
+        # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
+        self.attack = tk.IntVar(value=27)
+        self.decay = tk.IntVar(value=54)
+        self.sustain = tk.IntVar(value=89)
+        self.release = tk.IntVar(value=67)
         self.status = tk.StringVar(value="未连接")
 
         self._build_ui()
@@ -151,6 +160,10 @@ class MidiUartSender:
             ("WT Position", self.wt_position, 0, 127, WT_POSITION_CC),
             ("Detune", self.detune, 0, 127, DETUNE_CC),
             ("Unison", self.unison, 1, 8, UNISON_CC),
+            ("Attack", self.attack, 0, 127, ATTACK_CC),
+            ("Decay", self.decay, 0, 127, DECAY_CC),
+            ("Sustain", self.sustain, 0, 127, SUSTAIN_CC),
+            ("Release", self.release, 0, 127, RELEASE_CC),
         )
         for row, (label, variable, minimum, maximum, controller) in enumerate(
             parameter_specs
@@ -340,6 +353,10 @@ class MidiUartSender:
         self.send_synth_control(WT_POSITION_CC, self.wt_position.get())
         self.send_synth_control(DETUNE_CC, self.detune.get())
         self.send_synth_control(UNISON_CC, self.unison.get())
+        self.send_synth_control(ATTACK_CC, self.attack.get())
+        self.send_synth_control(DECAY_CC, self.decay.get())
+        self.send_synth_control(SUSTAIN_CC, self.sustain.get())
+        self.send_synth_control(RELEASE_CC, self.release.get())
 
     def _waveform_selected(self, _event: tk.Event) -> None:
         self.send_waveform_selection()

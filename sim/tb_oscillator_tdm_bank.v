@@ -14,6 +14,10 @@ module tb_oscillator_tdm_bank;
     reg clear_phase;
     reg [2:0] waveform_select;
     reg [6:0] wt_position;
+    reg [31:0] attack_phase_step;
+    reg [31:0] decay_phase_step;
+    reg [15:0] sustain_level;
+    reg [31:0] release_phase_step;
     reg task_update_valid;
     reg [7:0] task_update_slot;
     reg [31:0] task_update_phase_step;
@@ -43,13 +47,8 @@ module tb_oscillator_tdm_bank;
     oscillator_tdm_bank #(
         .ENGINE_COUNT(ENGINE_COUNT),
         .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
-        // 单元测试加速包络；板级默认参数保持约10/100/70%/315 ms。
-        .ENVELOPE_UPDATE_DIV(1),
-        .ATTACK_STEP(16'hFFFF),
-        .DECAY_STEP(16'hFFFF),
-        .SUSTAIN_LEVEL(16'h8000),
-        .RELEASE_SHIFT(11),
-        .RELEASE_END_LEVEL(16'hFFFF)
+        // 单元测试每个内部采样都更新包络。
+        .ENVELOPE_UPDATE_DIV(1)
     ) dut (
         .clk                       (clk),
         .rst_n                     (rst_n),
@@ -57,6 +56,10 @@ module tb_oscillator_tdm_bank;
         .clear_phase               (clear_phase),
         .waveform_select           (waveform_select),
         .wt_position               (wt_position),
+        .attack_phase_step         (attack_phase_step),
+        .decay_phase_step          (decay_phase_step),
+        .sustain_level             (sustain_level),
+        .release_phase_step        (release_phase_step),
         .task_update_valid         (task_update_valid),
         .task_update_slot          (task_update_slot),
         .task_update_phase_step    (task_update_phase_step),
@@ -133,6 +136,10 @@ module tb_oscillator_tdm_bank;
         clear_phase     = 1'b1;
         waveform_select = 3'd2;
         wt_position     = 7'd0;
+        attack_phase_step = 32'hFFFFFFFF;
+        decay_phase_step = 32'hFFFFFFFF;
+        sustain_level = 16'h8000;
+        release_phase_step = 32'hFFFFFFFF;
         task_update_valid       = 1'b0;
         task_update_slot        = 8'd0;
         task_update_phase_step  = 32'd0;

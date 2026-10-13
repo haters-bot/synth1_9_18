@@ -139,11 +139,24 @@ module tb_top_midi_input;
         send_uart_byte(8'h40);
         send_uart_byte(8'h17);
         send_uart_byte(8'h03);
+        send_uart_byte(8'h18);
+        send_uart_byte(8'h0C);
+        send_uart_byte(8'h19);
+        send_uart_byte(8'h22);
+        send_uart_byte(8'h1A);
+        send_uart_byte(8'h38);
+        send_uart_byte(8'h1B);
+        // 使用约1 ms Release缩短顶层回归等待时间。
+        send_uart_byte(8'h00);
         repeat (3) @(posedge sys_clk);
         if (dut.pan_target !== 7'd32
             || dut.wt_position_target !== 7'd85
             || dut.detune_amount !== 7'd64
-            || dut.unison_count !== 4'd3) begin
+            || dut.unison_count !== 4'd3
+            || dut.attack_control !== 7'd12
+            || dut.decay_control !== 7'd34
+            || dut.sustain_control_target !== 7'd56
+            || dut.release_control !== 7'd0) begin
             $display("ERROR: channel-16 synth controls were not routed");
             errors = errors + 1;
         end

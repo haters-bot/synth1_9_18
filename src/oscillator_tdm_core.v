@@ -10,12 +10,7 @@
 module oscillator_tdm_core #(
     parameter integer SLOTS_PER_ENGINE = 4,
     parameter integer PARTIAL_SUM_WIDTH = 24,
-    parameter integer ENVELOPE_UPDATE_DIV = 16,
-    parameter [15:0] ATTACK_STEP       = 16'd137,
-    parameter [15:0] DECAY_STEP        = 16'd4,
-    parameter [15:0] SUSTAIN_LEVEL     = 16'd45875,
-    parameter integer RELEASE_SHIFT    = 12,
-    parameter [15:0] RELEASE_END_LEVEL = 16'd1024
+    parameter integer ENVELOPE_UPDATE_DIV = 16
 )(
     input  wire clk,
     input  wire rst_n,
@@ -23,6 +18,10 @@ module oscillator_tdm_core #(
     input  wire clear_phase,
     input  wire [2:0] waveform_select,
     input  wire [6:0] wt_position,
+    input  wire [31:0] attack_phase_step,
+    input  wire [31:0] decay_phase_step,
+    input  wire [15:0] sustain_level,
+    input  wire [31:0] release_phase_step,
 
     input  wire                  task_update_valid,
     input  wire [7:0]            task_update_slot,
@@ -47,7 +46,6 @@ module oscillator_tdm_core #(
     localparam [2:0] ENV_SUSTAIN = 3'd3;
     localparam [2:0] ENV_RELEASE = 3'd4;
     localparam [2:0] WAVE_ACID   = 3'd4;
-    localparam [15:0] ENVELOPE_MAX = 16'hFFFF;
     localparam [15:0] ENVELOPE_DIV_LAST = ENVELOPE_UPDATE_DIV - 1;
 
     reg [31:0] phase_state [0:SLOTS_PER_ENGINE-1];
@@ -58,6 +56,8 @@ module oscillator_tdm_core #(
     reg [15:0] envelope_level [0:SLOTS_PER_ENGINE-1];
     reg [15:0] velocity_envelope_level [0:SLOTS_PER_ENGINE-1];
     reg [6:0]  velocity_state [0:SLOTS_PER_ENGINE-1];
+    reg [31:0] envelope_phase [0:SLOTS_PER_ENGINE-1];
+    reg [15:0] release_start_level [0:SLOTS_PER_ENGINE-1];
 
     reg [7:0] issue_slot;
     reg       issue_active;
@@ -80,6 +80,8 @@ module oscillator_tdm_core #(
     reg [15:0] pipe_velocity_envelope_level;
     reg [6:0]  pipe_velocity;
     reg [2:0]  pipe_waveform_select;
+    reg [31:0] pipe_envelope_phase;
+    reg [15:0] pipe_release_start_level;
 
     wire issue_request;
     wire [31:0] issue_phase;
@@ -101,7 +103,18 @@ module oscillator_tdm_core #(
     wire signed [33:0] envelope_rounded;
     wire signed [33:0] envelope_scaled;
     wire signed [15:0] enveloped_wave_sample;
-    wire [15:0] current_release_delta;
+    reg [31:0] selected_phase_step;
+    wire [32:0] envelope_phase_sum;
+    wire [31:0] envelope_phase_next;
+    wire envelope_phase_complete;
+    wire [15:0] envelope_phase_fraction;
+    wire [15:0] decay_span;
+    reg  [15:0] segment_multiplicand;
+    reg  [15:0] segment_factor;
+    wire [31:0] segment_product;
+    wire [15:0] decay_level_next;
+    wire [15:0] release_fraction_remaining;
+    wire [15:0] release_level_next;
     wire commit_enabled;
     wire signed [PARTIAL_SUM_WIDTH-1:0] extended_sample;
     wire signed [PARTIAL_SUM_WIDTH-1:0] sum_with_current_slot;
@@ -173,7 +186,42 @@ module oscillator_tdm_core #(
     assign envelope_rounded = envelope_product + 34'sd32768;
     assign envelope_scaled = envelope_rounded >>> 16;
     assign enveloped_wave_sample = envelope_scaled[15:0];
-    assign current_release_delta = pipe_envelope_level >> RELEASE_SHIFT;
+
+    // A、D、R都使用0～2^32的阶段进度。改变时间参数只会改变进度速度，
+    // 不会直接改写当前电平。Decay和Release各使用一次16×16插值乘法。
+    always @(*) begin
+        case (pipe_envelope_stage)
+            ENV_ATTACK:  selected_phase_step = attack_phase_step;
+            ENV_DECAY:   selected_phase_step = decay_phase_step;
+            ENV_RELEASE: selected_phase_step = release_phase_step;
+            default:     selected_phase_step = 32'd0;
+        endcase
+    end
+
+    assign envelope_phase_sum
+        = {1'b0, pipe_envelope_phase} + {1'b0, selected_phase_step};
+    assign envelope_phase_next = envelope_phase_sum[31:0];
+    assign envelope_phase_complete = envelope_phase_sum[32]
+                                   || (&envelope_phase_next[31:16]);
+    assign envelope_phase_fraction = envelope_phase_next[31:16];
+    assign decay_span = 16'hFFFF - sustain_level;
+    assign release_fraction_remaining
+        = 16'hFFFF - envelope_phase_fraction;
+
+    // Decay与Release互斥，复用同一个16×16阶段插值乘法器。
+    always @(*) begin
+        if (pipe_envelope_stage == ENV_RELEASE) begin
+            segment_multiplicand = pipe_release_start_level;
+            segment_factor = release_fraction_remaining;
+        end else begin
+            segment_multiplicand = decay_span;
+            segment_factor = envelope_phase_fraction;
+        end
+    end
+
+    assign segment_product = segment_multiplicand * segment_factor;
+    assign decay_level_next = 16'hFFFF - segment_product[31:16];
+    assign release_level_next = segment_product[31:16];
 
     assign commit_enabled = pipe_valid && pipe_enable && !pipe_cancel
                           && ((pipe_waveform_select != WAVE_ACID)
@@ -213,6 +261,8 @@ module oscillator_tdm_core #(
             pipe_velocity_envelope_level <= 16'd0;
             pipe_velocity     <= 7'd0;
             pipe_waveform_select <= 3'd2;
+            pipe_envelope_phase <= 32'd0;
+            pipe_release_start_level <= 16'd0;
 
             for (reset_index = 0;
                  reset_index < SLOTS_PER_ENGINE;
@@ -225,6 +275,8 @@ module oscillator_tdm_core #(
                 envelope_level[reset_index] <= 16'd0;
                 velocity_envelope_level[reset_index] <= 16'd0;
                 velocity_state[reset_index] <= 7'd0;
+                envelope_phase[reset_index] <= 32'd0;
+                release_start_level[reset_index] <= 16'd0;
             end
         end else begin
             partial_valid     <= 1'b0;
@@ -280,59 +332,70 @@ module oscillator_tdm_core #(
                             ENV_ATTACK: begin
                                 if (!pipe_gate) begin
                                     envelope_stage[pipe_slot] <= ENV_RELEASE;
-                                end else if (pipe_envelope_level
-                                             >= ENVELOPE_MAX - ATTACK_STEP) begin
-                                    envelope_level[pipe_slot] <= ENVELOPE_MAX;
+                                    envelope_phase[pipe_slot] <= 32'd0;
+                                    release_start_level[pipe_slot]
+                                        <= pipe_envelope_level;
+                                end else if (envelope_phase_complete) begin
+                                    envelope_level[pipe_slot] <= 16'hFFFF;
                                     envelope_stage[pipe_slot] <= ENV_DECAY;
+                                    envelope_phase[pipe_slot] <= 32'd0;
                                 end else begin
                                     envelope_level[pipe_slot]
-                                        <= pipe_envelope_level + ATTACK_STEP;
+                                        <= envelope_phase_fraction;
+                                    envelope_phase[pipe_slot]
+                                        <= envelope_phase_next;
                                 end
                             end
 
                             ENV_DECAY: begin
                                 if (!pipe_gate) begin
                                     envelope_stage[pipe_slot] <= ENV_RELEASE;
-                                end else if (pipe_envelope_level
-                                             <= SUSTAIN_LEVEL) begin
-                                    envelope_level[pipe_slot] <= SUSTAIN_LEVEL;
+                                    envelope_phase[pipe_slot] <= 32'd0;
+                                    release_start_level[pipe_slot]
+                                        <= pipe_envelope_level;
+                                end else if (envelope_phase_complete) begin
+                                    envelope_level[pipe_slot] <= sustain_level;
                                     envelope_stage[pipe_slot] <= ENV_SUSTAIN;
-                                end else if ((pipe_envelope_level
-                                              - SUSTAIN_LEVEL) <= DECAY_STEP) begin
-                                    envelope_level[pipe_slot] <= SUSTAIN_LEVEL;
-                                    envelope_stage[pipe_slot] <= ENV_SUSTAIN;
+                                    envelope_phase[pipe_slot] <= 32'd0;
                                 end else begin
                                     envelope_level[pipe_slot]
-                                        <= pipe_envelope_level - DECAY_STEP;
+                                        <= decay_level_next;
+                                    envelope_phase[pipe_slot]
+                                        <= envelope_phase_next;
                                 end
                             end
 
                             ENV_SUSTAIN: begin
-                                envelope_level[pipe_slot] <= SUSTAIN_LEVEL;
-                                if (!pipe_gate)
+                                if (!pipe_gate) begin
                                     envelope_stage[pipe_slot] <= ENV_RELEASE;
+                                    envelope_phase[pipe_slot] <= 32'd0;
+                                    release_start_level[pipe_slot]
+                                        <= pipe_envelope_level;
+                                end else begin
+                                    envelope_level[pipe_slot] <= sustain_level;
+                                end
                             end
 
                             ENV_RELEASE: begin
-                                if (pipe_envelope_level <= RELEASE_END_LEVEL) begin
+                                if (envelope_phase_complete) begin
                                     envelope_level[pipe_slot] <= 16'd0;
                                     envelope_stage[pipe_slot] <= ENV_IDLE;
+                                    envelope_phase[pipe_slot] <= 32'd0;
                                     enable_state[pipe_slot] <= 1'b0;
                                     task_idle_valid <= 1'b1;
                                     task_idle_slot  <= pipe_slot;
-                                end else if (current_release_delta == 16'd0) begin
-                                    envelope_level[pipe_slot]
-                                        <= pipe_envelope_level - 16'd1;
                                 end else begin
                                     envelope_level[pipe_slot]
-                                        <= pipe_envelope_level
-                                         - current_release_delta;
+                                        <= release_level_next;
+                                    envelope_phase[pipe_slot]
+                                        <= envelope_phase_next;
                                 end
                             end
 
                             default: begin
                                 envelope_level[pipe_slot] <= 16'd0;
                                 envelope_stage[pipe_slot] <= ENV_IDLE;
+                                envelope_phase[pipe_slot] <= 32'd0;
                                 enable_state[pipe_slot] <= 1'b0;
                             end
                         endcase
@@ -366,6 +429,9 @@ module oscillator_tdm_core #(
                         <= velocity_envelope_level[issue_slot];
                     pipe_velocity <= velocity_state[issue_slot];
                     pipe_waveform_select <= waveform_select_batch;
+                    pipe_envelope_phase <= envelope_phase[issue_slot];
+                    pipe_release_start_level
+                        <= release_start_level[issue_slot];
 
                     if (issue_slot == (SLOTS_PER_ENGINE-1)) begin
                         issue_active <= 1'b0;
@@ -387,6 +453,8 @@ module oscillator_tdm_core #(
                     envelope_stage[task_update_slot] <= ENV_ATTACK;
                     envelope_level[task_update_slot] <= 16'd0;
                     velocity_envelope_level[task_update_slot] <= 16'd0;
+                    envelope_phase[task_update_slot] <= 32'd0;
+                    release_start_level[task_update_slot] <= 16'd0;
                     velocity_state[task_update_slot]
                         <= task_update_velocity;
 
@@ -395,6 +463,9 @@ module oscillator_tdm_core #(
                 end else if (enable_state[task_update_slot]) begin
                     gate_state[task_update_slot] <= 1'b0;
                     envelope_stage[task_update_slot] <= ENV_RELEASE;
+                    envelope_phase[task_update_slot] <= 32'd0;
+                    release_start_level[task_update_slot]
+                        <= envelope_level[task_update_slot];
                 end
             end
         end

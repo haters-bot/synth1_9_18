@@ -64,6 +64,15 @@ module top #(
     reg  [6:0] wt_position_current;
     wire [6:0] detune_amount;
     wire [3:0] unison_count;
+    wire [6:0] attack_control;
+    wire [6:0] decay_control;
+    wire [6:0] sustain_control_target;
+    reg  [6:0] sustain_control_current;
+    wire [6:0] release_control;
+    wire [31:0] attack_phase_step;
+    wire [31:0] decay_phase_step;
+    wire [15:0] sustain_level;
+    wire [31:0] release_phase_step;
 
     wire fir_input_ready;
     wire fir_output_valid;
@@ -92,6 +101,19 @@ module top #(
                 wt_position_current <= wt_position_current + 7'd1;
             else if (wt_position_current > wt_position_target)
                 wt_position_current <= wt_position_current - 7'd1;
+        end
+    end
+
+    // Sustain会直接影响保持阶段电平，因此在96 kHz边界逐级移动，
+    // 避免控制单片机一次大幅改值时产生音量突变。
+    always @(posedge sys_clk or negedge rst_n_sys) begin
+        if (!rst_n_sys)
+            sustain_control_current <= 7'd89;
+        else if (sample_tick) begin
+            if (sustain_control_current < sustain_control_target)
+                sustain_control_current <= sustain_control_current + 7'd1;
+            else if (sustain_control_current > sustain_control_target)
+                sustain_control_current <= sustain_control_current - 7'd1;
         end
     end
 
@@ -147,7 +169,22 @@ module top #(
         .wt_position_target        (wt_position_target),
         .waveform_select           (waveform_select),
         .detune_amount             (detune_amount),
-        .unison_count              (unison_count)
+        .unison_count              (unison_count),
+        .attack_control            (attack_control),
+        .decay_control             (decay_control),
+        .sustain_control           (sustain_control_target),
+        .release_control           (release_control)
+    );
+
+    adsr_parameter_mapper u_adsr_parameter_mapper (
+        .attack_control    (attack_control),
+        .decay_control     (decay_control),
+        .sustain_control   (sustain_control_current),
+        .release_control   (release_control),
+        .attack_phase_step (attack_phase_step),
+        .decay_phase_step  (decay_phase_step),
+        .sustain_level     (sustain_level),
+        .release_phase_step(release_phase_step)
     );
 
     oscillator_task_scheduler #(
@@ -183,6 +220,10 @@ module top #(
         .clear_phase               (1'b0),
         .waveform_select           (waveform_select),
         .wt_position               (wt_position_current),
+        .attack_phase_step         (attack_phase_step),
+        .decay_phase_step          (decay_phase_step),
+        .sustain_level             (sustain_level),
+        .release_phase_step        (release_phase_step),
         .task_update_valid         (task_update_valid),
         .task_update_slot          (task_update_slot),
         .task_update_phase_step    (task_update_phase_step),

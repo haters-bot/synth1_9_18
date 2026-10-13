@@ -14,10 +14,11 @@ USB-UART MIDI -> MIDI parser -> channel/control router
 ```
 
 The hardware top level accepts MIDI Note On and Note Off on MIDI channel 1,
-and synthesizer Control Change messages on MIDI channel 16. Unison count and
-detune depth are runtime controls; the current default is one oscillator task
-per note. Note Off closes the task gates, lets the per-task ADSR envelopes
-finish their Release stage, and then returns those task slots to the idle pool.
+and synthesizer Control Change messages on MIDI channel 16. Unison count,
+detune depth, and global ADSR parameters are runtime controls; the current
+default is one oscillator task per note. Note Off closes the task gates, lets
+the per-task ADSR envelopes finish their Release stage, and then returns those
+task slots to the idle pool.
 
 The repository contains synthesizable RTL, constraints, FIR configuration,
 simulation testbenches, the MIDI UART host tool, and project documentation.

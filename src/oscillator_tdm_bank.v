@@ -14,12 +14,7 @@ module oscillator_tdm_bank #(
     parameter integer CORE_SUM_WIDTH      = 24,
     parameter integer BANK_SUM_WIDTH      = 32,
     parameter integer GAIN_SMOOTH_SHIFT   = 12,
-    parameter integer ENVELOPE_UPDATE_DIV = 16,
-    parameter [15:0] ATTACK_STEP           = 16'd137,
-    parameter [15:0] DECAY_STEP            = 16'd4,
-    parameter [15:0] SUSTAIN_LEVEL         = 16'd45875,
-    parameter integer RELEASE_SHIFT        = 12,
-    parameter [15:0] RELEASE_END_LEVEL     = 16'd1024
+    parameter integer ENVELOPE_UPDATE_DIV = 16
 )(
     input  wire clk,
     input  wire rst_n,
@@ -27,6 +22,10 @@ module oscillator_tdm_bank #(
     input  wire clear_phase,
     input  wire [2:0] waveform_select,
     input  wire [6:0] wt_position,
+    input  wire [31:0] attack_phase_step,
+    input  wire [31:0] decay_phase_step,
+    input  wire [15:0] sustain_level,
+    input  wire [31:0] release_phase_step,
 
     // 全局单槽位状态更新接口。Bank根据槽位编号把更新发送给对应引擎。
     input  wire                  task_update_valid,
@@ -76,12 +75,7 @@ module oscillator_tdm_bank #(
             oscillator_tdm_core #(
                 .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
                 .PARTIAL_SUM_WIDTH(CORE_SUM_WIDTH),
-                .ENVELOPE_UPDATE_DIV(ENVELOPE_UPDATE_DIV),
-                .ATTACK_STEP(ATTACK_STEP),
-                .DECAY_STEP(DECAY_STEP),
-                .SUSTAIN_LEVEL(SUSTAIN_LEVEL),
-                .RELEASE_SHIFT(RELEASE_SHIFT),
-                .RELEASE_END_LEVEL(RELEASE_END_LEVEL)
+                .ENVELOPE_UPDATE_DIV(ENVELOPE_UPDATE_DIV)
             ) u_oscillator_tdm_core (
                 .clk              (clk),
                 .rst_n            (rst_n),
@@ -89,6 +83,10 @@ module oscillator_tdm_bank #(
                 .clear_phase      (clear_phase),
                 .waveform_select  (waveform_select),
                 .wt_position      (wt_position),
+                .attack_phase_step(attack_phase_step),
+                .decay_phase_step (decay_phase_step),
+                .sustain_level    (sustain_level),
+                .release_phase_step(release_phase_step),
                 .task_update_valid(engine_update_selected),
                 .task_update_slot(engine_local_slot),
                 .task_update_phase_step(task_update_phase_step),
