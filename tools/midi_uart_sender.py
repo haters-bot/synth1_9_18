@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""通过串口发送原始MIDI Note On/Off消息的桌面测试工具。"""
+"""通过串口发送MIDI演奏消息和双振荡器控制消息的桌面测试工具。"""
 
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ KEY_TO_NOTE = {
 CONTROL_CHANNEL = 16
 PAN_CC = 10
 OSC_A_CC = {
+    "enable": 36,
     "wt_position": 20,
     "waveform": 21,
     "detune": 22,
@@ -43,6 +44,7 @@ OSC_A_CC = {
     "release": 27,
 }
 OSC_B_CC = {
+    "enable": 37,
     "wt_position": 28,
     "waveform": 29,
     "detune": 30,
@@ -85,6 +87,7 @@ class MidiUartSender:
         for osc_name in ("A", "B"):
             # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
             self.osc_controls[osc_name] = {
+                "enabled": tk.BooleanVar(value=True),
                 "waveform": tk.StringVar(value="方波"),
                 "wt_position": tk.IntVar(value=0),
                 "detune": tk.IntVar(value=64),
@@ -231,6 +234,12 @@ class MidiUartSender:
             "<<ComboboxSelected>>",
             lambda _event, name=osc_name: self.send_waveform_selection(name),
         )
+        ttk.Checkbutton(
+            parent,
+            text="开启",
+            variable=controls["enabled"],
+            command=lambda name=osc_name: self.send_oscillator_enable(name),
+        ).grid(row=0, column=2, padx=(8, 4), sticky="w")
 
         parameter_specs = (
             ("WT Position", "wt_position", 0, 127),
@@ -395,6 +404,15 @@ class MidiUartSender:
         if self.send_control_change(cc_map["waveform"], value, CONTROL_CHANNEL):
             self.status.set(f"OSC {osc_name}波形：{waveform_name}")
 
+    def send_oscillator_enable(self, osc_name: str) -> None:
+        controls = self.osc_controls[osc_name]
+        cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
+        enabled = bool(controls["enabled"].get())
+        value = 127 if enabled else 0
+        if self.send_control_change(cc_map["enable"], value, CONTROL_CHANNEL):
+            state = "开启" if enabled else "关闭"
+            self.status.set(f"OSC {osc_name}：{state}")
+
     def send_synth_control(self, controller: int, value: int) -> None:
         if self.send_control_change(controller, value, CONTROL_CHANNEL):
             self.status.set(f"控制通道16：CC{controller} = {value}")
@@ -403,6 +421,7 @@ class MidiUartSender:
         self.send_synth_control(PAN_CC, self.pan.get())
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]
+            self.send_oscillator_enable(osc_name)
             self.send_waveform_selection(osc_name)
             for key in (
                 "wt_position",

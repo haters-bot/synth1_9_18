@@ -32,7 +32,13 @@ module top #(
     wire               osc_b_mix_valid;
     wire               osc_a_schedule_overrun;
     wire               osc_b_schedule_overrun;
-    wire signed [16:0]  oscillator_pair_sum;
+    reg  [8:0]          osc_a_mix_gain_q8;
+    reg  [8:0]          osc_b_mix_gain_q8;
+    wire [8:0]          osc_a_mix_gain_target_q8;
+    wire [8:0]          osc_b_mix_gain_target_q8;
+    wire signed [25:0]  osc_a_scaled_product;
+    wire signed [25:0]  osc_b_scaled_product;
+    wire signed [26:0]  oscillator_scaled_sum;
     wire signed [15:0]  oscillator_mix;
     wire                oscillator_mix_valid;
     wire                oscillator_schedule_overrun;
@@ -99,6 +105,7 @@ module top #(
     wire [31:0] osc_a_decay_phase_step;
     wire [15:0] osc_a_sustain_level;
     wire [31:0] osc_a_release_phase_step;
+    wire        osc_a_enabled;
 
     wire [6:0] osc_b_wt_position_target;
     reg  [6:0] osc_b_wt_position_current;
@@ -114,6 +121,7 @@ module top #(
     wire [31:0] osc_b_decay_phase_step;
     wire [15:0] osc_b_sustain_level;
     wire [31:0] osc_b_release_phase_step;
+    wire        osc_b_enabled;
 
     wire fir_input_ready;
     wire fir_output_valid;
@@ -147,6 +155,30 @@ module top #(
                 osc_b_wt_position_current <= osc_b_wt_position_current + 7'd1;
             else if (osc_b_wt_position_current > osc_b_wt_position_target)
                 osc_b_wt_position_current <= osc_b_wt_position_current - 7'd1;
+        end
+    end
+
+    // 两个振荡器都开启时各占一半增益；只开启一路时该路使用单位增益。
+    // Q1.8增益在96 kHz边界每次移动1，完整0～1斜坡约为2.67 ms。
+    assign osc_a_mix_gain_target_q8 = !osc_a_enabled ? 9'd0
+                                         : osc_b_enabled ? 9'd128 : 9'd256;
+    assign osc_b_mix_gain_target_q8 = !osc_b_enabled ? 9'd0
+                                         : osc_a_enabled ? 9'd128 : 9'd256;
+
+    always @(posedge sys_clk or negedge rst_n_sys) begin
+        if (!rst_n_sys) begin
+            osc_a_mix_gain_q8 <= 9'd128;
+            osc_b_mix_gain_q8 <= 9'd128;
+        end else if (sample_tick) begin
+            if (osc_a_mix_gain_q8 < osc_a_mix_gain_target_q8)
+                osc_a_mix_gain_q8 <= osc_a_mix_gain_q8 + 9'd1;
+            else if (osc_a_mix_gain_q8 > osc_a_mix_gain_target_q8)
+                osc_a_mix_gain_q8 <= osc_a_mix_gain_q8 - 9'd1;
+
+            if (osc_b_mix_gain_q8 < osc_b_mix_gain_target_q8)
+                osc_b_mix_gain_q8 <= osc_b_mix_gain_q8 + 9'd1;
+            else if (osc_b_mix_gain_q8 > osc_b_mix_gain_target_q8)
+                osc_b_mix_gain_q8 <= osc_b_mix_gain_q8 - 9'd1;
         end
     end
 
@@ -231,6 +263,7 @@ module top #(
         .osc_a_decay_control       (osc_a_decay_control),
         .osc_a_sustain_control     (osc_a_sustain_control_target),
         .osc_a_release_control     (osc_a_release_control),
+        .osc_a_enabled             (osc_a_enabled),
         .osc_b_wt_position_target  (osc_b_wt_position_target),
         .osc_b_waveform_select     (osc_b_waveform_select),
         .osc_b_detune_amount       (osc_b_detune_amount),
@@ -238,7 +271,8 @@ module top #(
         .osc_b_attack_control      (osc_b_attack_control),
         .osc_b_decay_control       (osc_b_decay_control),
         .osc_b_sustain_control     (osc_b_sustain_control_target),
-        .osc_b_release_control     (osc_b_release_control)
+        .osc_b_release_control     (osc_b_release_control),
+        .osc_b_enabled             (osc_b_enabled)
     );
 
     adsr_parameter_mapper u_osc_a_adsr_parameter_mapper (
@@ -369,12 +403,30 @@ module top #(
         .debug_engine0_slot_commit (debug_osc_b_slot_commit)
     );
 
-    // 每组Bank已经按自己的活动任务数归一化。这里各保留一半增益，
-    // 两个满幅振荡器同时工作时仍不会超出16位有符号范围。
-    assign oscillator_pair_sum =
-        $signed({osc_a_mix[15], osc_a_mix})
-        + $signed({osc_b_mix[15], osc_b_mix});
-    assign oscillator_mix = oscillator_pair_sum >>> 1;
+    // 每组Bank已经按自己的活动任务数归一化。这里应用开关平滑增益，
+    // 两路目标增益之和始终不超过1.0，最后再饱和到16位。
+    assign osc_a_scaled_product =
+        $signed(osc_a_mix) * $signed({1'b0, osc_a_mix_gain_q8});
+    assign osc_b_scaled_product =
+        $signed(osc_b_mix) * $signed({1'b0, osc_b_mix_gain_q8});
+    assign oscillator_scaled_sum =
+        $signed(osc_a_scaled_product) + $signed(osc_b_scaled_product);
+
+    function signed [15:0] saturate_mix_q8;
+        input signed [26:0] value;
+        reg signed [26:0] shifted_value;
+        begin
+            shifted_value = value >>> 8;
+            if (shifted_value > 32767)
+                saturate_mix_q8 = 16'sh7FFF;
+            else if (shifted_value < -32768)
+                saturate_mix_q8 = 16'sh8000;
+            else
+                saturate_mix_q8 = shifted_value[15:0];
+        end
+    endfunction
+
+    assign oscillator_mix = saturate_mix_q8(oscillator_scaled_sum);
     assign oscillator_mix_valid = osc_a_mix_valid && osc_b_mix_valid;
     assign oscillator_schedule_overrun =
         osc_a_schedule_overrun || osc_b_schedule_overrun;

@@ -25,6 +25,7 @@ module tb_top_midi_input;
     integer wt_a_before;
     integer wt_b_before;
     integer valid_mismatch_count;
+    integer switch_wait_samples;
 
     reg [7:0]  osc_a_slot_log [0:15];
     reg [31:0] osc_a_step_log [0:15];
@@ -222,6 +223,91 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
+        // 关闭OSC A后，A平滑降到0，仍开启的B平滑升到单位增益。
+        send_cc(7'd36, 7'd0);
+        switch_wait_samples = 0;
+        while (((dut.osc_a_mix_gain_q8 != 9'd0)
+                || (dut.osc_b_mix_gain_q8 != 9'd256))
+               && (switch_wait_samples < 300)) begin
+            @(posedge dut.sample_tick);
+            switch_wait_samples = switch_wait_samples + 1;
+        end
+        @(posedge sys_clk);
+        #1;
+        if (dut.osc_a_enabled !== 1'b0
+            || dut.osc_b_enabled !== 1'b1
+            || dut.osc_a_mix_gain_q8 !== 9'd0
+            || dut.osc_b_mix_gain_q8 !== 9'd256) begin
+            $display("ERROR: OSC A switch did not reach muted crossfade state");
+            errors = errors + 1;
+        end
+        force dut.osc_a_mix = 16'sd16000;
+        force dut.osc_b_mix = -16'sd12000;
+        #1;
+        if (dut.oscillator_mix !== -16'sd12000) begin
+            $display("ERROR: muted OSC A still contributed to the mix");
+            errors = errors + 1;
+        end
+        release dut.osc_a_mix;
+        release dut.osc_b_mix;
+
+        // 从“仅B”切换到“仅A”，验证两个开关互相独立。
+        send_cc(7'd36, 7'd127);
+        send_cc(7'd37, 7'd0);
+        switch_wait_samples = 0;
+        while (((dut.osc_a_mix_gain_q8 != 9'd256)
+                || (dut.osc_b_mix_gain_q8 != 9'd0))
+               && (switch_wait_samples < 300)) begin
+            @(posedge dut.sample_tick);
+            switch_wait_samples = switch_wait_samples + 1;
+        end
+        @(posedge sys_clk);
+        #1;
+        if (dut.osc_a_enabled !== 1'b1
+            || dut.osc_b_enabled !== 1'b0
+            || dut.osc_a_mix_gain_q8 !== 9'd256
+            || dut.osc_b_mix_gain_q8 !== 9'd0) begin
+            $display("ERROR: OSC B switch did not reach muted crossfade state");
+            errors = errors + 1;
+        end
+        force dut.osc_a_mix = 16'sd16000;
+        force dut.osc_b_mix = -16'sd12000;
+        #1;
+        if (dut.oscillator_mix !== 16'sd16000) begin
+            $display("ERROR: muted OSC B still contributed to the mix");
+            errors = errors + 1;
+        end
+        release dut.osc_a_mix;
+        release dut.osc_b_mix;
+
+        // 后续音符测试恢复两路开启，各自回到0.5增益。
+        send_cc(7'd37, 7'd127);
+        switch_wait_samples = 0;
+        while (((dut.osc_a_mix_gain_q8 != 9'd128)
+                || (dut.osc_b_mix_gain_q8 != 9'd128))
+               && (switch_wait_samples < 300)) begin
+            @(posedge dut.sample_tick);
+            switch_wait_samples = switch_wait_samples + 1;
+        end
+        @(posedge sys_clk);
+        #1;
+        if (dut.osc_a_enabled !== 1'b1
+            || dut.osc_b_enabled !== 1'b1
+            || dut.osc_a_mix_gain_q8 !== 9'd128
+            || dut.osc_b_mix_gain_q8 !== 9'd128) begin
+            $display("ERROR: dual oscillator gain did not return to 0.5 each");
+            errors = errors + 1;
+        end
+        force dut.osc_a_mix = 16'sd16000;
+        force dut.osc_b_mix = -16'sd12000;
+        #1;
+        if (dut.oscillator_mix !== 16'sd2000) begin
+            $display("ERROR: dual oscillator 0.5 + 0.5 mix is incorrect");
+            errors = errors + 1;
+        end
+        release dut.osc_a_mix;
+        release dut.osc_b_mix;
+
         // 控制通道上的Note必须被丢弃。
         send_uart_byte(8'h9F);
         send_uart_byte(8'h30);
@@ -344,7 +430,7 @@ module tb_top_midi_input;
     end
 
     initial begin
-        #10000000;
+        #20000000;
         $display("FAIL: dual-oscillator top test timed out");
         $finish;
     end

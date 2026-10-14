@@ -43,7 +43,7 @@ OSC A调度器/Bank     OSC B调度器/Bank
         |                 |
         +--------+--------+
                  |
-          0.5 A + 0.5 B
+       开关平滑增益与A/B混音
                  |
              共享FIR
 ```
@@ -112,9 +112,16 @@ BF 14 55    通道16，OSC A的CC20，WT Position=85
 | OSC B | Decay | 16 | 33 | 0～127 | 54 |
 | OSC B | Sustain | 16 | 34 | 0～127 | 89 |
 | OSC B | Release | 16 | 35 | 0～127 | 67 |
+| OSC A | Enable | 16 | 36 | 0=关闭，1～127=开启 | 开启 |
+| OSC B | Enable | 16 | 37 | 0=关闭，1～127=开启 | 开启 |
 
 两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
 波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。
+
+Enable是音频开关，不会清除调度器槽位、相位或包络状态。关闭的振荡器仍继续处理
+任务，只是其混音增益平滑降到0；重新开启后从当前状态恢复。两路都开启时各使用0.5
+增益，只开启一路时该路使用1.0增益。增益以96 kHz速率逐级变化，完整切换约2.67 ms，
+用来减少开关造成的咔哒声。
 
 ADSR的阶段状态仍由FPGA按逻辑声部独立维护。外部单片机只需要发送四个参数，不需要
 持续发送32个声部的实时电平。A、D、R每增加8个控制值，阶段时间约翻倍；详细映射和
@@ -207,7 +214,7 @@ ROM使用推断式双读口存储和`$readmemh`初始化。是否真正映射到
 
 - “演奏通道”只影响Note On和Note Off，正常测试保持通道1；
 - OSC A/B及全局参数固定通过通道16发送；
-- 连接串口后自动发送Pan以及OSC A/B各自的Waveform、WT Position、Detune、Unison和ADSR；
+- 连接串口后自动发送Pan以及OSC A/B各自的Enable、Waveform、WT Position、Detune、Unison和ADSR；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
 外部控制单片机发送示例：
@@ -231,6 +238,10 @@ BF 20 1B    OSC B Attack控制值27
 BF 21 36    OSC B Decay控制值54
 BF 22 59    OSC B Sustain控制值89
 BF 23 43    OSC B Release控制值67
+BF 24 00    关闭OSC A
+BF 24 7F    开启OSC A
+BF 25 00    关闭OSC B
+BF 25 7F    开启OSC B
 ```
 
 如果连续发送多个CC，可以只发送一次`BF`，随后按“CC编号、数值”成对发送。只要中间
@@ -266,7 +277,7 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 顶层仿真覆盖以下行为：
 
 1. 通道1的CC不能修改合成参数；
-2. 通道16的CC10、20～27和28～35正确进入全局、OSC A和OSC B寄存器；
+2. 通道16的CC10、20～27、28～35和36～37正确进入全局、OSC A和OSC B寄存器；
 3. 通道16的Note On不能进入声部调度器；
 4. 通道1的Note On/Off、力度和Running Status保持原有行为；
 5. MIDI实时字节穿插不会破坏解析状态；
@@ -279,5 +290,6 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 12. 可调Release完成后能通知调度器回收槽位；
 13. 同一Note事件会按两组独立的Unison/Detune设置生成不同的任务数与相位步进；
 14. 两个1×32 Bank的输出有效脉冲对齐，调度无超时，并以0.5增益相加。
+15. CC36/CC37能独立关闭两路音频，并在单路与双路模式间平滑交叉调整增益。
 
 本次只执行RTL编译与ModelSim功能仿真，没有运行Gowin综合和布局布线。
