@@ -36,11 +36,13 @@ module top #(
     reg  [8:0]          osc_b_mix_gain_q8;
     wire [8:0]          osc_a_mix_gain_target_q8;
     wire [8:0]          osc_b_mix_gain_target_q8;
-    wire signed [25:0]  osc_a_scaled_product;
-    wire signed [25:0]  osc_b_scaled_product;
+    wire signed [25:0]  osc_a_scaled_product_next;
+    wire signed [25:0]  osc_b_scaled_product_next;
+    reg  signed [25:0]  osc_a_scaled_product;
+    reg  signed [25:0]  osc_b_scaled_product;
     wire signed [26:0]  oscillator_scaled_sum;
     wire signed [15:0]  oscillator_mix;
-    wire                oscillator_mix_valid;
+    reg                 oscillator_mix_valid;
     wire                oscillator_schedule_overrun;
     wire signed [15:0]  fir_input_sample;
     wire signed [15:0]  filtered_sample;
@@ -405,10 +407,27 @@ module top #(
 
     // 每组Bank已经按自己的活动任务数归一化。这里应用开关平滑增益，
     // 两路目标增益之和始终不超过1.0，最后再饱和到16位。
-    assign osc_a_scaled_product =
+    assign osc_a_scaled_product_next =
         $signed(osc_a_mix) * $signed({1'b0, osc_a_mix_gain_q8});
-    assign osc_b_scaled_product =
+    assign osc_b_scaled_product_next =
         $signed(osc_b_mix) * $signed({1'b0, osc_b_mix_gain_q8});
+
+    // 先寄存两路DSP乘法结果，再进行求和与饱和。增加一个50 MHz时钟延迟，
+    // 但切断Bank归一化、开关增益乘法和FIR输入之间的长组合路径。
+    always @(posedge sys_clk or negedge rst_n_sys) begin
+        if (!rst_n_sys) begin
+            osc_a_scaled_product <= 26'sd0;
+            osc_b_scaled_product <= 26'sd0;
+            oscillator_mix_valid <= 1'b0;
+        end else begin
+            oscillator_mix_valid <= osc_a_mix_valid && osc_b_mix_valid;
+            if (osc_a_mix_valid && osc_b_mix_valid) begin
+                osc_a_scaled_product <= osc_a_scaled_product_next;
+                osc_b_scaled_product <= osc_b_scaled_product_next;
+            end
+        end
+    end
+
     assign oscillator_scaled_sum =
         $signed(osc_a_scaled_product) + $signed(osc_b_scaled_product);
 
@@ -427,7 +446,6 @@ module top #(
     endfunction
 
     assign oscillator_mix = saturate_mix_q8(oscillator_scaled_sum);
-    assign oscillator_mix_valid = osc_a_mix_valid && osc_b_mix_valid;
     assign oscillator_schedule_overrun =
         osc_a_schedule_overrun || osc_b_schedule_overrun;
     assign fir_input_sample = oscillator_mix;

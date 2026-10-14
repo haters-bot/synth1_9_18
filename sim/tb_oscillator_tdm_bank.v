@@ -181,11 +181,6 @@ module tb_oscillator_tdm_bank;
                               1'b1, 1'b1);
 
         active_task_count = 6'd32;
-        #1;
-        if (dut.applied_gain_q16 !== 17'd2048) begin
-            $display("ERROR: first 32-voice sample did not use immediate attenuation");
-            errors = errors + 1;
-        end
 
         for (check_index = 0;
              check_index < TOTAL_SLOTS;
@@ -209,6 +204,12 @@ module tb_oscillator_tdm_bank;
         @(negedge clk);
         clear_phase = 1'b0;
         launch_internal_sample();
+        #1;
+        if (dut.active_task_count_batch !== 6'd32
+            || dut.applied_gain_q16 !== 17'd2048) begin
+            $display("ERROR: first 32-voice batch did not use immediate attenuation");
+            errors = errors + 1;
+        end
         wait (sample_valid);
 
         // 相邻768 kHz采样请求约间隔65个50 MHz时钟。每次32槽位调度完成后

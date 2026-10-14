@@ -36,6 +36,7 @@ module oscillator_task_scheduler #(
     localparam [2:0] STATE_ALLOCATE     = 3'd1;
     localparam [2:0] STATE_REPLACE_NOTE = 3'd2;
     localparam [2:0] STATE_RELEASE_NOTE = 3'd3;
+    localparam [2:0] STATE_LATCH_STEP   = 3'd4;
 
     reg [2:0] state;
     reg [6:0] slot_note [0:TOTAL_SLOTS-1];
@@ -53,6 +54,8 @@ module oscillator_task_scheduler #(
     reg [5:0] scan_index;
     reg [5:0] scan_count;
     reg [5:0] allocation_cursor;
+    reg [2:0] state_after_latch;
+    reg [31:0] pending_base_phase_step_latched;
 
     wire [31:0] pending_base_phase_step;
     wire [7:0] allocation_candidate;
@@ -60,6 +63,7 @@ module oscillator_task_scheduler #(
     reg matching_note_found;
     reg steal_note_found;
     reg [6:0] steal_note;
+    reg [5:0] retired_task_count;
     integer search_index;
     integer reset_index;
 
@@ -153,14 +157,16 @@ module oscillator_task_scheduler #(
         matching_note_found = 1'b0;
         steal_note_found = 1'b0;
         steal_note = 7'd0;
-        active_task_count = 6'd0;
+        retired_task_count = 6'd0;
 
         for (search_index = 0;
              search_index < TOTAL_SLOTS;
              search_index = search_index + 1) begin
-            if (slot_active[search_index]) begin
-                active_task_count = active_task_count + 6'd1;
+            if (task_idle_mask[search_index]
+                && slot_releasing[search_index])
+                retired_task_count = retired_task_count + 6'd1;
 
+            if (slot_active[search_index]) begin
                 if (slot_note[search_index] == note_event_note)
                     matching_note_found = 1'b1;
 
@@ -195,6 +201,9 @@ module oscillator_task_scheduler #(
             scan_index <= 6'd0;
             scan_count <= 6'd0;
             allocation_cursor <= 6'd0;
+            state_after_latch <= STATE_IDLE;
+            pending_base_phase_step_latched <= 32'd0;
+            active_task_count <= 6'd0;
 
             for (reset_index = 0;
                  reset_index < TOTAL_SLOTS;
@@ -207,6 +216,12 @@ module oscillator_task_scheduler #(
             end
         end else begin
             task_update_valid <= 1'b0;
+
+            // 活动任务数由分配和Release完成事件增量维护，避免每拍把32个
+            // slot_active串接成组合计数器并直接送入后级音频乘法路径。
+            if (retired_task_count != 6'd0)
+                active_task_count
+                    <= active_task_count - retired_task_count;
 
             // Release completion is reported independently by every physical
             // engine. A task remains part of normalization until its ADSR has
@@ -241,19 +256,29 @@ module oscillator_task_scheduler #(
                         if (note_event_on) begin
                             if (matching_note_found) begin
                                 victim_note <= note_event_note;
-                                state <= STATE_REPLACE_NOTE;
+                                state_after_latch <= STATE_REPLACE_NOTE;
                             end else begin
                                 scan_index <= allocation_cursor;
                                 scan_count <= 6'd0;
-                                state <= STATE_ALLOCATE;
+                                state_after_latch <= STATE_ALLOCATE;
                             end
+                            state <= STATE_LATCH_STEP;
                         end else if (matching_note_found) begin
                             victim_note <= note_event_note;
-                            state <= STATE_RELEASE_NOTE;
+                            state_after_latch <= STATE_RELEASE_NOTE;
+                            state <= STATE_LATCH_STEP;
                         end else begin
                             scheduler_busy <= 1'b0;
                         end
                     end
+                end
+
+                // MIDI音符先经过频率查表并锁存，下一拍再参与Detune计算。
+                // 该边界切断pending_note到32个槽位相位步进寄存器的长路径。
+                STATE_LATCH_STEP: begin
+                    pending_base_phase_step_latched
+                        <= pending_base_phase_step;
+                    state <= state_after_latch;
                 end
 
                 STATE_ALLOCATE: begin
@@ -261,7 +286,7 @@ module oscillator_task_scheduler #(
                         task_update_valid <= 1'b1;
                         task_update_slot <= allocation_candidate;
                         task_update_phase_step
-                            <= make_phase_step(pending_base_phase_step,
+                            <= make_phase_step(pending_base_phase_step_latched,
                                                pending_member_index,
                                                pending_unison_count,
                                                pending_detune_amount);
@@ -271,7 +296,7 @@ module oscillator_task_scheduler #(
 
                         slot_note[allocation_candidate] <= pending_note;
                         slot_phase_step[allocation_candidate]
-                            <= make_phase_step(pending_base_phase_step,
+                            <= make_phase_step(pending_base_phase_step_latched,
                                                pending_member_index,
                                                pending_unison_count,
                                                pending_detune_amount);
@@ -279,6 +304,8 @@ module oscillator_task_scheduler #(
                             <= pending_velocity;
                         slot_active[allocation_candidate] <= 1'b1;
                         slot_releasing[allocation_candidate] <= 1'b0;
+                        active_task_count
+                            <= active_task_count - retired_task_count + 6'd1;
 
                         if (scan_index == TOTAL_SLOTS-1)
                             allocation_cursor <= 6'd0;
@@ -322,7 +349,7 @@ module oscillator_task_scheduler #(
                         if (pending_member_index
                             < pending_unison_count) begin
                             task_update_phase_step
-                                <= make_phase_step(pending_base_phase_step,
+                                <= make_phase_step(pending_base_phase_step_latched,
                                                    pending_member_index,
                                                    pending_unison_count,
                                                    pending_detune_amount);
@@ -331,7 +358,7 @@ module oscillator_task_scheduler #(
                             task_update_phase_reset <= 1'b1;
                             slot_note[scan_index] <= pending_note;
                             slot_phase_step[scan_index]
-                                <= make_phase_step(pending_base_phase_step,
+                                <= make_phase_step(pending_base_phase_step_latched,
                                                    pending_member_index,
                                                    pending_unison_count,
                                                    pending_detune_amount);

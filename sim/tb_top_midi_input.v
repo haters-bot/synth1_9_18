@@ -142,6 +142,30 @@ module tb_top_midi_input;
         end
     endtask
 
+    task expect_pipelined_mix;
+        input signed [15:0] sample_a;
+        input signed [15:0] sample_b;
+        input signed [15:0] expected_mix;
+        begin
+            force dut.osc_a_mix = sample_a;
+            force dut.osc_b_mix = sample_b;
+            force dut.osc_a_mix_valid = 1'b1;
+            force dut.osc_b_mix_valid = 1'b1;
+            @(posedge sys_clk);
+            #1;
+            if (dut.oscillator_mix !== expected_mix) begin
+                $display("ERROR: pipelined mix got %0d, expected %0d",
+                         dut.oscillator_mix, expected_mix);
+                errors = errors + 1;
+            end
+            release dut.osc_a_mix;
+            release dut.osc_b_mix;
+            release dut.osc_a_mix_valid;
+            release dut.osc_b_mix_valid;
+            @(posedge sys_clk);
+        end
+    endtask
+
     initial begin
         sys_clk = 1'b0;
         rst_n = 1'b0;
@@ -241,15 +265,7 @@ module tb_top_midi_input;
             $display("ERROR: OSC A switch did not reach muted crossfade state");
             errors = errors + 1;
         end
-        force dut.osc_a_mix = 16'sd16000;
-        force dut.osc_b_mix = -16'sd12000;
-        #1;
-        if (dut.oscillator_mix !== -16'sd12000) begin
-            $display("ERROR: muted OSC A still contributed to the mix");
-            errors = errors + 1;
-        end
-        release dut.osc_a_mix;
-        release dut.osc_b_mix;
+        expect_pipelined_mix(16'sd16000, -16'sd12000, -16'sd12000);
 
         // 从“仅B”切换到“仅A”，验证两个开关互相独立。
         send_cc(7'd36, 7'd127);
@@ -270,15 +286,7 @@ module tb_top_midi_input;
             $display("ERROR: OSC B switch did not reach muted crossfade state");
             errors = errors + 1;
         end
-        force dut.osc_a_mix = 16'sd16000;
-        force dut.osc_b_mix = -16'sd12000;
-        #1;
-        if (dut.oscillator_mix !== 16'sd16000) begin
-            $display("ERROR: muted OSC B still contributed to the mix");
-            errors = errors + 1;
-        end
-        release dut.osc_a_mix;
-        release dut.osc_b_mix;
+        expect_pipelined_mix(16'sd16000, -16'sd12000, 16'sd16000);
 
         // 后续音符测试恢复两路开启，各自回到0.5增益。
         send_cc(7'd37, 7'd127);
@@ -298,15 +306,7 @@ module tb_top_midi_input;
             $display("ERROR: dual oscillator gain did not return to 0.5 each");
             errors = errors + 1;
         end
-        force dut.osc_a_mix = 16'sd16000;
-        force dut.osc_b_mix = -16'sd12000;
-        #1;
-        if (dut.oscillator_mix !== 16'sd2000) begin
-            $display("ERROR: dual oscillator 0.5 + 0.5 mix is incorrect");
-            errors = errors + 1;
-        end
-        release dut.osc_a_mix;
-        release dut.osc_b_mix;
+        expect_pipelined_mix(16'sd16000, -16'sd12000, 16'sd2000);
 
         // 控制通道上的Note必须被丢弃。
         send_uart_byte(8'h9F);

@@ -122,6 +122,7 @@ module oscillator_tdm_bank #(
 
     reg signed [BANK_SUM_WIDTH-1:0] combined_sum;
     reg [16:0] mix_gain_q16;
+    reg [5:0] active_task_count_batch;
     wire [16:0] target_gain_q16;
     wire [16:0] applied_gain_q16;
     wire signed [17:0] signed_mix_gain_q16;
@@ -185,7 +186,9 @@ module oscillator_tdm_bank #(
                                sum_index*CORE_SUM_WIDTH +: CORE_SUM_WIDTH]);
     end
 
-    assign target_gain_q16 = reciprocal_gain_q16(active_task_count);
+    // 活动槽位数只在一批TDM任务开始时锁存。这样32槽位统计逻辑不会
+    // 继续穿过倒数增益、乘法器和顶层混音器形成单周期长路径。
+    assign target_gain_q16 = reciprocal_gain_q16(active_task_count_batch);
     // 声部数增加时目标增益会突然降低。乘法路径立即采用较小值，
     // 避免寄存器尚未更新的首个采样仍以旧增益输出并发生饱和。
     // 声部数减少时仍使用mix_gain_q16缓慢恢复，防止音量跳变。
@@ -224,14 +227,18 @@ module oscillator_tdm_bank #(
             sample_out   <= 16'sd0;
             sample_valid <= 1'b0;
             mix_gain_q16 <= UNITY_GAIN_Q16;
+            active_task_count_batch <= 6'd0;
         end else begin
             sample_valid <= all_engines_valid;
+            if (start_tick)
+                active_task_count_batch <= active_task_count;
+
             if (all_engines_valid) begin
                 sample_out <= saturate_to_s16(normalized_sum);
 
                 // 仅在完成一个内部音频采样时更新一次增益。声部数为0时
                 // 在静音期间立即恢复单位增益，为下一次单音做好准备。
-                if (active_task_count == 6'd0) begin
+                if (active_task_count_batch == 6'd0) begin
                     mix_gain_q16 <= UNITY_GAIN_Q16;
                 end else if (mix_gain_q16 < target_gain_q16) begin
                     if (((target_gain_q16 - mix_gain_q16)

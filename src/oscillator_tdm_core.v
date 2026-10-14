@@ -63,6 +63,10 @@ module oscillator_tdm_core #(
     reg       issue_active;
     reg [2:0] waveform_select_batch;
     reg [6:0] wt_position_batch;
+    reg [31:0] attack_phase_step_batch;
+    reg [31:0] decay_phase_step_batch;
+    reg [15:0] sustain_level_batch;
+    reg [31:0] release_phase_step_batch;
     reg signed [PARTIAL_SUM_WIDTH-1:0] mix_accumulator;
     reg [15:0] envelope_divider;
     reg        envelope_update_active;
@@ -191,9 +195,9 @@ module oscillator_tdm_core #(
     // 不会直接改写当前电平。Decay和Release各使用一次16×16插值乘法。
     always @(*) begin
         case (pipe_envelope_stage)
-            ENV_ATTACK:  selected_phase_step = attack_phase_step;
-            ENV_DECAY:   selected_phase_step = decay_phase_step;
-            ENV_RELEASE: selected_phase_step = release_phase_step;
+            ENV_ATTACK:  selected_phase_step = attack_phase_step_batch;
+            ENV_DECAY:   selected_phase_step = decay_phase_step_batch;
+            ENV_RELEASE: selected_phase_step = release_phase_step_batch;
             default:     selected_phase_step = 32'd0;
         endcase
     end
@@ -204,7 +208,7 @@ module oscillator_tdm_core #(
     assign envelope_phase_complete = envelope_phase_sum[32]
                                    || (&envelope_phase_next[31:16]);
     assign envelope_phase_fraction = envelope_phase_next[31:16];
-    assign decay_span = 16'hFFFF - sustain_level;
+    assign decay_span = 16'hFFFF - sustain_level_batch;
     assign release_fraction_remaining
         = 16'hFFFF - envelope_phase_fraction;
 
@@ -238,6 +242,10 @@ module oscillator_tdm_core #(
             issue_active      <= 1'b0;
             waveform_select_batch <= 3'd2;
             wt_position_batch <= 7'd0;
+            attack_phase_step_batch <= 32'd0;
+            decay_phase_step_batch <= 32'd0;
+            sustain_level_batch <= 16'd0;
+            release_phase_step_batch <= 32'd0;
             mix_accumulator   <= {PARTIAL_SUM_WIDTH{1'b0}};
             partial_sum       <= {PARTIAL_SUM_WIDTH{1'b0}};
             partial_valid     <= 1'b0;
@@ -302,6 +310,10 @@ module oscillator_tdm_core #(
                     mix_accumulator  <= {PARTIAL_SUM_WIDTH{1'b0}};
                     waveform_select_batch <= waveform_select;
                     wt_position_batch <= wt_position;
+                    attack_phase_step_batch <= attack_phase_step;
+                    decay_phase_step_batch <= decay_phase_step;
+                    sustain_level_batch <= sustain_level;
+                    release_phase_step_batch <= release_phase_step;
 
                     // 一次包络更新请求保持到整批槽位提交完毕。
                     if (ENVELOPE_UPDATE_DIV <= 1) begin
@@ -354,7 +366,8 @@ module oscillator_tdm_core #(
                                     release_start_level[pipe_slot]
                                         <= pipe_envelope_level;
                                 end else if (envelope_phase_complete) begin
-                                    envelope_level[pipe_slot] <= sustain_level;
+                                    envelope_level[pipe_slot]
+                                        <= sustain_level_batch;
                                     envelope_stage[pipe_slot] <= ENV_SUSTAIN;
                                     envelope_phase[pipe_slot] <= 32'd0;
                                 end else begin
@@ -372,7 +385,8 @@ module oscillator_tdm_core #(
                                     release_start_level[pipe_slot]
                                         <= pipe_envelope_level;
                                 end else begin
-                                    envelope_level[pipe_slot] <= sustain_level;
+                                    envelope_level[pipe_slot]
+                                        <= sustain_level_batch;
                                 end
                             end
 
