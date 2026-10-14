@@ -30,16 +30,28 @@ KEY_TO_NOTE = {
     "j": 71,
     "k": 72,
 }
-WAVEFORM_CC = 21
 CONTROL_CHANNEL = 16
 PAN_CC = 10
-WT_POSITION_CC = 20
-DETUNE_CC = 22
-UNISON_CC = 23
-ATTACK_CC = 24
-DECAY_CC = 25
-SUSTAIN_CC = 26
-RELEASE_CC = 27
+OSC_A_CC = {
+    "wt_position": 20,
+    "waveform": 21,
+    "detune": 22,
+    "unison": 23,
+    "attack": 24,
+    "decay": 25,
+    "sustain": 26,
+    "release": 27,
+}
+OSC_B_CC = {
+    "wt_position": 28,
+    "waveform": 29,
+    "detune": 30,
+    "unison": 31,
+    "attack": 32,
+    "decay": 33,
+    "sustain": 34,
+    "release": 35,
+}
 WAVEFORM_VALUES = {
     "正弦波": 0,
     "三角波": 32,
@@ -68,16 +80,20 @@ class MidiUartSender:
         self.baud_rate = tk.StringVar(value="31250")
         self.channel = tk.IntVar(value=1)
         self.velocity = tk.IntVar(value=100)
-        self.waveform = tk.StringVar(value="方波")
         self.pan = tk.IntVar(value=64)
-        self.wt_position = tk.IntVar(value=0)
-        self.detune = tk.IntVar(value=64)
-        self.unison = tk.IntVar(value=1)
-        # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
-        self.attack = tk.IntVar(value=27)
-        self.decay = tk.IntVar(value=54)
-        self.sustain = tk.IntVar(value=89)
-        self.release = tk.IntVar(value=67)
+        self.osc_controls = {}
+        for osc_name in ("A", "B"):
+            # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
+            self.osc_controls[osc_name] = {
+                "waveform": tk.StringVar(value="方波"),
+                "wt_position": tk.IntVar(value=0),
+                "detune": tk.IntVar(value=64),
+                "unison": tk.IntVar(value=1),
+                "attack": tk.IntVar(value=27),
+                "decay": tk.IntVar(value=54),
+                "sustain": tk.IntVar(value=89),
+                "release": tk.IntVar(value=67),
+            }
         self.status = tk.StringVar(value="未连接")
 
         self._build_ui()
@@ -135,57 +151,38 @@ class MidiUartSender:
             row=0, column=4, padx=(14, 4)
         )
 
-        ttk.Label(controls, text="全局波形").grid(row=1, column=0, padx=4, pady=(8, 0))
-        waveform_box = ttk.Combobox(
-            controls,
-            textvariable=self.waveform,
-            values=tuple(WAVEFORM_VALUES),
-            width=9,
-            state="readonly",
-        )
-        waveform_box.grid(row=1, column=1, padx=4, pady=(8, 0), sticky="w")
-        waveform_box.bind("<<ComboboxSelected>>", self._waveform_selected)
-
-        ttk.Label(controls, text="控制通道固定为16").grid(
-            row=1, column=2, columnspan=3, padx=4, pady=(8, 0), sticky="w"
+        ttk.Label(controls, text="控制通道固定为16；OSC A/B参数独立").grid(
+            row=1, column=0, columnspan=5, padx=4, pady=(8, 0), sticky="w"
         )
 
         parameter_controls = ttk.LabelFrame(
-            self.root, text="合成器全局参数（松开滑块时发送）", padding=10
+            self.root, text="双振荡器参数（松开滑块时发送）", padding=10
         )
         parameter_controls.grid(row=2, column=0, padx=10, pady=4, sticky="ew")
 
-        parameter_specs = (
-            ("Pan", self.pan, 0, 127, PAN_CC),
-            ("WT Position", self.wt_position, 0, 127, WT_POSITION_CC),
-            ("Detune", self.detune, 0, 127, DETUNE_CC),
-            ("Unison", self.unison, 1, 8, UNISON_CC),
-            ("Attack", self.attack, 0, 127, ATTACK_CC),
-            ("Decay", self.decay, 0, 127, DECAY_CC),
-            ("Sustain", self.sustain, 0, 127, SUSTAIN_CC),
-            ("Release", self.release, 0, 127, RELEASE_CC),
+        ttk.Label(parameter_controls, text="全局Pan").grid(
+            row=0, column=0, padx=4, sticky="w"
         )
-        for row, (label, variable, minimum, maximum, controller) in enumerate(
-            parameter_specs
-        ):
-            ttk.Label(parameter_controls, text=label).grid(
-                row=row, column=0, padx=4, sticky="w"
+        pan_scale = tk.Scale(
+            parameter_controls,
+            from_=0,
+            to=127,
+            orient=tk.HORIZONTAL,
+            variable=self.pan,
+            length=300,
+        )
+        pan_scale.grid(row=0, column=1, columnspan=2, padx=4, sticky="w")
+        pan_scale.bind(
+            "<ButtonRelease-1>",
+            lambda _event: self.send_synth_control(PAN_CC, self.pan.get()),
+        )
+
+        for column, osc_name in enumerate(("A", "B")):
+            osc_frame = ttk.LabelFrame(
+                parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            scale = tk.Scale(
-                parameter_controls,
-                from_=minimum,
-                to=maximum,
-                orient=tk.HORIZONTAL,
-                variable=variable,
-                length=300,
-            )
-            scale.grid(row=row, column=1, padx=4)
-            scale.bind(
-                "<ButtonRelease-1>",
-                lambda _event, cc=controller, var=variable: (
-                    self.send_synth_control(cc, var.get())
-                ),
-            )
+            osc_frame.grid(row=1, column=column, padx=6, pady=(6, 0))
+            self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
             self.root,
@@ -214,6 +211,59 @@ class MidiUartSender:
         ttk.Label(bottom, textvariable=self.status).pack(side=tk.LEFT)
         self.log = tk.Text(bottom, width=54, height=5, state=tk.DISABLED)
         self.log.pack(side=tk.RIGHT)
+
+    def _build_oscillator_controls(
+        self, parent: ttk.LabelFrame, osc_name: str
+    ) -> None:
+        controls = self.osc_controls[osc_name]
+        cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
+
+        ttk.Label(parent, text="波形").grid(row=0, column=0, padx=4, sticky="w")
+        waveform_box = ttk.Combobox(
+            parent,
+            textvariable=controls["waveform"],
+            values=tuple(WAVEFORM_VALUES),
+            width=9,
+            state="readonly",
+        )
+        waveform_box.grid(row=0, column=1, padx=4, sticky="w")
+        waveform_box.bind(
+            "<<ComboboxSelected>>",
+            lambda _event, name=osc_name: self.send_waveform_selection(name),
+        )
+
+        parameter_specs = (
+            ("WT Position", "wt_position", 0, 127),
+            ("Detune", "detune", 0, 127),
+            ("Unison", "unison", 1, 8),
+            ("Attack", "attack", 0, 127),
+            ("Decay", "decay", 0, 127),
+            ("Sustain", "sustain", 0, 127),
+            ("Release", "release", 0, 127),
+        )
+        for row, (label, key, minimum, maximum) in enumerate(
+            parameter_specs, start=1
+        ):
+            variable = controls[key]
+            controller = cc_map[key]
+            ttk.Label(parent, text=label).grid(
+                row=row, column=0, padx=4, sticky="w"
+            )
+            scale = tk.Scale(
+                parent,
+                from_=minimum,
+                to=maximum,
+                orient=tk.HORIZONTAL,
+                variable=variable,
+                length=260,
+            )
+            scale.grid(row=row, column=1, padx=4)
+            scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event, cc=controller, var=variable: (
+                    self.send_synth_control(cc, var.get())
+                ),
+            )
 
     def refresh_ports(self) -> None:
         if list_ports is None:
@@ -337,29 +387,33 @@ class MidiUartSender:
         value = max(0, min(127, value))
         return self._send(bytes((0xB0 | channel, controller, value)))
 
-    def send_waveform_selection(self) -> None:
-        waveform_name = self.waveform.get()
+    def send_waveform_selection(self, osc_name: str) -> None:
+        controls = self.osc_controls[osc_name]
+        cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
+        waveform_name = controls["waveform"].get()
         value = WAVEFORM_VALUES.get(waveform_name, WAVEFORM_VALUES["方波"])
-        if self.send_control_change(WAVEFORM_CC, value, CONTROL_CHANNEL):
-            self.status.set(f"全局波形：{waveform_name}")
+        if self.send_control_change(cc_map["waveform"], value, CONTROL_CHANNEL):
+            self.status.set(f"OSC {osc_name}波形：{waveform_name}")
 
     def send_synth_control(self, controller: int, value: int) -> None:
         if self.send_control_change(controller, value, CONTROL_CHANNEL):
             self.status.set(f"控制通道16：CC{controller} = {value}")
 
     def send_all_synth_controls(self) -> None:
-        self.send_waveform_selection()
         self.send_synth_control(PAN_CC, self.pan.get())
-        self.send_synth_control(WT_POSITION_CC, self.wt_position.get())
-        self.send_synth_control(DETUNE_CC, self.detune.get())
-        self.send_synth_control(UNISON_CC, self.unison.get())
-        self.send_synth_control(ATTACK_CC, self.attack.get())
-        self.send_synth_control(DECAY_CC, self.decay.get())
-        self.send_synth_control(SUSTAIN_CC, self.sustain.get())
-        self.send_synth_control(RELEASE_CC, self.release.get())
-
-    def _waveform_selected(self, _event: tk.Event) -> None:
-        self.send_waveform_selection()
+        for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
+            controls = self.osc_controls[osc_name]
+            self.send_waveform_selection(osc_name)
+            for key in (
+                "wt_position",
+                "detune",
+                "unison",
+                "attack",
+                "decay",
+                "sustain",
+                "release",
+            ):
+                self.send_synth_control(cc_map[key], controls[key].get())
 
     def all_notes_off(self) -> None:
         if self.port is None:

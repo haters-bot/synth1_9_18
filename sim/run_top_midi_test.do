@@ -40,20 +40,23 @@ add wave sim:/tb_top_midi_input/dut/midi_control_change_valid
 add wave sim:/tb_top_midi_input/dut/midi_control_change_channel
 add wave sim:/tb_top_midi_input/dut/midi_control_change_number
 add wave sim:/tb_top_midi_input/dut/midi_control_change_value
-add wave sim:/tb_top_midi_input/dut/waveform_select
 add wave sim:/tb_top_midi_input/dut/pan_target
-add wave sim:/tb_top_midi_input/dut/wt_position_target
-add wave sim:/tb_top_midi_input/dut/detune_amount
-add wave sim:/tb_top_midi_input/dut/unison_count
-add wave sim:/tb_top_midi_input/dut/attack_control
-add wave sim:/tb_top_midi_input/dut/decay_control
-add wave sim:/tb_top_midi_input/dut/sustain_control_target
-add wave sim:/tb_top_midi_input/dut/sustain_control_current
-add wave sim:/tb_top_midi_input/dut/release_control
-add wave sim:/tb_top_midi_input/dut/task_update_valid
-add wave sim:/tb_top_midi_input/dut/task_update_slot
-add wave -radix hexadecimal sim:/tb_top_midi_input/dut/task_update_phase_step
-add wave sim:/tb_top_midi_input/dut/task_update_velocity
-add wave sim:/tb_top_midi_input/dut/task_update_enable
+add wave sim:/tb_top_midi_input/dut/osc_a_waveform_select
+add wave sim:/tb_top_midi_input/dut/osc_a_wt_position_current
+add wave sim:/tb_top_midi_input/dut/osc_a_detune_amount
+add wave sim:/tb_top_midi_input/dut/osc_a_unison_count
+add wave sim:/tb_top_midi_input/dut/osc_b_waveform_select
+add wave sim:/tb_top_midi_input/dut/osc_b_wt_position_current
+add wave sim:/tb_top_midi_input/dut/osc_b_detune_amount
+add wave sim:/tb_top_midi_input/dut/osc_b_unison_count
+add wave sim:/tb_top_midi_input/dut/osc_a_task_update_valid
+add wave sim:/tb_top_midi_input/dut/osc_a_task_update_slot
+add wave -radix hexadecimal sim:/tb_top_midi_input/dut/osc_a_task_update_phase_step
+add wave sim:/tb_top_midi_input/dut/osc_b_task_update_valid
+add wave sim:/tb_top_midi_input/dut/osc_b_task_update_slot
+add wave -radix hexadecimal sim:/tb_top_midi_input/dut/osc_b_task_update_phase_step
+add wave sim:/tb_top_midi_input/dut/osc_a_mix
+add wave sim:/tb_top_midi_input/dut/osc_b_mix
+add wave sim:/tb_top_midi_input/dut/oscillator_mix
 
 run -all

@@ -26,9 +26,9 @@ Control Change写入合成参数。当前支持Running Status以及`Note On velo
 `velocity/128`近似映射为线性振幅；力度127保持满幅。移动上位机力度滑块只影响
 之后触发的新音符，已经持续发声的音符保持其Note On时的力度。
 
-通道16的CC21用于全局波形选择，按照控制值的高两位分成四档：
+通道16的CC21控制OSC A波形，CC29控制OSC B波形，按照控制值分档：
 
-| CC21数值 | 全局波形 |
+| CC21或CC29数值 | 对应振荡器波形 |
 |---:|---|
 | 0～31 | 正弦波 |
 | 32～63 | 三角波 |
@@ -54,7 +54,7 @@ python tools/midi_uart_sender.py
 2. 下载位流后关闭Gowin Programmer，避免其继续占用调试器。
 3. 在上位机中选择标记为`FTDI B / UART推荐`的端口，波特率选择31250并连接。
 4. 鼠标按住虚拟琴键，或者使用电脑键盘`A W S E D F T G Y H U J K`演奏。
-5. 使用全局参数区域发送Pan、WT Position、Detune和Unison控制。
+5. 使用双振荡器参数区域分别发送OSC A/B的WT Position、Detune、Unison和ADSR控制。
 6. 松开按键会发送Note Off；“全部停止”会逐个释放当前由上位机开启的音符。
 
 如果31250 baud无法工作，可将FPGA顶层参数`UART_BAUD_RATE`改为115200，重新生成位流，

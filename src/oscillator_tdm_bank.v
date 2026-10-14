@@ -123,6 +123,7 @@ module oscillator_tdm_bank #(
     reg signed [BANK_SUM_WIDTH-1:0] combined_sum;
     reg [16:0] mix_gain_q16;
     wire [16:0] target_gain_q16;
+    wire [16:0] applied_gain_q16;
     wire signed [17:0] signed_mix_gain_q16;
     wire signed [NORMALIZED_WIDTH-1:0] normalized_product;
     wire signed [NORMALIZED_WIDTH-1:0] normalized_rounded;
@@ -185,7 +186,12 @@ module oscillator_tdm_bank #(
     end
 
     assign target_gain_q16 = reciprocal_gain_q16(active_task_count);
-    assign signed_mix_gain_q16 = $signed({1'b0, mix_gain_q16});
+    // 声部数增加时目标增益会突然降低。乘法路径立即采用较小值，
+    // 避免寄存器尚未更新的首个采样仍以旧增益输出并发生饱和。
+    // 声部数减少时仍使用mix_gain_q16缓慢恢复，防止音量跳变。
+    assign applied_gain_q16 = (target_gain_q16 < mix_gain_q16)
+                            ? target_gain_q16 : mix_gain_q16;
+    assign signed_mix_gain_q16 = $signed({1'b0, applied_gain_q16});
     assign normalized_product = $signed(combined_sum)
                                 * $signed(signed_mix_gain_q16);
     assign normalized_rounded = normalized_product

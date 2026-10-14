@@ -181,6 +181,11 @@ module tb_oscillator_tdm_bank;
                               1'b1, 1'b1);
 
         active_task_count = 6'd32;
+        #1;
+        if (dut.applied_gain_q16 !== 17'd2048) begin
+            $display("ERROR: first 32-voice sample did not use immediate attenuation");
+            errors = errors + 1;
+        end
 
         for (check_index = 0;
              check_index < TOTAL_SLOTS;

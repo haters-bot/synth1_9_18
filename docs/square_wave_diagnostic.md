@@ -1,6 +1,6 @@
 # Square-wave diagnostic
 
-> 该文件记录早期固定方波诊断。当前版本已通过MIDI CC21在四种全局波形间选择，
+> 该文件记录早期固定方波诊断。当前版本已通过MIDI CC21/CC29分别选择OSC A/B波形，
 > 复位后仍默认使用方波。
 
 The shared oscillator is temporarily connected to `square_lut` to identify

@@ -31,15 +31,21 @@ midi_note_parser
 synth_control_router
     |                         |
     | 通道1 Note事件          | 通道16 CC参数
-    v                         v
-oscillator_task_scheduler     全局参数寄存器
-    |                         |-- waveform_select
-    |                         |-- detune_amount
-    |                         |-- unison_count
-    |                         |-- pan_target
-    |                         `-- wt_position_target
-    v
-oscillator_tdm_bank
+    |                         |-- OSC A参数寄存器
+    |                         |-- OSC B参数寄存器
+    |                         `-- 全局Pan
+    |                         |
+    +------------+------------+
+                 |
+        +--------+--------+
+        v                 v
+OSC A调度器/Bank     OSC B调度器/Bank
+        |                 |
+        +--------+--------+
+                 |
+          0.5 A + 0.5 B
+                 |
+             共享FIR
 ```
 
 ## 3. UART与MIDI消息格式
@@ -66,7 +72,7 @@ Bn：Control Change
 ```text
 90 3C 64    通道1，中央C按下，力度100
 80 3C 00    通道1，中央C松开
-BF 14 55    通道16，CC20，WT Position=85
+BF 14 55    通道16，OSC A的CC20，WT Position=85
 ```
 
 三个完整字节需要约`0.96 ms`。使用Running Status时，同类型且同通道的后续消息
@@ -78,7 +84,7 @@ BF 14 55    通道16，CC20，WT Position=85
 | MIDI通道 | 内部编号 | 用途 | 当前路由规则 |
 |---|---:|---|---|
 | 1 | 0 | Note On、Note Off、力度 | 允许进入声部调度器 |
-| 16 | 15 | 全局合成参数 | 允许写入参数寄存器 |
+| 16 | 15 | OSC A/B及全局参数 | 允许写入参数寄存器 |
 | 其他 | 1～14 | 保留 | 当前忽略 |
 
 通道分工实现的是同一字节流中的逻辑解耦。正式硬件不能把MIDI键盘和控制单片机的
@@ -87,38 +93,46 @@ BF 14 55    通道16，CC20，WT Position=85
 
 ## 5. Control Change映射
 
-| 参数 | 通道 | CC编号 | 数据范围 | 复位值 | 当前生效范围 |
+| 目标 | 参数 | 通道 | CC编号 | 数据范围 | 复位值 |
 |---|---:|---:|---:|---:|---|
-| Pan | 16 | 10 | 0～127 | 64 | 已保存目标值，尚未接入立体声混音 |
-| WT Position | 16 | 20 | 0～127 | 0 | Acid波表模式下控制16帧位置和帧间插值 |
-| Waveform | 16 | 21 | 0～127 | 64，即方波 | 四个基本波形加一个Acid多帧波表 |
-| Detune | 16 | 22 | 0～127 | 64 | 已生效，只影响之后触发的音符 |
-| Unison | 16 | 23 | 1～8 | 顶层参数决定 | 已生效，只影响之后触发的音符 |
-| Attack | 16 | 24 | 0～127 | 27 | 已生效，约1 ms～58 s指数时间刻度 |
-| Decay | 16 | 25 | 0～127 | 54 | 已生效，约1 ms～58 s指数时间刻度 |
-| Sustain | 16 | 26 | 0～127 | 89 | 已生效，线性映射到0～满幅 |
-| Release | 16 | 27 | 0～127 | 67 | 已生效，约1 ms～58 s指数时间刻度 |
+| 全局 | Pan | 16 | 10 | 0～127 | 64 |
+| OSC A | WT Position | 16 | 20 | 0～127 | 0 |
+| OSC A | Waveform | 16 | 21 | 0～127 | 64，即方波 |
+| OSC A | Detune | 16 | 22 | 0～127 | 64 |
+| OSC A | Unison | 16 | 23 | 1～8 | 顶层参数决定 |
+| OSC A | Attack | 16 | 24 | 0～127 | 27 |
+| OSC A | Decay | 16 | 25 | 0～127 | 54 |
+| OSC A | Sustain | 16 | 26 | 0～127 | 89 |
+| OSC A | Release | 16 | 27 | 0～127 | 67 |
+| OSC B | WT Position | 16 | 28 | 0～127 | 0 |
+| OSC B | Waveform | 16 | 29 | 0～127 | 64，即方波 |
+| OSC B | Detune | 16 | 30 | 0～127 | 64 |
+| OSC B | Unison | 16 | 31 | 1～8 | 顶层参数决定 |
+| OSC B | Attack | 16 | 32 | 0～127 | 27 |
+| OSC B | Decay | 16 | 33 | 0～127 | 54 |
+| OSC B | Sustain | 16 | 34 | 0～127 | 89 |
+| OSC B | Release | 16 | 35 | 0～127 | 67 |
 
-`Unison`收到0时限制为1，收到大于8的数值时限制为8。这样外部输入不会要求调度器
-创建不支持的成员数。
+两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
+波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。
 
 ADSR的阶段状态仍由FPGA按逻辑声部独立维护。外部单片机只需要发送四个参数，不需要
 持续发送32个声部的实时电平。A、D、R每增加8个控制值，阶段时间约翻倍；详细映射和
 定点算法见`docs/adsr_envelope.md`。
 
-Waveform保留旧版本四个离散控制值，并用127增加Acid波表：
+两组Waveform都使用相同的数值编码：
 
 ```text
-CC21 =   0～31：正弦波
-CC21 =  32～63：三角波
-CC21 =  64～95：方波
-CC21 =  96～126：锯齿波
-CC21 =       127：Acid多帧波表
+CC21或CC29 =   0～31：正弦波
+CC21或CC29 =  32～63：三角波
+CC21或CC29 =  64～95：方波
+CC21或CC29 =  96～126：锯齿波
+CC21或CC29 =       127：Acid多帧波表
 ```
 
 ## 6. Detune计算原理
 
-调度器在收到Note On后，先从`freq_lut`取得该音符在`768 kHz`内部采样率下的
+每组调度器在收到Note On后，先从`freq_lut`取得该音符在`768 kHz`内部采样率下的
 32位相位步进`base_step`。N个Unison成员的位置定义为：
 
 ```text
@@ -165,14 +179,15 @@ frame_fraction = wt_position[2:0]   // 相邻帧之间8级插值
 y = A + (B - A) * frame_fraction / 8
 ```
 
-`wt_position_target`不会直接驱动波表地址。顶层在每个96 kHz采样边界最多向目标移动
+`osc_a/b_wt_position_target`不会直接驱动波表地址。顶层在每个96 kHz采样边界最多向目标移动
 一级，完整0～127行程约为`127 / 96000 = 1.32 ms`。TDM核心又在每个768 kHz批次
 开始时锁存一次当前位置，使同一批次内的全部槽位使用同一个参数值。
 
 同步ROM增加一拍读取延迟。核心现在使用“发出槽位地址”和“提交槽位结果”两级流水：
 第N拍向ROM发出槽位k的当前帧与下一帧地址，第N+1拍取得两个采样并提交槽位k，
 同时发出槽位k+1。流水线填满后吞吐率保持每拍一个槽位。1引擎×32槽位的RTL压力
-测试能在约65拍的768 kHz周期预算内完成；板级配置为4引擎×8槽位，调度余量更大。
+测试能在约65拍的768 kHz周期预算内完成。当前板级配置为两个独立Bank，每个Bank
+使用1个实体引擎×32槽位，因此共有2个实体振荡器、64个振荡器任务槽位。
 
 ROM使用推断式双读口存储和`$readmemh`初始化。是否真正映射到Gowin BSRAM、是否复制
 存储体以实现两个读口，仍需用户运行综合后从资源报告确认。
@@ -191,8 +206,8 @@ ROM使用推断式双读口存储和`$readmemh`初始化。是否真正映射到
 `tools/midi_uart_sender.py`已经按本协议更新：
 
 - “演奏通道”只影响Note On和Note Off，正常测试保持通道1；
-- 全局参数固定通过通道16发送；
-- 连接串口后自动发送Waveform、Pan、WT Position、Detune、Unison和ADSR当前值；
+- OSC A/B及全局参数固定通过通道16发送；
+- 连接串口后自动发送Pan以及OSC A/B各自的Waveform、WT Position、Detune、Unison和ADSR；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
 外部控制单片机发送示例：
@@ -208,6 +223,14 @@ BF 18 1B    Attack控制值27，约9.85 ms
 BF 19 36    Decay控制值54，约102.4 ms
 BF 1A 59    Sustain控制值89，约70.1%
 BF 1B 43    Release控制值67，约315.1 ms
+BF 1C 60    OSC B WT Position=96
+BF 1D 00    OSC B选择正弦波
+BF 1E 20    OSC B使用较小Detune
+BF 1F 02    OSC B使用2个Unison成员
+BF 20 1B    OSC B Attack控制值27
+BF 21 36    OSC B Decay控制值54
+BF 22 59    OSC B Sustain控制值89
+BF 23 43    OSC B Release控制值67
 ```
 
 如果连续发送多个CC，可以只发送一次`BF`，随后按“CC编号、数值”成对发送。只要中间
@@ -243,16 +266,18 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 顶层仿真覆盖以下行为：
 
 1. 通道1的CC不能修改合成参数；
-2. 通道16的CC10、20、21、22、23和24～27正确进入对应寄存器；
+2. 通道16的CC10、20～27和28～35正确进入全局、OSC A和OSC B寄存器；
 3. 通道16的Note On不能进入声部调度器；
 4. 通道1的Note On/Off、力度和Running Status保持原有行为；
 5. MIDI实时字节穿插不会破坏解析状态；
 6. Detune为0时Unison成员同频，增大Detune后相位步进有序展开；
 7. 原有32槽位分配、释放、满载和整组偷音回归通过。
 8. Acid波表ROM地址、同步读取、边界帧和帧间插值参考值通过单元仿真；
-9. CC21数值127能选择Acid模式，原四个控制值保持兼容；
+9. CC21和CC29数值127能为对应振荡器选择Acid模式，原四个控制值保持兼容；
 10. 1引擎×32槽位在加入同步读取流水线后仍未发生调度超时。
 11. Sustain为0时，Gate保持有效而包络在Decay后归零；
-12. 可调Release完成后能通知调度器回收槽位。
+12. 可调Release完成后能通知调度器回收槽位；
+13. 同一Note事件会按两组独立的Unison/Detune设置生成不同的任务数与相位步进；
+14. 两个1×32 Bank的输出有效脉冲对齐，调度无超时，并以0.5增益相加。
 
 本次只执行RTL编译与ModelSim功能仿真，没有运行Gowin综合和布局布线。
