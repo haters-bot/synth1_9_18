@@ -7,7 +7,9 @@ vmap work_top_midi sim/work_top_midi
 
 vlog -work work_top_midi \
     sim/fir_decimator_8x_ip_stub.v \
+    sim/sys_pll_50m_ip_stub.v \
     src/reset_release_sync.v \
+    src/sys_clock_manager.v \
     src/uart_rx.v \
     src/midi_note_parser.v \
     src/synth_control_router.v \
@@ -18,6 +20,7 @@ vlog -work work_top_midi \
     src/triangle_lut.v \
     src/square_lut.v \
     src/sawtooth_lut.v \
+    src/wavetable_phase_warp.v \
     src/acid_wavetable_rom.v \
     src/acid_wavetable_reader.v \
     src/oscillator_tdm_core.v \
@@ -45,10 +48,14 @@ add wave sim:/tb_top_midi_input/dut/osc_a_waveform_select
 add wave sim:/tb_top_midi_input/dut/osc_a_wt_position_current
 add wave sim:/tb_top_midi_input/dut/osc_a_detune_amount
 add wave sim:/tb_top_midi_input/dut/osc_a_unison_count
+add wave sim:/tb_top_midi_input/dut/osc_a_warp_mode
+add wave sim:/tb_top_midi_input/dut/osc_a_warp_amount
 add wave sim:/tb_top_midi_input/dut/osc_b_waveform_select
 add wave sim:/tb_top_midi_input/dut/osc_b_wt_position_current
 add wave sim:/tb_top_midi_input/dut/osc_b_detune_amount
 add wave sim:/tb_top_midi_input/dut/osc_b_unison_count
+add wave sim:/tb_top_midi_input/dut/osc_b_warp_mode
+add wave sim:/tb_top_midi_input/dut/osc_b_warp_amount
 add wave sim:/tb_top_midi_input/dut/osc_a_enabled
 add wave sim:/tb_top_midi_input/dut/osc_b_enabled
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_a_mix_gain_q8

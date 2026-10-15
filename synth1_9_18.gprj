@@ -5,27 +5,32 @@
     <Version>5</Version>
     <Device name="GW5AST-138B" pn="GW5AST-LV138PG484AC1/I0">gw5ast138b-011</Device>
     <FileList>
-        <File path="src/adsr_parameter_mapper.v" type="file.verilog" enable="1"/>
         <File path="src/acid_wavetable_reader.v" type="file.verilog" enable="1"/>
         <File path="src/acid_wavetable_rom.v" type="file.verilog" enable="1"/>
+        <File path="src/adsr_parameter_mapper.v" type="file.verilog" enable="1"/>
         <File path="src/advanced_fir_filter/fir_decimator_8x_ip.v" type="file.verilog" enable="1"/>
         <File path="src/basic_osc_v1.v" type="file.verilog" enable="1"/>
         <File path="src/fir_decimator_8x_wrapper.v" type="file.verilog" enable="1"/>
         <File path="src/freq_lut.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll/sys_pll_50m_ip.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll/sys_pll_50m_ip_mod.v" type="file.verilog" enable="1"/>
         <File path="src/i2s_tx.v" type="file.verilog" enable="1"/>
         <File path="src/key_debounce.v" type="file.verilog" enable="1"/>
         <File path="src/midi_note_parser.v" type="file.verilog" enable="1"/>
         <File path="src/oscillator_task_scheduler.v" type="file.verilog" enable="1"/>
         <File path="src/oscillator_tdm_bank.v" type="file.verilog" enable="1"/>
         <File path="src/oscillator_tdm_core.v" type="file.verilog" enable="1"/>
+        <File path="src/pll_init.v" type="file.verilog" enable="1"/>
         <File path="src/reset_release_sync.v" type="file.verilog" enable="1"/>
         <File path="src/sawtooth_lut.v" type="file.verilog" enable="1"/>
         <File path="src/sine_lut.v" type="file.verilog" enable="1"/>
         <File path="src/square_lut.v" type="file.verilog" enable="1"/>
         <File path="src/synth_control_router.v" type="file.verilog" enable="1"/>
+        <File path="src/sys_clock_manager.v" type="file.verilog" enable="1"/>
         <File path="src/top.v.v" type="file.verilog" enable="1"/>
         <File path="src/triangle_lut.v" type="file.verilog" enable="1"/>
         <File path="src/uart_rx.v" type="file.verilog" enable="1"/>
+        <File path="src/wavetable_phase_warp.v" type="file.verilog" enable="1"/>
         <File path="constraints/tang_mega_138k_audio_test.cst" type="file.cst" enable="1"/>
         <File path="src/timing.sdc" type="file.sdc" enable="1"/>
         <File path="src/synth1_9_18.rao" type="file.gao" enable="0"/>

@@ -34,6 +34,8 @@ CONTROL_CHANNEL = 16
 PAN_CC = 10
 OSC_A_CC = {
     "enable": 36,
+    "warp_mode": 38,
+    "warp_amount": 39,
     "wt_position": 20,
     "waveform": 21,
     "detune": 22,
@@ -45,6 +47,8 @@ OSC_A_CC = {
 }
 OSC_B_CC = {
     "enable": 37,
+    "warp_mode": 40,
+    "warp_amount": 41,
     "wt_position": 28,
     "waveform": 29,
     "detune": 30,
@@ -60,6 +64,11 @@ WAVEFORM_VALUES = {
     "方波": 64,
     "锯齿波": 96,
     "Acid波表": 127,
+}
+WARP_MODE_VALUES = {
+    "关闭": 0,
+    "PWM": 1,
+    "Sync": 2,
 }
 
 
@@ -89,6 +98,8 @@ class MidiUartSender:
             self.osc_controls[osc_name] = {
                 "enabled": tk.BooleanVar(value=True),
                 "waveform": tk.StringVar(value="方波"),
+                "warp_mode": tk.StringVar(value="关闭"),
+                "warp_amount": tk.IntVar(value=0),
                 "wt_position": tk.IntVar(value=0),
                 "detune": tk.IntVar(value=64),
                 "unison": tk.IntVar(value=1),
@@ -241,7 +252,24 @@ class MidiUartSender:
             command=lambda name=osc_name: self.send_oscillator_enable(name),
         ).grid(row=0, column=2, padx=(8, 4), sticky="w")
 
+        ttk.Label(parent, text="Warp模式").grid(
+            row=1, column=0, padx=4, sticky="w"
+        )
+        warp_mode_box = ttk.Combobox(
+            parent,
+            textvariable=controls["warp_mode"],
+            values=tuple(WARP_MODE_VALUES),
+            width=9,
+            state="readonly",
+        )
+        warp_mode_box.grid(row=1, column=1, padx=4, sticky="w")
+        warp_mode_box.bind(
+            "<<ComboboxSelected>>",
+            lambda _event, name=osc_name: self.send_warp_mode_selection(name),
+        )
+
         parameter_specs = (
+            ("Warp Amount", "warp_amount", 0, 127),
             ("WT Position", "wt_position", 0, 127),
             ("Detune", "detune", 0, 127),
             ("Unison", "unison", 1, 8),
@@ -251,7 +279,7 @@ class MidiUartSender:
             ("Release", "release", 0, 127),
         )
         for row, (label, key, minimum, maximum) in enumerate(
-            parameter_specs, start=1
+            parameter_specs, start=2
         ):
             variable = controls[key]
             controller = cc_map[key]
@@ -404,6 +432,14 @@ class MidiUartSender:
         if self.send_control_change(cc_map["waveform"], value, CONTROL_CHANNEL):
             self.status.set(f"OSC {osc_name}波形：{waveform_name}")
 
+    def send_warp_mode_selection(self, osc_name: str) -> None:
+        controls = self.osc_controls[osc_name]
+        cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
+        mode_name = controls["warp_mode"].get()
+        value = WARP_MODE_VALUES.get(mode_name, WARP_MODE_VALUES["关闭"])
+        if self.send_control_change(cc_map["warp_mode"], value, CONTROL_CHANNEL):
+            self.status.set(f"OSC {osc_name} Warp模式：{mode_name}")
+
     def send_oscillator_enable(self, osc_name: str) -> None:
         controls = self.osc_controls[osc_name]
         cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
@@ -423,7 +459,9 @@ class MidiUartSender:
             controls = self.osc_controls[osc_name]
             self.send_oscillator_enable(osc_name)
             self.send_waveform_selection(osc_name)
+            self.send_warp_mode_selection(osc_name)
             for key in (
+                "warp_amount",
                 "wt_position",
                 "detune",
                 "unison",

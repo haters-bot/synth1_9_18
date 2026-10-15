@@ -200,6 +200,8 @@ module tb_top_midi_input;
         send_cc(7'd25, 7'd34);
         send_cc(7'd26, 7'd56);
         send_cc(7'd27, 7'd0);
+        send_cc(7'd38, 7'd1);
+        send_cc(7'd39, 7'd96);
 
         send_cc(7'd28, 7'd42);
         send_cc(7'd29, 7'd0);
@@ -209,6 +211,8 @@ module tb_top_midi_input;
         send_cc(7'd33, 7'd8);
         send_cc(7'd34, 7'd100);
         send_cc(7'd35, 7'd0);
+        send_cc(7'd40, 7'd2);
+        send_cc(7'd41, 7'd127);
 
         repeat (3) @(posedge sys_clk);
         if (dut.osc_a_wt_position_target !== 7'd85
@@ -218,7 +222,9 @@ module tb_top_midi_input;
             || dut.osc_a_attack_control !== 7'd12
             || dut.osc_a_decay_control !== 7'd34
             || dut.osc_a_sustain_control_target !== 7'd56
-            || dut.osc_a_release_control !== 7'd0) begin
+            || dut.osc_a_release_control !== 7'd0
+            || dut.osc_a_warp_mode !== 2'd1
+            || dut.osc_a_warp_amount !== 7'd96) begin
             $display("ERROR: OSC A controls were not routed independently");
             errors = errors + 1;
         end
@@ -230,7 +236,9 @@ module tb_top_midi_input;
             || dut.osc_b_attack_control !== 7'd7
             || dut.osc_b_decay_control !== 7'd8
             || dut.osc_b_sustain_control_target !== 7'd100
-            || dut.osc_b_release_control !== 7'd0) begin
+            || dut.osc_b_release_control !== 7'd0
+            || dut.osc_b_warp_mode !== 2'd2
+            || dut.osc_b_warp_amount !== 7'd127) begin
             $display("ERROR: OSC B controls were not routed independently");
             errors = errors + 1;
         end

@@ -43,6 +43,8 @@ module tb_adsr_control;
         .clear_phase(1'b0),
         .waveform_select(3'd2),
         .wt_position(7'd0),
+        .warp_mode(2'd0),
+        .warp_amount(7'd0),
         .attack_phase_step(32'hFFFFFFFF),
         .decay_phase_step(32'hFFFFFFFF),
         .sustain_level(16'd0),

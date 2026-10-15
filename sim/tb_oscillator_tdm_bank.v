@@ -14,6 +14,8 @@ module tb_oscillator_tdm_bank;
     reg clear_phase;
     reg [2:0] waveform_select;
     reg [6:0] wt_position;
+    reg [1:0] warp_mode;
+    reg [6:0] warp_amount;
     reg [31:0] attack_phase_step;
     reg [31:0] decay_phase_step;
     reg [15:0] sustain_level;
@@ -56,6 +58,8 @@ module tb_oscillator_tdm_bank;
         .clear_phase               (clear_phase),
         .waveform_select           (waveform_select),
         .wt_position               (wt_position),
+        .warp_mode                 (warp_mode),
+        .warp_amount               (warp_amount),
         .attack_phase_step         (attack_phase_step),
         .decay_phase_step          (decay_phase_step),
         .sustain_level             (sustain_level),
@@ -136,6 +140,8 @@ module tb_oscillator_tdm_bank;
         clear_phase     = 1'b1;
         waveform_select = 3'd2;
         wt_position     = 7'd0;
+        warp_mode       = 2'd0;
+        warp_amount     = 7'd0;
         attack_phase_step = 32'hFFFFFFFF;
         decay_phase_step = 32'hFFFFFFFF;
         sustain_level = 16'h8000;

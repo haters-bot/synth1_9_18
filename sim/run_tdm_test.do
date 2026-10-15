@@ -11,6 +11,7 @@ vlog -work work_tdm \
     src/triangle_lut.v \
     src/square_lut.v \
     src/sawtooth_lut.v \
+    src/wavetable_phase_warp.v \
     src/acid_wavetable_rom.v \
     src/acid_wavetable_reader.v \
     src/oscillator_tdm_core.v \

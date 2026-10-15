@@ -18,6 +18,8 @@ module oscillator_tdm_core #(
     input  wire clear_phase,
     input  wire [2:0] waveform_select,
     input  wire [6:0] wt_position,
+    input  wire [1:0] warp_mode,
+    input  wire [6:0] warp_amount,
     input  wire [31:0] attack_phase_step,
     input  wire [31:0] decay_phase_step,
     input  wire [15:0] sustain_level,
@@ -63,6 +65,8 @@ module oscillator_tdm_core #(
     reg       issue_active;
     reg [2:0] waveform_select_batch;
     reg [6:0] wt_position_batch;
+    reg [1:0] warp_mode_batch;
+    reg [6:0] warp_amount_batch;
     reg [31:0] attack_phase_step_batch;
     reg [31:0] decay_phase_step_batch;
     reg [15:0] sustain_level_batch;
@@ -76,6 +80,7 @@ module oscillator_tdm_core #(
     reg        pipe_cancel;
     reg [7:0]  pipe_slot;
     reg [31:0] pipe_phase;
+    reg [7:0]  pipe_wave_address;
     reg [31:0] pipe_phase_step;
     reg        pipe_enable;
     reg        pipe_gate;
@@ -89,7 +94,8 @@ module oscillator_tdm_core #(
 
     wire issue_request;
     wire [31:0] issue_phase;
-    wire [7:0] issue_wave_address;
+    wire [7:0] issue_raw_wave_address;
+    wire [7:0] issue_warped_wave_address;
     wire acid_sample_valid;
     wire signed [15:0] acid_wave_sample;
     wire signed [15:0] sine_wave_sample;
@@ -127,7 +133,14 @@ module oscillator_tdm_core #(
 
     assign issue_request = busy && issue_active;
     assign issue_phase = phase_state[issue_slot];
-    assign issue_wave_address = issue_phase[31:24];
+    assign issue_raw_wave_address = issue_phase[31:24];
+
+    wavetable_phase_warp u_wavetable_phase_warp (
+        .raw_address   (issue_raw_wave_address),
+        .warp_mode     (warp_mode_batch),
+        .warp_amount   (warp_amount_batch),
+        .warped_address(issue_warped_wave_address)
+    );
 
     // Acid读取器在发出地址后一拍给出数据。两个地址端口同时读取相邻帧，
     // 因此帧间插值不会降低每拍一个槽位的吞吐率。
@@ -135,7 +148,7 @@ module oscillator_tdm_core #(
         .clk          (clk),
         .rst_n        (rst_n),
         .req_valid    (issue_request),
-        .phase_address(issue_wave_address),
+        .phase_address(issue_warped_wave_address),
         .wt_position  (wt_position_batch),
         .sample_valid (acid_sample_valid),
         .sample_data  (acid_wave_sample)
@@ -144,22 +157,22 @@ module oscillator_tdm_core #(
     // 旧有四种波形保持组合读取，但地址改为流水线中的待提交相位，
     // 从而与同步Acid波表的数据在同一提交拍对齐。
     sine_lut u_shared_sine_lut (
-        .addr(pipe_phase[31:24]),
+        .addr(pipe_wave_address),
         .data(sine_wave_sample)
     );
 
     triangle_lut u_shared_triangle_lut (
-        .addr(pipe_phase[31:24]),
+        .addr(pipe_wave_address),
         .data(triangle_wave_sample)
     );
 
     square_lut u_shared_square_lut (
-        .addr(pipe_phase[31:24]),
+        .addr(pipe_wave_address),
         .data(square_wave_sample)
     );
 
     sawtooth_lut u_shared_sawtooth_lut (
-        .addr(pipe_phase[31:24]),
+        .addr(pipe_wave_address),
         .data(sawtooth_wave_sample)
     );
 
@@ -242,6 +255,8 @@ module oscillator_tdm_core #(
             issue_active      <= 1'b0;
             waveform_select_batch <= 3'd2;
             wt_position_batch <= 7'd0;
+            warp_mode_batch <= 2'd0;
+            warp_amount_batch <= 7'd0;
             attack_phase_step_batch <= 32'd0;
             decay_phase_step_batch <= 32'd0;
             sustain_level_batch <= 16'd0;
@@ -261,6 +276,7 @@ module oscillator_tdm_core #(
             pipe_cancel       <= 1'b0;
             pipe_slot         <= 8'd0;
             pipe_phase        <= 32'd0;
+            pipe_wave_address <= 8'd0;
             pipe_phase_step   <= 32'd0;
             pipe_enable       <= 1'b0;
             pipe_gate         <= 1'b0;
@@ -310,6 +326,8 @@ module oscillator_tdm_core #(
                     mix_accumulator  <= {PARTIAL_SUM_WIDTH{1'b0}};
                     waveform_select_batch <= waveform_select;
                     wt_position_batch <= wt_position;
+                    warp_mode_batch <= warp_mode;
+                    warp_amount_batch <= warp_amount;
                     attack_phase_step_batch <= attack_phase_step;
                     decay_phase_step_batch <= decay_phase_step;
                     sustain_level_batch <= sustain_level;
@@ -434,6 +452,7 @@ module oscillator_tdm_core #(
                                 && (task_update_slot == issue_slot);
                     pipe_slot   <= issue_slot;
                     pipe_phase  <= phase_state[issue_slot];
+                    pipe_wave_address <= issue_warped_wave_address;
                     pipe_phase_step <= phase_step_state[issue_slot];
                     pipe_enable <= enable_state[issue_slot];
                     pipe_gate   <= gate_state[issue_slot];

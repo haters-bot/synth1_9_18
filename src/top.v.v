@@ -21,7 +21,9 @@ module top #(
     localparam integer OSC_TOTAL_SLOTS      =
         OSC_ENGINE_COUNT * SLOTS_PER_ENGINE;
 
+    wire clk_sys;
     wire rst_n_sys;
+    wire pll_locked;
     wire sample_tick;
     wire oversample_tick;
     wire oscillator_start_tick;
@@ -108,6 +110,8 @@ module top #(
     wire [15:0] osc_a_sustain_level;
     wire [31:0] osc_a_release_phase_step;
     wire        osc_a_enabled;
+    wire [1:0]  osc_a_warp_mode;
+    wire [6:0]  osc_a_warp_amount;
 
     wire [6:0] osc_b_wt_position_target;
     reg  [6:0] osc_b_wt_position_current;
@@ -124,6 +128,8 @@ module top #(
     wire [15:0] osc_b_sustain_level;
     wire [31:0] osc_b_release_phase_step;
     wire        osc_b_enabled;
+    wire [1:0]  osc_b_warp_mode;
+    wire [6:0]  osc_b_warp_amount;
 
     wire fir_input_ready;
     wire fir_output_valid;
@@ -134,16 +140,18 @@ module top #(
     assign MAX_SD   = 1'b1;
     assign MAX_GAIN = 1'b1;
 
-    reset_release_sync u_reset_release_sync (
-        .clk        (sys_clk),
+    sys_clock_manager u_sys_clock_manager (
+        .clk_ref_50m(sys_clk),
         .rst_n_async(rst_n),
-        .rst_n_sync (rst_n_sys)
+        .clk_sys    (clk_sys),
+        .rst_n_sys  (rst_n_sys),
+        .pll_locked (pll_locked)
     );
 
     assign oscillator_start_tick = oversample_tick;
 
     // 两组WT Position均在96 kHz边界每次移动一级。
-    always @(posedge sys_clk or negedge rst_n_sys) begin
+    always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
             osc_a_wt_position_current <= 7'd0;
             osc_b_wt_position_current <= 7'd0;
@@ -167,7 +175,7 @@ module top #(
     assign osc_b_mix_gain_target_q8 = !osc_b_enabled ? 9'd0
                                          : osc_a_enabled ? 9'd128 : 9'd256;
 
-    always @(posedge sys_clk or negedge rst_n_sys) begin
+    always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
             osc_a_mix_gain_q8 <= 9'd128;
             osc_b_mix_gain_q8 <= 9'd128;
@@ -185,7 +193,7 @@ module top #(
     end
 
     // Sustain会直接改变保持电平，因此同样在96 kHz边界逐级移动。
-    always @(posedge sys_clk or negedge rst_n_sys) begin
+    always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
             osc_a_sustain_control_current <= 7'd89;
             osc_b_sustain_control_current <= 7'd89;
@@ -212,7 +220,7 @@ module top #(
         .CLK_HZ   (50000000),
         .BAUD_RATE(UART_BAUD_RATE)
     ) u_uart_rx (
-        .clk          (sys_clk),
+        .clk          (clk_sys),
         .rst_n        (rst_n_sys),
         .rx           (uart_rx),
         .data         (uart_byte),
@@ -221,7 +229,7 @@ module top #(
     );
 
     midi_note_parser u_midi_note_parser (
-        .clk                   (sys_clk),
+        .clk                   (clk_sys),
         .rst_n                 (rst_n_sys),
         .byte_data             (uart_byte),
         .byte_valid            (uart_byte_valid),
@@ -241,7 +249,7 @@ module top #(
         .CONTROL_CHANNEL      (4'd15),
         .DEFAULT_UNISON_COUNT (DEFAULT_UNISON_COUNT)
     ) u_synth_control_router (
-        .clk                       (sys_clk),
+        .clk                       (clk_sys),
         .rst_n                     (rst_n_sys),
         .raw_note_event_valid      (midi_note_event_valid),
         .raw_note_event_on         (midi_note_event_on),
@@ -266,6 +274,8 @@ module top #(
         .osc_a_sustain_control     (osc_a_sustain_control_target),
         .osc_a_release_control     (osc_a_release_control),
         .osc_a_enabled             (osc_a_enabled),
+        .osc_a_warp_mode           (osc_a_warp_mode),
+        .osc_a_warp_amount         (osc_a_warp_amount),
         .osc_b_wt_position_target  (osc_b_wt_position_target),
         .osc_b_waveform_select     (osc_b_waveform_select),
         .osc_b_detune_amount       (osc_b_detune_amount),
@@ -274,7 +284,9 @@ module top #(
         .osc_b_decay_control       (osc_b_decay_control),
         .osc_b_sustain_control     (osc_b_sustain_control_target),
         .osc_b_release_control     (osc_b_release_control),
-        .osc_b_enabled             (osc_b_enabled)
+        .osc_b_enabled             (osc_b_enabled),
+        .osc_b_warp_mode           (osc_b_warp_mode),
+        .osc_b_warp_amount         (osc_b_warp_amount)
     );
 
     adsr_parameter_mapper u_osc_a_adsr_parameter_mapper (
@@ -303,7 +315,7 @@ module top #(
         .ENGINE_COUNT    (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE)
     ) u_osc_a_task_scheduler (
-        .clk                     (sys_clk),
+        .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
         .note_event_valid        (routed_note_event_valid),
         .note_event_on           (routed_note_event_on),
@@ -326,7 +338,7 @@ module top #(
         .ENGINE_COUNT    (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE)
     ) u_osc_b_task_scheduler (
-        .clk                     (sys_clk),
+        .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
         .note_event_valid        (routed_note_event_valid),
         .note_event_on           (routed_note_event_on),
@@ -349,12 +361,14 @@ module top #(
         .ENGINE_COUNT      (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE)
     ) u_osc_a_tdm_bank (
-        .clk                       (sys_clk),
+        .clk                       (clk_sys),
         .rst_n                     (rst_n_sys),
         .start_tick                (oscillator_start_tick),
         .clear_phase               (1'b0),
         .waveform_select           (osc_a_waveform_select),
         .wt_position               (osc_a_wt_position_current),
+        .warp_mode                 (osc_a_warp_mode),
+        .warp_amount               (osc_a_warp_amount),
         .attack_phase_step         (osc_a_attack_phase_step),
         .decay_phase_step          (osc_a_decay_phase_step),
         .sustain_level             (osc_a_sustain_level),
@@ -379,12 +393,14 @@ module top #(
         .ENGINE_COUNT      (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE)
     ) u_osc_b_tdm_bank (
-        .clk                       (sys_clk),
+        .clk                       (clk_sys),
         .rst_n                     (rst_n_sys),
         .start_tick                (oscillator_start_tick),
         .clear_phase               (1'b0),
         .waveform_select           (osc_b_waveform_select),
         .wt_position               (osc_b_wt_position_current),
+        .warp_mode                 (osc_b_warp_mode),
+        .warp_amount               (osc_b_warp_amount),
         .attack_phase_step         (osc_b_attack_phase_step),
         .decay_phase_step          (osc_b_decay_phase_step),
         .sustain_level             (osc_b_sustain_level),
@@ -414,7 +430,7 @@ module top #(
 
     // 先寄存两路DSP乘法结果，再进行求和与饱和。增加一个50 MHz时钟延迟，
     // 但切断Bank归一化、开关增益乘法和FIR输入之间的长组合路径。
-    always @(posedge sys_clk or negedge rst_n_sys) begin
+    always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
             osc_a_scaled_product <= 26'sd0;
             osc_b_scaled_product <= 26'sd0;
@@ -451,7 +467,7 @@ module top #(
     assign fir_input_sample = oscillator_mix;
 
     fir_decimator_8x_wrapper u_fir_decimator_8x_wrapper (
-        .clk          (sys_clk),
+        .clk          (clk_sys),
         .rst_n        (rst_n_sys),
         .in_valid     (oscillator_mix_valid),
         .sample_in    (fir_input_sample),
@@ -462,7 +478,7 @@ module top #(
     );
 
     i2s_tx u_max98357a_i2s_tx (
-        .sys_clk        (sys_clk),
+        .sys_clk        (clk_sys),
         .rst_n          (rst_n_sys),
         .sample_data    (filtered_sample),
         .bclk           (MAX_BCLK),

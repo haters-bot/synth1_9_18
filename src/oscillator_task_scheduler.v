@@ -37,6 +37,9 @@ module oscillator_task_scheduler #(
     localparam [2:0] STATE_REPLACE_NOTE = 3'd2;
     localparam [2:0] STATE_RELEASE_NOTE = 3'd3;
     localparam [2:0] STATE_LATCH_STEP   = 3'd4;
+    localparam [2:0] STATE_DETUNE_PREP  = 3'd5;
+    localparam [2:0] STATE_DETUNE_MULT  = 3'd6;
+    localparam [2:0] STATE_DETUNE_STORE = 3'd7;
 
     reg [2:0] state;
     reg [6:0] slot_note [0:TOTAL_SLOTS-1];
@@ -56,9 +59,20 @@ module oscillator_task_scheduler #(
     reg [5:0] allocation_cursor;
     reg [2:0] state_after_latch;
     reg [31:0] pending_base_phase_step_latched;
+    reg [31:0] pending_member_phase_step [0:MAX_UNISON-1];
+    reg [3:0] phase_calc_index;
+    reg [34:0] detune_delta_stage;
+    reg [31:0] detune_base_stage;
+    reg        detune_negative_stage;
+    reg [41:0] detune_product_stage;
+    reg [31:0] detune_base_product_stage;
+    reg        detune_negative_product_stage;
 
     wire [31:0] pending_base_phase_step;
     wire [7:0] allocation_candidate;
+    wire [41:0] rounded_detune_product;
+    wire [31:0] rounded_detune_delta;
+    wire [31:0] calculated_phase_step;
 
     reg matching_note_found;
     reg steal_note_found;
@@ -122,36 +136,32 @@ module oscillator_task_scheduler #(
         end
     endfunction
 
-    // 围绕目标音高对称展开Unison。detune_amount=64保持旧版本间距：
-    // 每个position约2.006 cents；0使全部成员同频，127约为旧间距的两倍。
-    function [31:0] make_phase_step;
+    // 只计算Detune乘法之前的偏移量，乘法和最终加减由后续流水级完成。
+    function [34:0] make_detune_delta;
         input [31:0] base_step;
         input [3:0] member_index;
         input [3:0] member_count;
-        input [6:0] requested_detune;
         integer position;
         integer magnitude;
         reg [31:0] detune_unit;
-        reg [34:0] detune_delta;
-        reg [41:0] detune_product;
         begin
             position = member_index*2 - (member_count - 1);
             magnitude = (position < 0) ? -position : position;
             detune_unit = (base_step >> 10)
                          + (base_step >> 13)
                          + (base_step >> 14);
-            detune_delta = scale_detune_unit(detune_unit, magnitude);
-            detune_product = detune_delta * requested_detune;
-            detune_delta = (detune_product + 42'd32) >> 6;
-
-            if (position < 0)
-                make_phase_step = base_step - detune_delta[31:0];
-            else
-                make_phase_step = base_step + detune_delta[31:0];
+            make_detune_delta
+                = scale_detune_unit(detune_unit, magnitude);
         end
     endfunction
 
     assign allocation_candidate = balanced_slot(scan_index);
+    assign rounded_detune_product = detune_product_stage + 42'd32;
+    assign rounded_detune_delta = rounded_detune_product[37:6];
+    assign calculated_phase_step
+        = detune_negative_product_stage
+            ? detune_base_product_stage - rounded_detune_delta
+            : detune_base_product_stage + rounded_detune_delta;
 
     always @(*) begin
         matching_note_found = 1'b0;
@@ -203,6 +213,13 @@ module oscillator_task_scheduler #(
             allocation_cursor <= 6'd0;
             state_after_latch <= STATE_IDLE;
             pending_base_phase_step_latched <= 32'd0;
+            phase_calc_index <= 4'd0;
+            detune_delta_stage <= 35'd0;
+            detune_base_stage <= 32'd0;
+            detune_negative_stage <= 1'b0;
+            detune_product_stage <= 42'd0;
+            detune_base_product_stage <= 32'd0;
+            detune_negative_product_stage <= 1'b0;
             active_task_count <= 6'd0;
 
             for (reset_index = 0;
@@ -249,6 +266,7 @@ module oscillator_task_scheduler #(
                             <= clamp_unison_count(unison_count);
                         pending_detune_amount <= detune_amount;
                         pending_member_index <= 4'd0;
+                        phase_calc_index <= 4'd0;
                         scan_index <= 6'd0;
                         scan_count <= 6'd0;
                         scheduler_busy <= 1'b1;
@@ -278,7 +296,51 @@ module oscillator_task_scheduler #(
                 STATE_LATCH_STEP: begin
                     pending_base_phase_step_latched
                         <= pending_base_phase_step;
-                    state <= state_after_latch;
+
+                    // Note Off沿用槽位中保存的相位步进，不需要重新计算Detune。
+                    if (state_after_latch == STATE_RELEASE_NOTE)
+                        state <= STATE_RELEASE_NOTE;
+                    else
+                        state <= STATE_DETUNE_PREP;
+                end
+
+                // 每个Unison成员先离线计算相位步进。三级流水把移位加法、
+                // DSP乘法和最终舍入加减分开，分配状态只读取计算结果。
+                STATE_DETUNE_PREP: begin
+                    detune_delta_stage
+                        <= make_detune_delta(
+                               pending_base_phase_step_latched,
+                               phase_calc_index,
+                               pending_unison_count);
+                    detune_base_stage
+                        <= pending_base_phase_step_latched;
+                    detune_negative_stage
+                        <= ((phase_calc_index << 1)
+                            < (pending_unison_count - 4'd1));
+                    state <= STATE_DETUNE_MULT;
+                end
+
+                STATE_DETUNE_MULT: begin
+                    detune_product_stage
+                        <= detune_delta_stage * pending_detune_amount;
+                    detune_base_product_stage <= detune_base_stage;
+                    detune_negative_product_stage
+                        <= detune_negative_stage;
+                    state <= STATE_DETUNE_STORE;
+                end
+
+                STATE_DETUNE_STORE: begin
+                    pending_member_phase_step[phase_calc_index]
+                        <= calculated_phase_step;
+
+                    if (phase_calc_index
+                        == pending_unison_count - 4'd1) begin
+                        phase_calc_index <= 4'd0;
+                        state <= state_after_latch;
+                    end else begin
+                        phase_calc_index <= phase_calc_index + 4'd1;
+                        state <= STATE_DETUNE_PREP;
+                    end
                 end
 
                 STATE_ALLOCATE: begin
@@ -286,20 +348,16 @@ module oscillator_task_scheduler #(
                         task_update_valid <= 1'b1;
                         task_update_slot <= allocation_candidate;
                         task_update_phase_step
-                            <= make_phase_step(pending_base_phase_step_latched,
-                                               pending_member_index,
-                                               pending_unison_count,
-                                               pending_detune_amount);
+                            <= pending_member_phase_step[
+                                   pending_member_index];
                         task_update_velocity <= pending_velocity;
                         task_update_enable <= 1'b1;
                         task_update_phase_reset <= 1'b1;
 
                         slot_note[allocation_candidate] <= pending_note;
                         slot_phase_step[allocation_candidate]
-                            <= make_phase_step(pending_base_phase_step_latched,
-                                               pending_member_index,
-                                               pending_unison_count,
-                                               pending_detune_amount);
+                            <= pending_member_phase_step[
+                                   pending_member_index];
                         slot_velocity[allocation_candidate]
                             <= pending_velocity;
                         slot_active[allocation_candidate] <= 1'b1;
@@ -349,19 +407,15 @@ module oscillator_task_scheduler #(
                         if (pending_member_index
                             < pending_unison_count) begin
                             task_update_phase_step
-                                <= make_phase_step(pending_base_phase_step_latched,
-                                                   pending_member_index,
-                                                   pending_unison_count,
-                                                   pending_detune_amount);
+                                <= pending_member_phase_step[
+                                       pending_member_index];
                             task_update_velocity <= pending_velocity;
                             task_update_enable <= 1'b1;
                             task_update_phase_reset <= 1'b1;
                             slot_note[scan_index] <= pending_note;
                             slot_phase_step[scan_index]
-                                <= make_phase_step(pending_base_phase_step_latched,
-                                                   pending_member_index,
-                                                   pending_unison_count,
-                                                   pending_detune_amount);
+                                <= pending_member_phase_step[
+                                       pending_member_index];
                             slot_velocity[scan_index] <= pending_velocity;
                             slot_releasing[scan_index] <= 1'b0;
                             pending_member_index

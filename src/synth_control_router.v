@@ -40,6 +40,8 @@ module synth_control_router #(
     output reg [6:0]  osc_a_sustain_control,
     output reg [6:0]  osc_a_release_control,
     output reg        osc_a_enabled,
+    output reg [1:0]  osc_a_warp_mode,
+    output reg [6:0]  osc_a_warp_amount,
 
     output reg [6:0]  osc_b_wt_position_target,
     output reg [2:0]  osc_b_waveform_select,
@@ -49,7 +51,9 @@ module synth_control_router #(
     output reg [6:0]  osc_b_decay_control,
     output reg [6:0]  osc_b_sustain_control,
     output reg [6:0]  osc_b_release_control,
-    output reg        osc_b_enabled
+    output reg        osc_b_enabled,
+    output reg [1:0]  osc_b_warp_mode,
+    output reg [6:0]  osc_b_warp_amount
 );
 
     localparam [6:0] CC_PAN = 7'd10;
@@ -73,6 +77,10 @@ module synth_control_router #(
     localparam [6:0] CC_B_RELEASE         = 7'd35;
     localparam [6:0] CC_A_ENABLE          = 7'd36;
     localparam [6:0] CC_B_ENABLE          = 7'd37;
+    localparam [6:0] CC_A_WARP_MODE       = 7'd38;
+    localparam [6:0] CC_A_WARP_AMOUNT     = 7'd39;
+    localparam [6:0] CC_B_WARP_MODE       = 7'd40;
+    localparam [6:0] CC_B_WARP_AMOUNT     = 7'd41;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -83,6 +91,17 @@ module synth_control_router #(
                 clamp_unison_count = 4'd8;
             else
                 clamp_unison_count = requested_count[3:0];
+        end
+    endfunction
+
+    function [1:0] decode_warp_mode;
+        input [6:0] requested_mode;
+        begin
+            case (requested_mode)
+                7'd1: decode_warp_mode = 2'd1; // PWM
+                7'd2: decode_warp_mode = 2'd2; // Sync
+                default: decode_warp_mode = 2'd0;
+            endcase
         end
     endfunction
 
@@ -113,6 +132,8 @@ module synth_control_router #(
             osc_a_sustain_control    <= 7'd89;
             osc_a_release_control    <= 7'd67;
             osc_a_enabled            <= 1'b1;
+            osc_a_warp_mode          <= 2'd0;
+            osc_a_warp_amount        <= 7'd0;
 
             osc_b_wt_position_target <= 7'd0;
             osc_b_waveform_select    <= 3'd2;
@@ -123,6 +144,8 @@ module synth_control_router #(
             osc_b_sustain_control    <= 7'd89;
             osc_b_release_control    <= 7'd67;
             osc_b_enabled            <= 1'b1;
+            osc_b_warp_mode          <= 2'd0;
+            osc_b_warp_amount        <= 7'd0;
         end else begin
             note_event_valid <= 1'b0;
 
@@ -181,6 +204,16 @@ module synth_control_router #(
                         osc_a_enabled <= (raw_control_change_value != 7'd0);
                     CC_B_ENABLE:
                         osc_b_enabled <= (raw_control_change_value != 7'd0);
+                    CC_A_WARP_MODE:
+                        osc_a_warp_mode
+                            <= decode_warp_mode(raw_control_change_value);
+                    CC_A_WARP_AMOUNT:
+                        osc_a_warp_amount <= raw_control_change_value;
+                    CC_B_WARP_MODE:
+                        osc_b_warp_mode
+                            <= decode_warp_mode(raw_control_change_value);
+                    CC_B_WARP_AMOUNT:
+                        osc_b_warp_amount <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

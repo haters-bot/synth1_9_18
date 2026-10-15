@@ -114,6 +114,10 @@ BF 14 55    通道16，OSC A的CC20，WT Position=85
 | OSC B | Release | 16 | 35 | 0～127 | 67 |
 | OSC A | Enable | 16 | 36 | 0=关闭，1～127=开启 | 开启 |
 | OSC B | Enable | 16 | 37 | 0=关闭，1～127=开启 | 开启 |
+| OSC A | Warp Mode | 16 | 38 | 0=关闭，1=PWM，2=Sync | 0 |
+| OSC A | Warp Amount | 16 | 39 | 0～127 | 0 |
+| OSC B | Warp Mode | 16 | 40 | 0=关闭，1=PWM，2=Sync | 0 |
+| OSC B | Warp Amount | 16 | 41 | 0～127 | 0 |
 
 两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
 波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。
@@ -199,7 +203,38 @@ y = A + (B - A) * frame_fraction / 8
 ROM使用推断式双读口存储和`$readmemh`初始化。是否真正映射到Gowin BSRAM、是否复制
 存储体以实现两个读口，仍需用户运行综合后从资源报告确认。
 
-## 8. Pan的当前边界
+## 8. PWM与Sync地址变换
+
+PWM和Sync位于相位累加器与波表地址之间。32位相位累加器仍按MIDI音高连续累加，
+Warp只变换送入波表的高8位地址，因此基音调度、逻辑声部状态和TDM槽位周期均不变。
+
+每个OSC拥有独立的`Warp Mode`和`Warp Amount`。TDM核心在一个768 kHz批次开始时锁存
+这两个参数，使同一批次内全部槽位使用一致的地址变换。组合地址变换不会给BRAM读取
+流水增加拍数。
+
+PWM模式使用分段线性地址映射：
+
+```text
+distance = raw[7] ? 255 - raw : raw
+offset   = distance * amount / 128
+address  = raw + offset
+```
+
+`amount=0`时地址完全不变；`amount=127`时，方波的正半周占空比从约50%缩短到约25%。
+同一个变换也可以作用于其他波表，但听感是相位弯曲，不一定等同于传统脉冲宽度调制。
+
+Sync模式把一个基准周期内的波表读取次数从1倍连续提高到8倍：
+
+```text
+factor_q4 = 16 + floor(amount * 113 / 128)
+address   = floor(raw * factor_q4 / 16) mod 256
+```
+
+`amount=0`对应1倍，`amount=127`对应8倍。非整数倍率会在基准相位回绕时产生硬同步式
+跳变和新谐波。768 kHz内部采样与后级共享FIR会降低混叠，但高Sync倍率与高音区仍可能
+产生超过内部Nyquist频率的成分，后续可根据实测增加倍率限制或按音高限制深度。
+
+## 9. Pan的当前边界
 
 协议层已经保存`pan_target[6:0]`，默认值64表示中央。当前`i2s_tx`仍把同一份单声道
 样本复制到左右声道，因此CC10暂时不会改变音频。
@@ -208,13 +243,13 @@ ROM使用推断式双读口存储和`$readmemh`初始化。是否真正映射到
 不能直接跳变，否则乘法增益的突变可能产生咔哒声。MAX98357A是单声道功放，实际听到
 左声道、右声道或混合结果还取决于模块的声道选择配置。
 
-## 9. 上位机应用方法
+## 10. 上位机应用方法
 
 `tools/midi_uart_sender.py`已经按本协议更新：
 
 - “演奏通道”只影响Note On和Note Off，正常测试保持通道1；
 - OSC A/B及全局参数固定通过通道16发送；
-- 连接串口后自动发送Pan以及OSC A/B各自的Enable、Waveform、WT Position、Detune、Unison和ADSR；
+- 连接串口后自动发送Pan以及OSC A/B各自的Enable、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
 外部控制单片机发送示例：
@@ -242,12 +277,16 @@ BF 24 00    关闭OSC A
 BF 24 7F    开启OSC A
 BF 25 00    关闭OSC B
 BF 25 7F    开启OSC B
+BF 26 01    OSC A选择PWM模式
+BF 27 60    OSC A Warp Amount=96
+BF 28 02    OSC B选择Sync模式
+BF 29 7F    OSC B Warp Amount=127，即8倍Sync
 ```
 
 如果连续发送多个CC，可以只发送一次`BF`，随后按“CC编号、数值”成对发送。只要中间
 没有出现其他非实时状态字节，Running Status就持续有效。
 
-## 10. 未来双输入迁移
+## 11. 未来双输入迁移
 
 正式版本建议保留两条独立物理链路：
 
