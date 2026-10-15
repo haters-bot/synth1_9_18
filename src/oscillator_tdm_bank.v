@@ -22,7 +22,7 @@ module oscillator_tdm_bank #(
     input  wire clear_phase,
     input  wire [2:0] waveform_select,
     input  wire [6:0] wt_position,
-    input  wire [1:0] warp_mode,
+    input  wire [3:0] warp_mode,
     input  wire [6:0] warp_amount,
     input  wire [31:0] attack_phase_step,
     input  wire [31:0] decay_phase_step,

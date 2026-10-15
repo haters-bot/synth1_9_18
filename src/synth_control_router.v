@@ -40,7 +40,7 @@ module synth_control_router #(
     output reg [6:0]  osc_a_sustain_control,
     output reg [6:0]  osc_a_release_control,
     output reg        osc_a_enabled,
-    output reg [1:0]  osc_a_warp_mode,
+    output reg [3:0]  osc_a_warp_mode,
     output reg [6:0]  osc_a_warp_amount,
 
     output reg [6:0]  osc_b_wt_position_target,
@@ -52,7 +52,7 @@ module synth_control_router #(
     output reg [6:0]  osc_b_sustain_control,
     output reg [6:0]  osc_b_release_control,
     output reg        osc_b_enabled,
-    output reg [1:0]  osc_b_warp_mode,
+    output reg [3:0]  osc_b_warp_mode,
     output reg [6:0]  osc_b_warp_amount
 );
 
@@ -94,14 +94,12 @@ module synth_control_router #(
         end
     endfunction
 
-    function [1:0] decode_warp_mode;
+    function [3:0] decode_warp_mode;
         input [6:0] requested_mode;
         begin
-            case (requested_mode)
-                7'd1: decode_warp_mode = 2'd1; // PWM
-                7'd2: decode_warp_mode = 2'd2; // Sync
-                default: decode_warp_mode = 2'd0;
-            endcase
+            // 当前实现使用0～11；未定义编号安全退回关闭状态。
+            decode_warp_mode = (requested_mode <= 7'd11)
+                             ? requested_mode[3:0] : 4'd0;
         end
     endfunction
 
@@ -132,7 +130,7 @@ module synth_control_router #(
             osc_a_sustain_control    <= 7'd89;
             osc_a_release_control    <= 7'd67;
             osc_a_enabled            <= 1'b1;
-            osc_a_warp_mode          <= 2'd0;
+            osc_a_warp_mode          <= 4'd0;
             osc_a_warp_amount        <= 7'd0;
 
             osc_b_wt_position_target <= 7'd0;
@@ -144,7 +142,7 @@ module synth_control_router #(
             osc_b_sustain_control    <= 7'd89;
             osc_b_release_control    <= 7'd67;
             osc_b_enabled            <= 1'b1;
-            osc_b_warp_mode          <= 2'd0;
+            osc_b_warp_mode          <= 4'd0;
             osc_b_warp_amount        <= 7'd0;
         end else begin
             note_event_valid <= 1'b0;

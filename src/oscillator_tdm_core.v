@@ -18,7 +18,7 @@ module oscillator_tdm_core #(
     input  wire clear_phase,
     input  wire [2:0] waveform_select,
     input  wire [6:0] wt_position,
-    input  wire [1:0] warp_mode,
+    input  wire [3:0] warp_mode,
     input  wire [6:0] warp_amount,
     input  wire [31:0] attack_phase_step,
     input  wire [31:0] decay_phase_step,
@@ -65,7 +65,7 @@ module oscillator_tdm_core #(
     reg       issue_active;
     reg [2:0] waveform_select_batch;
     reg [6:0] wt_position_batch;
-    reg [1:0] warp_mode_batch;
+    reg [3:0] warp_mode_batch;
     reg [6:0] warp_amount_batch;
     reg [31:0] attack_phase_step_batch;
     reg [31:0] decay_phase_step_batch;
@@ -255,7 +255,7 @@ module oscillator_tdm_core #(
             issue_active      <= 1'b0;
             waveform_select_batch <= 3'd2;
             wt_position_batch <= 7'd0;
-            warp_mode_batch <= 2'd0;
+            warp_mode_batch <= 4'd0;
             warp_amount_batch <= 7'd0;
             attack_phase_step_batch <= 32'd0;
             decay_phase_step_batch <= 32'd0;

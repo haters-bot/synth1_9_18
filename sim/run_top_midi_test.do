@@ -49,13 +49,15 @@ add wave sim:/tb_top_midi_input/dut/osc_a_wt_position_current
 add wave sim:/tb_top_midi_input/dut/osc_a_detune_amount
 add wave sim:/tb_top_midi_input/dut/osc_a_unison_count
 add wave sim:/tb_top_midi_input/dut/osc_a_warp_mode
-add wave sim:/tb_top_midi_input/dut/osc_a_warp_amount
+add wave sim:/tb_top_midi_input/dut/osc_a_warp_amount_target
+add wave sim:/tb_top_midi_input/dut/osc_a_warp_amount_current
 add wave sim:/tb_top_midi_input/dut/osc_b_waveform_select
 add wave sim:/tb_top_midi_input/dut/osc_b_wt_position_current
 add wave sim:/tb_top_midi_input/dut/osc_b_detune_amount
 add wave sim:/tb_top_midi_input/dut/osc_b_unison_count
 add wave sim:/tb_top_midi_input/dut/osc_b_warp_mode
-add wave sim:/tb_top_midi_input/dut/osc_b_warp_amount
+add wave sim:/tb_top_midi_input/dut/osc_b_warp_amount_target
+add wave sim:/tb_top_midi_input/dut/osc_b_warp_amount_current
 add wave sim:/tb_top_midi_input/dut/osc_a_enabled
 add wave sim:/tb_top_midi_input/dut/osc_b_enabled
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_a_mix_gain_q8

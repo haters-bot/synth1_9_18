@@ -24,6 +24,8 @@ module tb_top_midi_input;
     integer consecutive_silent_samples;
     integer wt_a_before;
     integer wt_b_before;
+    integer warp_a_before;
+    integer warp_b_before;
     integer valid_mismatch_count;
     integer switch_wait_samples;
 
@@ -200,7 +202,7 @@ module tb_top_midi_input;
         send_cc(7'd25, 7'd34);
         send_cc(7'd26, 7'd56);
         send_cc(7'd27, 7'd0);
-        send_cc(7'd38, 7'd1);
+        send_cc(7'd38, 7'd5);
         send_cc(7'd39, 7'd96);
 
         send_cc(7'd28, 7'd42);
@@ -211,7 +213,7 @@ module tb_top_midi_input;
         send_cc(7'd33, 7'd8);
         send_cc(7'd34, 7'd100);
         send_cc(7'd35, 7'd0);
-        send_cc(7'd40, 7'd2);
+        send_cc(7'd40, 7'd11);
         send_cc(7'd41, 7'd127);
 
         repeat (3) @(posedge sys_clk);
@@ -223,8 +225,8 @@ module tb_top_midi_input;
             || dut.osc_a_decay_control !== 7'd34
             || dut.osc_a_sustain_control_target !== 7'd56
             || dut.osc_a_release_control !== 7'd0
-            || dut.osc_a_warp_mode !== 2'd1
-            || dut.osc_a_warp_amount !== 7'd96) begin
+            || dut.osc_a_warp_mode !== 4'd5
+            || dut.osc_a_warp_amount_target !== 7'd96) begin
             $display("ERROR: OSC A controls were not routed independently");
             errors = errors + 1;
         end
@@ -237,21 +239,25 @@ module tb_top_midi_input;
             || dut.osc_b_decay_control !== 7'd8
             || dut.osc_b_sustain_control_target !== 7'd100
             || dut.osc_b_release_control !== 7'd0
-            || dut.osc_b_warp_mode !== 2'd2
-            || dut.osc_b_warp_amount !== 7'd127) begin
+            || dut.osc_b_warp_mode !== 4'd11
+            || dut.osc_b_warp_amount_target !== 7'd127) begin
             $display("ERROR: OSC B controls were not routed independently");
             errors = errors + 1;
         end
 
-        // 两组WT Position平滑器应分别朝自己的目标前进一步。
+        // 两组WT Position和Warp Amount平滑器应分别朝自己的目标前进一步。
         wt_a_before = dut.osc_a_wt_position_current;
         wt_b_before = dut.osc_b_wt_position_current;
+        warp_a_before = dut.osc_a_warp_amount_current;
+        warp_b_before = dut.osc_b_warp_amount_current;
         @(posedge dut.sample_tick);
         @(posedge sys_clk);
         #1;
         if (dut.osc_a_wt_position_current !== (wt_a_before + 1)
-            || dut.osc_b_wt_position_current !== (wt_b_before + 1)) begin
-            $display("ERROR: independent WT Position smoothing failed");
+            || dut.osc_b_wt_position_current !== (wt_b_before + 1)
+            || dut.osc_a_warp_amount_current !== (warp_a_before + 1)
+            || dut.osc_b_warp_amount_current !== (warp_b_before + 1)) begin
+            $display("ERROR: independent parameter smoothing failed");
             errors = errors + 1;
         end
 

@@ -69,6 +69,15 @@ WARP_MODE_VALUES = {
     "关闭": 0,
     "PWM": 1,
     "Sync": 2,
+    "Bend +": 3,
+    "Bend -": 4,
+    "Bend +/-": 5,
+    "Asym +": 6,
+    "Asym -": 7,
+    "Asym +/-": 8,
+    "Flip": 9,
+    "Mirror": 10,
+    "Quantize": 11,
 }
 
 

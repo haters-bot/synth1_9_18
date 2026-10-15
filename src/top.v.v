@@ -110,8 +110,9 @@ module top #(
     wire [15:0] osc_a_sustain_level;
     wire [31:0] osc_a_release_phase_step;
     wire        osc_a_enabled;
-    wire [1:0]  osc_a_warp_mode;
-    wire [6:0]  osc_a_warp_amount;
+    wire [3:0]  osc_a_warp_mode;
+    wire [6:0]  osc_a_warp_amount_target;
+    reg  [6:0]  osc_a_warp_amount_current;
 
     wire [6:0] osc_b_wt_position_target;
     reg  [6:0] osc_b_wt_position_current;
@@ -128,8 +129,9 @@ module top #(
     wire [15:0] osc_b_sustain_level;
     wire [31:0] osc_b_release_phase_step;
     wire        osc_b_enabled;
-    wire [1:0]  osc_b_warp_mode;
-    wire [6:0]  osc_b_warp_amount;
+    wire [3:0]  osc_b_warp_mode;
+    wire [6:0]  osc_b_warp_amount_target;
+    reg  [6:0]  osc_b_warp_amount_current;
 
     wire fir_input_ready;
     wire fir_output_valid;
@@ -150,11 +152,13 @@ module top #(
 
     assign oscillator_start_tick = oversample_tick;
 
-    // 两组WT Position均在96 kHz边界每次移动一级。
+    // 两组WT Position和Warp Amount均在96 kHz边界每次移动一级。
     always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
             osc_a_wt_position_current <= 7'd0;
             osc_b_wt_position_current <= 7'd0;
+            osc_a_warp_amount_current <= 7'd0;
+            osc_b_warp_amount_current <= 7'd0;
         end else if (sample_tick) begin
             if (osc_a_wt_position_current < osc_a_wt_position_target)
                 osc_a_wt_position_current <= osc_a_wt_position_current + 7'd1;
@@ -165,6 +169,16 @@ module top #(
                 osc_b_wt_position_current <= osc_b_wt_position_current + 7'd1;
             else if (osc_b_wt_position_current > osc_b_wt_position_target)
                 osc_b_wt_position_current <= osc_b_wt_position_current - 7'd1;
+
+            if (osc_a_warp_amount_current < osc_a_warp_amount_target)
+                osc_a_warp_amount_current <= osc_a_warp_amount_current + 7'd1;
+            else if (osc_a_warp_amount_current > osc_a_warp_amount_target)
+                osc_a_warp_amount_current <= osc_a_warp_amount_current - 7'd1;
+
+            if (osc_b_warp_amount_current < osc_b_warp_amount_target)
+                osc_b_warp_amount_current <= osc_b_warp_amount_current + 7'd1;
+            else if (osc_b_warp_amount_current > osc_b_warp_amount_target)
+                osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
         end
     end
 
@@ -275,7 +289,7 @@ module top #(
         .osc_a_release_control     (osc_a_release_control),
         .osc_a_enabled             (osc_a_enabled),
         .osc_a_warp_mode           (osc_a_warp_mode),
-        .osc_a_warp_amount         (osc_a_warp_amount),
+        .osc_a_warp_amount         (osc_a_warp_amount_target),
         .osc_b_wt_position_target  (osc_b_wt_position_target),
         .osc_b_waveform_select     (osc_b_waveform_select),
         .osc_b_detune_amount       (osc_b_detune_amount),
@@ -286,7 +300,7 @@ module top #(
         .osc_b_release_control     (osc_b_release_control),
         .osc_b_enabled             (osc_b_enabled),
         .osc_b_warp_mode           (osc_b_warp_mode),
-        .osc_b_warp_amount         (osc_b_warp_amount)
+        .osc_b_warp_amount         (osc_b_warp_amount_target)
     );
 
     adsr_parameter_mapper u_osc_a_adsr_parameter_mapper (
@@ -368,7 +382,7 @@ module top #(
         .waveform_select           (osc_a_waveform_select),
         .wt_position               (osc_a_wt_position_current),
         .warp_mode                 (osc_a_warp_mode),
-        .warp_amount               (osc_a_warp_amount),
+        .warp_amount               (osc_a_warp_amount_current),
         .attack_phase_step         (osc_a_attack_phase_step),
         .decay_phase_step          (osc_a_decay_phase_step),
         .sustain_level             (osc_a_sustain_level),
@@ -400,7 +414,7 @@ module top #(
         .waveform_select           (osc_b_waveform_select),
         .wt_position               (osc_b_wt_position_current),
         .warp_mode                 (osc_b_warp_mode),
-        .warp_amount               (osc_b_warp_amount),
+        .warp_amount               (osc_b_warp_amount_current),
         .attack_phase_step         (osc_b_attack_phase_step),
         .decay_phase_step          (osc_b_decay_phase_step),
         .sustain_level             (osc_b_sustain_level),
