@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import math
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -32,6 +34,7 @@ KEY_TO_NOTE = {
 }
 CONTROL_CHANNEL = 16
 PAN_CC = 10
+LFO_UPDATE_MS = 20
 OSC_A_CC = {
     "enable": 36,
     "warp_mode": 38,
@@ -95,6 +98,10 @@ class MidiUartSender:
         self.port_lookup: dict[str, str] = {}
         self.active_notes: set[int] = set()
         self.keyboard_notes: set[int] = set()
+        self.lfo_phase = {"A": 0.0, "B": 0.0}
+        self.lfo_last_value: dict[str, int | None] = {"A": None, "B": None}
+        self.lfo_last_time = time.monotonic()
+        self.lfo_after_id: str | None = None
 
         self.port_name = tk.StringVar()
         self.baud_rate = tk.StringVar(value="31250")
@@ -109,6 +116,9 @@ class MidiUartSender:
                 "waveform": tk.StringVar(value="方波"),
                 "warp_mode": tk.StringVar(value="关闭"),
                 "warp_amount": tk.IntVar(value=0),
+                "lfo_enabled": tk.BooleanVar(value=False),
+                "lfo_rate": tk.DoubleVar(value=0.5),
+                "lfo_depth": tk.IntVar(value=64),
                 "wt_position": tk.IntVar(value=0),
                 "detune": tk.IntVar(value=64),
                 "unison": tk.IntVar(value=1),
@@ -125,6 +135,7 @@ class MidiUartSender:
         self.root.bind_all("<KeyPress>", self._key_press)
         self.root.bind_all("<KeyRelease>", self._key_release)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 
     def _build_ui(self) -> None:
         connection = ttk.LabelFrame(self.root, text="串口连接", padding=10)
@@ -311,6 +322,46 @@ class MidiUartSender:
                 ),
             )
 
+        lfo_row = 2 + len(parameter_specs)
+        ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
+            row=lfo_row,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            pady=(6, 4),
+        )
+        ttk.Checkbutton(
+            parent,
+            text="临时Warp LFO",
+            variable=controls["lfo_enabled"],
+            command=lambda name=osc_name: self.toggle_warp_lfo(name),
+        ).grid(row=lfo_row + 1, column=0, columnspan=2, padx=4, sticky="w")
+
+        ttk.Label(parent, text="LFO速率/Hz").grid(
+            row=lfo_row + 2, column=0, padx=4, sticky="w"
+        )
+        tk.Scale(
+            parent,
+            from_=0.1,
+            to=10.0,
+            resolution=0.1,
+            orient=tk.HORIZONTAL,
+            variable=controls["lfo_rate"],
+            length=260,
+        ).grid(row=lfo_row + 2, column=1, padx=4)
+
+        ttk.Label(parent, text="LFO深度").grid(
+            row=lfo_row + 3, column=0, padx=4, sticky="w"
+        )
+        tk.Scale(
+            parent,
+            from_=0,
+            to=127,
+            orient=tk.HORIZONTAL,
+            variable=controls["lfo_depth"],
+            length=260,
+        ).grid(row=lfo_row + 3, column=1, padx=4)
+
     def refresh_ports(self) -> None:
         if list_ports is None:
             self.status.set("缺少 pyserial：请运行 pip install pyserial")
@@ -385,8 +436,9 @@ class MidiUartSender:
             port_to_close.close()
         self.connect_button.configure(text="连接")
         self.status.set("未连接")
+        self.lfo_last_value = {"A": None, "B": None}
 
-    def _send(self, message: bytes) -> bool:
+    def _send(self, message: bytes, log_message: bool = True) -> bool:
         if self.port is None or not self.port.is_open:
             self.status.set("请先连接串口")
             return False
@@ -399,11 +451,13 @@ class MidiUartSender:
                 failed_port.close()
             self.active_notes.clear()
             self.keyboard_notes.clear()
+            self.lfo_last_value = {"A": None, "B": None}
             self.connect_button.configure(text="连接")
             self.status.set("串口连接已断开")
             messagebox.showerror("发送失败", str(exc))
             return False
-        self._append_log("TX " + " ".join(f"{value:02X}" for value in message))
+        if log_message:
+            self._append_log("TX " + " ".join(f"{value:02X}" for value in message))
         return True
 
     def note_on(self, note: int) -> None:
@@ -424,14 +478,21 @@ class MidiUartSender:
             self.status.set(f"Note Off {note_name(note)} ({note})")
 
     def send_control_change(
-        self, controller: int, value: int, channel_number: int | None = None
+        self,
+        controller: int,
+        value: int,
+        channel_number: int | None = None,
+        log_message: bool = True,
     ) -> bool:
         if channel_number is None:
             channel_number = self.channel.get()
         channel = max(1, min(16, channel_number)) - 1
         controller = max(0, min(127, controller))
         value = max(0, min(127, value))
-        return self._send(bytes((0xB0 | channel, controller, value)))
+        return self._send(
+            bytes((0xB0 | channel, controller, value)),
+            log_message=log_message,
+        )
 
     def send_waveform_selection(self, osc_name: str) -> None:
         controls = self.osc_controls[osc_name]
@@ -461,6 +522,54 @@ class MidiUartSender:
     def send_synth_control(self, controller: int, value: int) -> None:
         if self.send_control_change(controller, value, CONTROL_CHANNEL):
             self.status.set(f"控制通道16：CC{controller} = {value}")
+
+    def toggle_warp_lfo(self, osc_name: str) -> None:
+        controls = self.osc_controls[osc_name]
+        enabled = bool(controls["lfo_enabled"].get())
+        self.lfo_phase[osc_name] = 0.0
+        self.lfo_last_value[osc_name] = None
+
+        if enabled:
+            self.status.set(f"OSC {osc_name}临时Warp LFO已开启")
+        else:
+            cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
+            base_value = int(controls["warp_amount"].get())
+            self.send_control_change(
+                cc_map["warp_amount"], base_value, CONTROL_CHANNEL
+            )
+            self.status.set(f"OSC {osc_name}临时Warp LFO已关闭")
+
+    def _update_lfos(self) -> None:
+        now = time.monotonic()
+        elapsed = min(now - self.lfo_last_time, 0.25)
+        self.lfo_last_time = now
+
+        for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
+            controls = self.osc_controls[osc_name]
+            if not controls["lfo_enabled"].get():
+                continue
+
+            if self.port is None or not self.port.is_open:
+                continue
+
+            rate = max(0.1, min(10.0, float(controls["lfo_rate"].get())))
+            depth = max(0, min(127, int(controls["lfo_depth"].get())))
+            base_value = max(0, min(127, int(controls["warp_amount"].get())))
+            phase = self.lfo_phase[osc_name] + math.tau * rate * elapsed
+            self.lfo_phase[osc_name] = phase % math.tau
+            lfo_value = round(base_value + depth * math.sin(phase))
+            lfo_value = max(0, min(127, lfo_value))
+
+            if lfo_value != self.lfo_last_value[osc_name]:
+                if self.send_control_change(
+                    cc_map["warp_amount"],
+                    lfo_value,
+                    CONTROL_CHANNEL,
+                    log_message=False,
+                ):
+                    self.lfo_last_value[osc_name] = lfo_value
+
+        self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 
     def send_all_synth_controls(self) -> None:
         self.send_synth_control(PAN_CC, self.pan.get())
@@ -514,6 +623,9 @@ class MidiUartSender:
         self.log.configure(state=tk.DISABLED)
 
     def close(self) -> None:
+        if self.lfo_after_id is not None:
+            self.root.after_cancel(self.lfo_after_id)
+            self.lfo_after_id = None
         self.disconnect()
         self.root.destroy()
 

@@ -277,6 +277,12 @@ Quantize不使用乘法器。`Warp Amount[6:4]`决定清除1～7个地址低位�
 - 连接串口后自动发送Pan以及OSC A/B各自的Enable、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
+OSC A和OSC B面板各带一个临时`Warp LFO`。它只存在于Python测试工具中，以当前
+`Warp Amount`滑块为中心，用正弦波按设定深度产生CC39或CC41。速率范围为
+`0.1～10 Hz`，更新周期为20 ms。数值超过0～127时会钳位；关闭LFO后立即恢复到
+滑块所设的基础值。单个LFO最多发送50条CC消息每秒，约占31250 bit/s MIDI链路的
+4.8%，两个同时开启约占9.6%。
+
 外部控制单片机发送示例：
 
 ```text
