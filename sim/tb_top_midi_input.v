@@ -261,6 +261,40 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
+        // 非零深度下切换Warp模式时，必须先退回深度0，再提交新模式。
+        if (dut.osc_a_warp_mode_active !== 4'd5) begin
+            $display("ERROR: OSC A initial active warp mode is incorrect");
+            errors = errors + 1;
+        end
+        send_cc(7'd38, 7'd3);
+        if ((dut.osc_a_warp_amount_current != 7'd0)
+            && (dut.osc_a_warp_mode_active != 4'd5)) begin
+            $display("ERROR: warp mode changed before amount returned to zero");
+            errors = errors + 1;
+        end
+
+        switch_wait_samples = 0;
+        while ((dut.osc_a_warp_mode_active != 4'd3)
+               && (switch_wait_samples < 140)) begin
+            @(posedge dut.sample_tick);
+            @(posedge sys_clk);
+            #1;
+            switch_wait_samples = switch_wait_samples + 1;
+        end
+        if (dut.osc_a_warp_mode_active !== 4'd3
+            || dut.osc_a_warp_amount_current !== 7'd0) begin
+            $display("ERROR: clickless warp mode transition failed");
+            errors = errors + 1;
+        end
+
+        @(posedge dut.sample_tick);
+        @(posedge sys_clk);
+        #1;
+        if (dut.osc_a_warp_amount_current !== 7'd1) begin
+            $display("ERROR: warp amount did not rise after mode transition");
+            errors = errors + 1;
+        end
+
         // 关闭OSC A后，A平滑降到0，仍开启的B平滑升到单位增益。
         send_cc(7'd36, 7'd0);
         switch_wait_samples = 0;

@@ -34,7 +34,8 @@ KEY_TO_NOTE = {
 }
 CONTROL_CHANNEL = 16
 PAN_CC = 10
-LFO_UPDATE_MS = 20
+# 200 Hz控制刷新使10 Hz LFO仍有20个控制点；仅在量化值变化时发送CC。
+LFO_UPDATE_MS = 5
 OSC_A_CC = {
     "enable": 36,
     "warp_mode": 38,

@@ -111,6 +111,7 @@ module top #(
     wire [31:0] osc_a_release_phase_step;
     wire        osc_a_enabled;
     wire [3:0]  osc_a_warp_mode;
+    reg  [3:0]  osc_a_warp_mode_active;
     wire [6:0]  osc_a_warp_amount_target;
     reg  [6:0]  osc_a_warp_amount_current;
 
@@ -130,6 +131,7 @@ module top #(
     wire [31:0] osc_b_release_phase_step;
     wire        osc_b_enabled;
     wire [3:0]  osc_b_warp_mode;
+    reg  [3:0]  osc_b_warp_mode_active;
     wire [6:0]  osc_b_warp_amount_target;
     reg  [6:0]  osc_b_warp_amount_current;
 
@@ -157,6 +159,8 @@ module top #(
         if (!rst_n_sys) begin
             osc_a_wt_position_current <= 7'd0;
             osc_b_wt_position_current <= 7'd0;
+            osc_a_warp_mode_active <= 4'd0;
+            osc_b_warp_mode_active <= 4'd0;
             osc_a_warp_amount_current <= 7'd0;
             osc_b_warp_amount_current <= 7'd0;
         end else if (sample_tick) begin
@@ -170,15 +174,33 @@ module top #(
             else if (osc_b_wt_position_current > osc_b_wt_position_target)
                 osc_b_wt_position_current <= osc_b_wt_position_current - 7'd1;
 
-            if (osc_a_warp_amount_current < osc_a_warp_amount_target)
+            // Warp模式只在深度为0时切换。切换过程中先平滑退回原始地址，
+            // 再换模式并升到新目标，避免两种地址映射直接跳变产生咔哒声。
+            if (osc_a_warp_mode_active != osc_a_warp_mode) begin
+                if (osc_a_warp_amount_current != 7'd0)
+                    osc_a_warp_amount_current <= osc_a_warp_amount_current - 7'd1;
+                else
+                    osc_a_warp_mode_active <= osc_a_warp_mode;
+            end else if (osc_a_warp_mode_active == 4'd0) begin
+                osc_a_warp_amount_current <= 7'd0;
+            end else if (osc_a_warp_amount_current < osc_a_warp_amount_target) begin
                 osc_a_warp_amount_current <= osc_a_warp_amount_current + 7'd1;
-            else if (osc_a_warp_amount_current > osc_a_warp_amount_target)
+            end else if (osc_a_warp_amount_current > osc_a_warp_amount_target) begin
                 osc_a_warp_amount_current <= osc_a_warp_amount_current - 7'd1;
+            end
 
-            if (osc_b_warp_amount_current < osc_b_warp_amount_target)
+            if (osc_b_warp_mode_active != osc_b_warp_mode) begin
+                if (osc_b_warp_amount_current != 7'd0)
+                    osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
+                else
+                    osc_b_warp_mode_active <= osc_b_warp_mode;
+            end else if (osc_b_warp_mode_active == 4'd0) begin
+                osc_b_warp_amount_current <= 7'd0;
+            end else if (osc_b_warp_amount_current < osc_b_warp_amount_target) begin
                 osc_b_warp_amount_current <= osc_b_warp_amount_current + 7'd1;
-            else if (osc_b_warp_amount_current > osc_b_warp_amount_target)
+            end else if (osc_b_warp_amount_current > osc_b_warp_amount_target) begin
                 osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
+            end
         end
     end
 
@@ -381,7 +403,7 @@ module top #(
         .clear_phase               (1'b0),
         .waveform_select           (osc_a_waveform_select),
         .wt_position               (osc_a_wt_position_current),
-        .warp_mode                 (osc_a_warp_mode),
+        .warp_mode                 (osc_a_warp_mode_active),
         .warp_amount               (osc_a_warp_amount_current),
         .attack_phase_step         (osc_a_attack_phase_step),
         .decay_phase_step          (osc_a_decay_phase_step),
@@ -413,7 +435,7 @@ module top #(
         .clear_phase               (1'b0),
         .waveform_select           (osc_b_waveform_select),
         .wt_position               (osc_b_wt_position_current),
-        .warp_mode                 (osc_b_warp_mode),
+        .warp_mode                 (osc_b_warp_mode_active),
         .warp_amount               (osc_b_warp_amount_current),
         .attack_phase_step         (osc_b_attack_phase_step),
         .decay_phase_step          (osc_b_decay_phase_step),
