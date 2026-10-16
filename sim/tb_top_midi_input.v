@@ -38,7 +38,10 @@ module tb_top_midi_input;
 
     top #(
         .UART_BAUD_RATE(TEST_UART_BAUD),
-        .DEFAULT_UNISON_COUNT(1)
+        .DEFAULT_UNISON_COUNT(1),
+        // 本测试专注 MIDI 路由顺序；容量由独立的 2×32 测试覆盖。
+        .OSC_ENGINE_COUNT(1),
+        .SLOTS_PER_ENGINE(32)
     ) dut (
         .sys_clk (sys_clk),
         .rst_n   (rst_n),
