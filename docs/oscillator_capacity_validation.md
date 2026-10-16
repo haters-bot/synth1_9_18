@@ -95,3 +95,26 @@ SLOTS_PER_ENGINE = 32
 | PLL 生成时钟实际 Fmax | 45.120 MHz |
 
 本次报告仍有 `PR1014`：`sys_clk_d` 使用了通用布线资源；生成时钟存在 1306 个 Setup 违例。它属于当前时钟树/约束问题，与 2×32 的任务调度容量是两个独立问题。容量验证已经通过，但正式提高系统时钟或上板前仍需继续处理该时钟违例。
+
+## 完整顶层 MIDI 验证
+
+新增 `sim/tb_top_dual_unison8.v`，直接例化当前 `top`，通过 UART 发送控制通道 CC 和演奏通道 Note On：
+
+- OSC A、OSC B 同时启用；
+- 两个振荡器的 Unison 都设置为 8；
+- 依次发送 8 个音符，因此每个 Bank 都应分配 `8 × 8 = 64` 个活动任务；
+- 检查两个 Bank 的采样有效脉冲同步、无调度溢出、UART 无帧错误。
+
+测试命令：
+
+```text
+vsim -c -do "do sim/run_top_dual_unison8_test.do"
+```
+
+实测结果：
+
+```text
+PASS: top dual oscillator, 8 voices x Unison=8, 64 tasks per bank
+```
+
+这一项验证覆盖了从 MIDI 输入、控制参数路由、两个独立调度器，到两个 32 槽 TDM Bank 的完整路径。
