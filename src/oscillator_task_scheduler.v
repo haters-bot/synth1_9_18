@@ -27,7 +27,7 @@ module oscillator_task_scheduler #(
     output reg [6:0]  task_update_velocity,
     output reg        task_update_enable,
     output reg        task_update_phase_reset,
-    // 8 voices × unison 8 = 64 tasks, so 6 bits are insufficient.
+    // 8 个复音各使用 8 个 Unison 成员时共有 64 个任务，6 位无法表示 64。
     output reg [6:0]  active_task_count,
     output reg        scheduler_busy
 );

@@ -248,9 +248,10 @@ module tb_dual_osc_capacity #(
         if (!nonzero_seen_a || !nonzero_seen_b)
             errors = errors + 1;
 
-        $display("RESULT: capacity=%0dx%0d total=%0d required=%0d valid=%0d commitsA=%0d commitsB=%0d overrunA=%0d overrunB=%0d errors=%0d",
-                 ENGINE_COUNT, SLOTS_PER_ENGINE, TOTAL_SLOTS,
-                 REQUIRED_SLOTS, valid_count, commit_count_a, commit_count_b,
+        $display("RESULT: capacity=%0dx%0d voices=%0d unison=%0d total=%0d required=%0d valid=%0d commitsA=%0d commitsB=%0d overrunA=%0d overrunB=%0d errors=%0d",
+                 ENGINE_COUNT, SLOTS_PER_ENGINE, VOICE_COUNT, UNISON_COUNT,
+                 TOTAL_SLOTS, REQUIRED_SLOTS, valid_count,
+                 commit_count_a, commit_count_b,
                  overrun_seen_a, overrun_seen_b, errors);
         $stop;
     end

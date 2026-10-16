@@ -22,7 +22,7 @@ module tb_oscillator_task_scheduler;
     wire [6:0] task_update_velocity;
     wire task_update_enable;
     wire task_update_phase_reset;
-    wire [5:0] active_task_count;
+    wire [6:0] active_task_count;
     wire scheduler_busy;
 
     integer errors;
@@ -183,7 +183,7 @@ module tb_oscillator_task_scheduler;
              note_index = note_index + 1)
             send_note(1'b1, 7'd60 + note_index, 4'd4);
 
-        if (active_task_count != 6'd32) begin
+        if (active_task_count != 7'd32) begin
             $display("ERROR: full pool count is %0d", active_task_count);
             errors = errors + 1;
         end

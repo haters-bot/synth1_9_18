@@ -36,7 +36,7 @@ module oscillator_tdm_bank #(
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
-    // 7 bits represent all active tasks when 8 voices each use unison=8.
+    // 8 个复音各使用 8 个 Unison 成员时共有 64 个任务，活动计数使用 7 位。
     input  wire [6:0]            active_task_count,
 
     output reg signed [15:0] sample_out,
@@ -66,14 +66,18 @@ module oscillator_tdm_bank #(
              engine_index < ENGINE_COUNT;
              engine_index = engine_index + 1) begin : GEN_ENGINE
 
+            localparam [7:0] ENGINE_BASE_SLOT =
+                engine_index * SLOTS_PER_ENGINE;
+            localparam [7:0] ENGINE_END_SLOT =
+                (engine_index + 1) * SLOTS_PER_ENGINE;
             wire engine_update_selected;
             wire [7:0] engine_local_slot;
 
             assign engine_update_selected = task_update_valid
-                && (task_update_slot >= engine_index*SLOTS_PER_ENGINE)
-                && (task_update_slot < (engine_index+1)*SLOTS_PER_ENGINE);
+                && (task_update_slot >= ENGINE_BASE_SLOT)
+                && (task_update_slot < ENGINE_END_SLOT);
             assign engine_local_slot = task_update_slot
-                                     - engine_index*SLOTS_PER_ENGINE;
+                                     - ENGINE_BASE_SLOT;
 
             oscillator_tdm_core #(
                 .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
