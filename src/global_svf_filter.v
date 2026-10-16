@@ -11,7 +11,7 @@ module global_svf_filter(
     input  wire signed [15:0] sample_in,
     output wire               in_ready,
 
-    input  wire [1:0]         filter_mode,
+    input  wire [2:0]         filter_mode,
     input  wire [6:0]         cutoff_control,
     input  wire [6:0]         resonance_control,
 
@@ -24,6 +24,7 @@ module global_svf_filter(
     localparam [1:0] FILTER_LOWPASS  = 2'd1;
     localparam [1:0] FILTER_HIGHPASS = 2'd2;
     localparam [1:0] FILTER_BANDPASS = 2'd3;
+    localparam [2:0] FILTER_NOTCH    = 3'd4;
 
     localparam [3:0] STATE_IDLE        = 4'd0;
     localparam [3:0] STATE_LOW_MUL     = 4'd1;
@@ -45,7 +46,7 @@ module global_svf_filter(
     reg signed [39:0] high_work_q16;
     reg signed [39:0] band_work_q16;
 
-    reg [1:0]  mode_latched;
+    reg [2:0]  mode_latched;
     reg [17:0] cutoff_coefficient_latched;
     reg [17:0] damping_coefficient_latched;
 
@@ -226,6 +227,10 @@ module global_svf_filter(
                                 sample_out <= saturate_q16_to_s16(high_work_q16);
                             FILTER_BANDPASS:
                                 sample_out <= saturate_q16_to_s16(band_work_q16);
+                            FILTER_NOTCH:
+                                sample_out <= saturate_q16_to_s16(
+                                    low_work_q16 + high_work_q16
+                                );
                             default:
                                 sample_out <= saturate_q16_to_s16(input_sample_q16);
                         endcase

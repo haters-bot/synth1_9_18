@@ -6,7 +6,7 @@ module tb_global_svf_filter;
     reg rst_n;
     reg in_valid;
     reg signed [15:0] sample_in;
-    reg [1:0] filter_mode;
+    reg [2:0] filter_mode;
     reg [6:0] cutoff_control;
     reg [6:0] resonance_control;
 
@@ -67,7 +67,7 @@ module tb_global_svf_filter;
         rst_n = 1'b0;
         in_valid = 1'b0;
         sample_in = 16'sd0;
-        filter_mode = 2'd0;
+        filter_mode = 3'd0;
         cutoff_control = 7'd127;
         resonance_control = 7'd0;
         errors = 0;
@@ -90,7 +90,7 @@ module tb_global_svf_filter;
         end
 
         // 低通面对直流输入应收敛到输入电平。
-        filter_mode = 2'd1;
+        filter_mode = 3'd1;
         cutoff_control = 7'd127;
         resonance_control = 7'd0;
         for (sample_index = 0; sample_index < 160;
@@ -103,7 +103,7 @@ module tb_global_svf_filter;
         end
 
         // 高通面对稳定直流应衰减到接近0。
-        filter_mode = 2'd2;
+        filter_mode = 3'd2;
         for (sample_index = 0; sample_index < 160;
              sample_index = sample_index + 1)
             process_sample(16'sd10000);
@@ -114,7 +114,7 @@ module tb_global_svf_filter;
         end
 
         // 带通同样应拒绝稳定直流。
-        filter_mode = 2'd3;
+        filter_mode = 3'd3;
         for (sample_index = 0; sample_index < 80;
              sample_index = sample_index + 1)
             process_sample(16'sd10000);
@@ -124,8 +124,18 @@ module tb_global_svf_filter;
             errors = errors + 1;
         end
 
+        // 陷波由Low+High组成，面对直流时应保留接近原始电平。
+        filter_mode = 3'd4;
+        for (sample_index = 0; sample_index < 40;
+             sample_index = sample_index + 1)
+            process_sample(16'sd10000);
+        if (captured_sample < 16'sd9800 || captured_sample > 16'sd10200) begin
+            $display("ERROR: notch DC pass failed: %0d", captured_sample);
+            errors = errors + 1;
+        end
+
         // 约1.1 kHz截止频率应明显抑制每采样翻转的高频信号。
-        filter_mode = 2'd1;
+        filter_mode = 3'd1;
         cutoff_control = 7'd64;
         resonance_control = 7'd0;
         for (sample_index = 0; sample_index < 500;
@@ -144,7 +154,7 @@ module tb_global_svf_filter;
         end
 
         // 使用相同状态切换到高通后，高频测试信号应保留主要幅度。
-        filter_mode = 2'd2;
+        filter_mode = 3'd2;
         for (sample_index = 0; sample_index < 40;
              sample_index = sample_index + 1) begin
             if (sample_index[0])
@@ -182,7 +192,7 @@ module tb_global_svf_filter;
         end
 
         if (errors == 0)
-            $display("PASS: global SVF bypass, latency, DC, and frequency responses");
+            $display("PASS: global SVF bypass, notch, latency, DC, and frequency responses");
         else
             $display("FAIL: %0d error(s)", errors);
         $finish;

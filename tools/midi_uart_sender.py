@@ -37,6 +37,7 @@ PAN_CC = 10
 FILTER_MODE_CC = 42
 FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
+FILTER_MIX_CC = 45
 # 200 Hz控制刷新使10 Hz LFO仍有20个控制点；仅在量化值变化时发送CC。
 LFO_UPDATE_MS = 5
 OSC_A_CC = {
@@ -91,6 +92,9 @@ FILTER_MODE_VALUES = {
     "低通": 1,
     "高通": 2,
     "带通": 3,
+    "陷波": 4,
+    "梳状 +": 5,
+    "梳状 -": 6,
 }
 
 
@@ -121,6 +125,7 @@ class MidiUartSender:
         self.filter_mode = tk.StringVar(value="旁路")
         self.filter_cutoff = tk.IntVar(value=127)
         self.filter_resonance = tk.IntVar(value=0)
+        self.filter_mix = tk.IntVar(value=127)
         self.osc_controls = {}
         for osc_name in ("A", "B"):
             # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
@@ -236,7 +241,7 @@ class MidiUartSender:
             filter_frame,
             textvariable=self.filter_mode,
             values=tuple(FILTER_MODE_VALUES.keys()),
-            width=8,
+            width=10,
             state="readonly",
         )
         filter_mode_box.grid(row=0, column=1, padx=4)
@@ -278,6 +283,23 @@ class MidiUartSender:
             "<ButtonRelease-1>",
             lambda _event: self.send_synth_control(
                 FILTER_RESONANCE_CC, self.filter_resonance.get()
+            ),
+        )
+
+        ttk.Label(filter_frame, text="Mix").grid(row=1, column=2, padx=(12, 4))
+        mix_scale = tk.Scale(
+            filter_frame,
+            from_=0,
+            to=127,
+            orient=tk.HORIZONTAL,
+            variable=self.filter_mix,
+            length=210,
+        )
+        mix_scale.grid(row=1, column=3, padx=4)
+        mix_scale.bind(
+            "<ButtonRelease-1>",
+            lambda _event: self.send_synth_control(
+                FILTER_MIX_CC, self.filter_mix.get()
             ),
         )
 
@@ -654,6 +676,7 @@ class MidiUartSender:
         self.send_synth_control(
             FILTER_RESONANCE_CC, self.filter_resonance.get()
         )
+        self.send_synth_control(FILTER_MIX_CC, self.filter_mix.get())
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]
             self.send_oscillator_enable(osc_name)

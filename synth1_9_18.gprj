@@ -12,6 +12,8 @@
         <File path="src/basic_osc_v1.v" type="file.verilog" enable="1"/>
         <File path="src/fir_decimator_8x_wrapper.v" type="file.verilog" enable="1"/>
         <File path="src/freq_lut.v" type="file.verilog" enable="1"/>
+        <File path="src/global_comb_filter.v" type="file.verilog" enable="1"/>
+        <File path="src/global_filter.v" type="file.verilog" enable="1"/>
         <File path="src/global_svf_filter.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll/sys_pll_50m_ip.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll/sys_pll_50m_ip_mod.v" type="file.verilog" enable="1"/>

@@ -218,6 +218,7 @@ module tb_top_midi_input;
         send_cc(7'd42, 7'd1);
         send_cc(7'd43, 7'd80);
         send_cc(7'd44, 7'd48);
+        send_cc(7'd45, 7'd72);
 
         repeat (3) @(posedge sys_clk);
         if (dut.osc_a_wt_position_target !== 7'd85
@@ -248,9 +249,10 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
-        if (dut.filter_mode !== 2'd1
+        if (dut.filter_mode_target !== 3'd1
             || dut.filter_cutoff_target !== 7'd80
-            || dut.filter_resonance_target !== 7'd48) begin
+            || dut.filter_resonance_target !== 7'd48
+            || dut.filter_mix_target !== 7'd72) begin
             $display("ERROR: global filter controls were not routed");
             errors = errors + 1;
         end

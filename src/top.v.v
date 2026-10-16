@@ -95,11 +95,14 @@ module top #(
     wire [6:0] routed_note_event_note;
     wire [6:0] routed_note_event_velocity;
     wire [6:0] pan_target;
-    wire [1:0] filter_mode;
+    wire [2:0] filter_mode_target;
+    reg  [2:0] filter_mode_active;
     wire [6:0] filter_cutoff_target;
     reg  [6:0] filter_cutoff_current;
     wire [6:0] filter_resonance_target;
     reg  [6:0] filter_resonance_current;
+    wire [6:0] filter_mix_target;
+    reg  [6:0] filter_mix_current;
 
     wire [6:0] osc_a_wt_position_target;
     reg  [6:0] osc_a_wt_position_current;
@@ -174,6 +177,8 @@ module top #(
             osc_b_warp_amount_current <= 7'd0;
             filter_cutoff_current <= 7'd127;
             filter_resonance_current <= 7'd0;
+            filter_mode_active <= 3'd0;
+            filter_mix_current <= 7'd127;
         end else if (sample_tick) begin
             if (osc_a_wt_position_current < osc_a_wt_position_target)
                 osc_a_wt_position_current <= osc_a_wt_position_current + 7'd1;
@@ -222,6 +227,18 @@ module top #(
                 filter_resonance_current <= filter_resonance_current + 7'd1;
             else if (filter_resonance_current > filter_resonance_target)
                 filter_resonance_current <= filter_resonance_current - 7'd1;
+
+            // 模式切换时先退回全干声，再切换算法并恢复目标Mix，避免状态跳变。
+            if (filter_mode_active != filter_mode_target) begin
+                if (filter_mix_current != 7'd0)
+                    filter_mix_current <= filter_mix_current - 7'd1;
+                else
+                    filter_mode_active <= filter_mode_target;
+            end else if (filter_mix_current < filter_mix_target) begin
+                filter_mix_current <= filter_mix_current + 7'd1;
+            end else if (filter_mix_current > filter_mix_target) begin
+                filter_mix_current <= filter_mix_current - 7'd1;
+            end
         end
     end
 
@@ -322,9 +339,10 @@ module top #(
         .note_event_note           (routed_note_event_note),
         .note_event_velocity       (routed_note_event_velocity),
         .pan_target                (pan_target),
-        .filter_mode               (filter_mode),
+        .filter_mode               (filter_mode_target),
         .filter_cutoff             (filter_cutoff_target),
         .filter_resonance          (filter_resonance_target),
+        .filter_mix                (filter_mix_target),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
         .osc_a_detune_amount       (osc_a_detune_amount),
@@ -537,15 +555,16 @@ module top #(
         .input_overrun(fir_input_overrun)
     );
 
-    global_svf_filter u_global_svf_filter (
+    global_filter u_global_filter (
         .clk              (clk_sys),
         .rst_n            (rst_n_sys),
         .in_valid         (fir_output_valid),
         .sample_in        (fir_filtered_sample),
         .in_ready         (global_filter_input_ready),
-        .filter_mode      (filter_mode),
+        .filter_mode      (filter_mode_active),
         .cutoff_control   (filter_cutoff_current),
         .resonance_control(filter_resonance_current),
+        .mix_control      (filter_mix_current),
         .out_valid        (global_filter_output_valid),
         .sample_out       (global_filtered_sample),
         .input_overrun    (global_filter_input_overrun)
