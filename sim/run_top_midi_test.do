@@ -26,6 +26,7 @@ vlog -work work_top_midi \
     src/oscillator_tdm_core.v \
     src/oscillator_tdm_bank.v \
     src/fir_decimator_8x_wrapper.v \
+    src/global_svf_filter.v \
     src/i2s_tx.v \
     src/top.v.v \
     sim/tb_top_midi_input.v
@@ -44,6 +45,11 @@ add wave sim:/tb_top_midi_input/dut/midi_control_change_channel
 add wave sim:/tb_top_midi_input/dut/midi_control_change_number
 add wave sim:/tb_top_midi_input/dut/midi_control_change_value
 add wave sim:/tb_top_midi_input/dut/pan_target
+add wave sim:/tb_top_midi_input/dut/filter_mode
+add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_target
+add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_current
+add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_target
+add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_current
 add wave sim:/tb_top_midi_input/dut/osc_a_waveform_select
 add wave sim:/tb_top_midi_input/dut/osc_a_wt_position_current
 add wave sim:/tb_top_midi_input/dut/osc_a_detune_amount

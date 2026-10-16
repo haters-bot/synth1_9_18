@@ -47,7 +47,8 @@ module top #(
     reg                 oscillator_mix_valid;
     wire                oscillator_schedule_overrun;
     wire signed [15:0]  fir_input_sample;
-    wire signed [15:0]  filtered_sample;
+    wire signed [15:0]  fir_filtered_sample;
+    wire signed [15:0]  global_filtered_sample;
 
     wire [OSC_TOTAL_SLOTS-1:0] osc_a_task_idle_mask;
     wire [OSC_TOTAL_SLOTS-1:0] osc_b_task_idle_mask;
@@ -94,6 +95,11 @@ module top #(
     wire [6:0] routed_note_event_note;
     wire [6:0] routed_note_event_velocity;
     wire [6:0] pan_target;
+    wire [1:0] filter_mode;
+    wire [6:0] filter_cutoff_target;
+    reg  [6:0] filter_cutoff_current;
+    wire [6:0] filter_resonance_target;
+    reg  [6:0] filter_resonance_current;
 
     wire [6:0] osc_a_wt_position_target;
     reg  [6:0] osc_a_wt_position_current;
@@ -138,6 +144,9 @@ module top #(
     wire fir_input_ready;
     wire fir_output_valid;
     wire fir_input_overrun;
+    wire global_filter_input_ready;
+    wire global_filter_output_valid;
+    wire global_filter_input_overrun;
 
     // 使用外接MAX98357A，关闭板载NS4263。SD和GAIN保持高电平。
     assign PA_EN    = 1'b1;
@@ -154,7 +163,7 @@ module top #(
 
     assign oscillator_start_tick = oversample_tick;
 
-    // 两组WT Position和Warp Amount均在96 kHz边界每次移动一级。
+    // 两组WT Position、Warp Amount和全局滤波参数均在96 kHz边界平滑。
     always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
             osc_a_wt_position_current <= 7'd0;
@@ -163,6 +172,8 @@ module top #(
             osc_b_warp_mode_active <= 4'd0;
             osc_a_warp_amount_current <= 7'd0;
             osc_b_warp_amount_current <= 7'd0;
+            filter_cutoff_current <= 7'd127;
+            filter_resonance_current <= 7'd0;
         end else if (sample_tick) begin
             if (osc_a_wt_position_current < osc_a_wt_position_target)
                 osc_a_wt_position_current <= osc_a_wt_position_current + 7'd1;
@@ -201,6 +212,16 @@ module top #(
             end else if (osc_b_warp_amount_current > osc_b_warp_amount_target) begin
                 osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
             end
+
+            if (filter_cutoff_current < filter_cutoff_target)
+                filter_cutoff_current <= filter_cutoff_current + 7'd1;
+            else if (filter_cutoff_current > filter_cutoff_target)
+                filter_cutoff_current <= filter_cutoff_current - 7'd1;
+
+            if (filter_resonance_current < filter_resonance_target)
+                filter_resonance_current <= filter_resonance_current + 7'd1;
+            else if (filter_resonance_current > filter_resonance_target)
+                filter_resonance_current <= filter_resonance_current - 7'd1;
         end
     end
 
@@ -301,6 +322,9 @@ module top #(
         .note_event_note           (routed_note_event_note),
         .note_event_velocity       (routed_note_event_velocity),
         .pan_target                (pan_target),
+        .filter_mode               (filter_mode),
+        .filter_cutoff             (filter_cutoff_target),
+        .filter_resonance          (filter_resonance_target),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
         .osc_a_detune_amount       (osc_a_detune_amount),
@@ -509,14 +533,28 @@ module top #(
         .sample_in    (fir_input_sample),
         .in_ready     (fir_input_ready),
         .out_valid    (fir_output_valid),
-        .sample_out   (filtered_sample),
+        .sample_out   (fir_filtered_sample),
         .input_overrun(fir_input_overrun)
+    );
+
+    global_svf_filter u_global_svf_filter (
+        .clk              (clk_sys),
+        .rst_n            (rst_n_sys),
+        .in_valid         (fir_output_valid),
+        .sample_in        (fir_filtered_sample),
+        .in_ready         (global_filter_input_ready),
+        .filter_mode      (filter_mode),
+        .cutoff_control   (filter_cutoff_current),
+        .resonance_control(filter_resonance_current),
+        .out_valid        (global_filter_output_valid),
+        .sample_out       (global_filtered_sample),
+        .input_overrun    (global_filter_input_overrun)
     );
 
     i2s_tx u_max98357a_i2s_tx (
         .sys_clk        (clk_sys),
         .rst_n          (rst_n_sys),
-        .sample_data    (filtered_sample),
+        .sample_data    (global_filtered_sample),
         .bclk           (MAX_BCLK),
         .lrck           (MAX_LRC),
         .sdata          (MAX_DIN),

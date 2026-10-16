@@ -30,6 +30,9 @@ module synth_control_router #(
     output reg [6:0]  note_event_velocity,
 
     output reg [6:0]  pan_target,
+    output reg [1:0]  filter_mode,
+    output reg [6:0]  filter_cutoff,
+    output reg [6:0]  filter_resonance,
 
     output reg [6:0]  osc_a_wt_position_target,
     output reg [2:0]  osc_a_waveform_select,
@@ -81,6 +84,9 @@ module synth_control_router #(
     localparam [6:0] CC_A_WARP_AMOUNT     = 7'd39;
     localparam [6:0] CC_B_WARP_MODE       = 7'd40;
     localparam [6:0] CC_B_WARP_AMOUNT     = 7'd41;
+    localparam [6:0] CC_FILTER_MODE        = 7'd42;
+    localparam [6:0] CC_FILTER_CUTOFF      = 7'd43;
+    localparam [6:0] CC_FILTER_RESONANCE   = 7'd44;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -120,6 +126,9 @@ module synth_control_router #(
             note_event_note     <= 7'd0;
             note_event_velocity <= 7'd0;
             pan_target          <= 7'd64;
+            filter_mode         <= 2'd0;
+            filter_cutoff       <= 7'd127;
+            filter_resonance    <= 7'd0;
 
             osc_a_wt_position_target <= 7'd0;
             osc_a_waveform_select    <= 3'd2;
@@ -212,6 +221,13 @@ module synth_control_router #(
                             <= decode_warp_mode(raw_control_change_value);
                     CC_B_WARP_AMOUNT:
                         osc_b_warp_amount <= raw_control_change_value;
+                    CC_FILTER_MODE:
+                        filter_mode <= (raw_control_change_value <= 7'd3)
+                                     ? raw_control_change_value[1:0] : 2'd0;
+                    CC_FILTER_CUTOFF:
+                        filter_cutoff <= raw_control_change_value;
+                    CC_FILTER_RESONANCE:
+                        filter_resonance <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

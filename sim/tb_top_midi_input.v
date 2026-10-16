@@ -215,6 +215,9 @@ module tb_top_midi_input;
         send_cc(7'd35, 7'd0);
         send_cc(7'd40, 7'd11);
         send_cc(7'd41, 7'd127);
+        send_cc(7'd42, 7'd1);
+        send_cc(7'd43, 7'd80);
+        send_cc(7'd44, 7'd48);
 
         repeat (3) @(posedge sys_clk);
         if (dut.osc_a_wt_position_target !== 7'd85
@@ -242,6 +245,13 @@ module tb_top_midi_input;
             || dut.osc_b_warp_mode !== 4'd11
             || dut.osc_b_warp_amount_target !== 7'd127) begin
             $display("ERROR: OSC B controls were not routed independently");
+            errors = errors + 1;
+        end
+
+        if (dut.filter_mode !== 2'd1
+            || dut.filter_cutoff_target !== 7'd80
+            || dut.filter_resonance_target !== 7'd48) begin
+            $display("ERROR: global filter controls were not routed");
             errors = errors + 1;
         end
 

@@ -34,6 +34,9 @@ KEY_TO_NOTE = {
 }
 CONTROL_CHANNEL = 16
 PAN_CC = 10
+FILTER_MODE_CC = 42
+FILTER_CUTOFF_CC = 43
+FILTER_RESONANCE_CC = 44
 # 200 Hz控制刷新使10 Hz LFO仍有20个控制点；仅在量化值变化时发送CC。
 LFO_UPDATE_MS = 5
 OSC_A_CC = {
@@ -83,6 +86,12 @@ WARP_MODE_VALUES = {
     "Mirror": 10,
     "Quantize": 11,
 }
+FILTER_MODE_VALUES = {
+    "旁路": 0,
+    "低通": 1,
+    "高通": 2,
+    "带通": 3,
+}
 
 
 def note_name(note: int) -> str:
@@ -109,6 +118,9 @@ class MidiUartSender:
         self.channel = tk.IntVar(value=1)
         self.velocity = tk.IntVar(value=100)
         self.pan = tk.IntVar(value=64)
+        self.filter_mode = tk.StringVar(value="旁路")
+        self.filter_cutoff = tk.IntVar(value=127)
+        self.filter_resonance = tk.IntVar(value=0)
         self.osc_controls = {}
         for osc_name in ("A", "B"):
             # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
@@ -212,11 +224,68 @@ class MidiUartSender:
             lambda _event: self.send_synth_control(PAN_CC, self.pan.get()),
         )
 
+        filter_frame = ttk.LabelFrame(
+            parameter_controls, text="全局滤波器", padding=6
+        )
+        filter_frame.grid(
+            row=1, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+
+        ttk.Label(filter_frame, text="模式").grid(row=0, column=0, padx=4)
+        filter_mode_box = ttk.Combobox(
+            filter_frame,
+            textvariable=self.filter_mode,
+            values=tuple(FILTER_MODE_VALUES.keys()),
+            width=8,
+            state="readonly",
+        )
+        filter_mode_box.grid(row=0, column=1, padx=4)
+        filter_mode_box.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self.send_filter_mode_selection(),
+        )
+
+        ttk.Label(filter_frame, text="Cutoff").grid(row=0, column=2, padx=(12, 4))
+        cutoff_scale = tk.Scale(
+            filter_frame,
+            from_=0,
+            to=127,
+            orient=tk.HORIZONTAL,
+            variable=self.filter_cutoff,
+            length=210,
+        )
+        cutoff_scale.grid(row=0, column=3, padx=4)
+        cutoff_scale.bind(
+            "<ButtonRelease-1>",
+            lambda _event: self.send_synth_control(
+                FILTER_CUTOFF_CC, self.filter_cutoff.get()
+            ),
+        )
+
+        ttk.Label(filter_frame, text="Resonance").grid(
+            row=0, column=4, padx=(12, 4)
+        )
+        resonance_scale = tk.Scale(
+            filter_frame,
+            from_=0,
+            to=127,
+            orient=tk.HORIZONTAL,
+            variable=self.filter_resonance,
+            length=210,
+        )
+        resonance_scale.grid(row=0, column=5, padx=4)
+        resonance_scale.bind(
+            "<ButtonRelease-1>",
+            lambda _event: self.send_synth_control(
+                FILTER_RESONANCE_CC, self.filter_resonance.get()
+            ),
+        )
+
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
                 parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            osc_frame.grid(row=1, column=column, padx=6, pady=(6, 0))
+            osc_frame.grid(row=2, column=column, padx=6, pady=(6, 0))
             self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
@@ -524,6 +593,12 @@ class MidiUartSender:
         if self.send_control_change(controller, value, CONTROL_CHANNEL):
             self.status.set(f"控制通道16：CC{controller} = {value}")
 
+    def send_filter_mode_selection(self) -> None:
+        mode_name = self.filter_mode.get()
+        value = FILTER_MODE_VALUES.get(mode_name, FILTER_MODE_VALUES["旁路"])
+        if self.send_control_change(FILTER_MODE_CC, value, CONTROL_CHANNEL):
+            self.status.set(f"全局滤波器模式：{mode_name}")
+
     def toggle_warp_lfo(self, osc_name: str) -> None:
         controls = self.osc_controls[osc_name]
         enabled = bool(controls["lfo_enabled"].get())
@@ -574,6 +649,11 @@ class MidiUartSender:
 
     def send_all_synth_controls(self) -> None:
         self.send_synth_control(PAN_CC, self.pan.get())
+        self.send_filter_mode_selection()
+        self.send_synth_control(FILTER_CUTOFF_CC, self.filter_cutoff.get())
+        self.send_synth_control(
+            FILTER_RESONANCE_CC, self.filter_resonance.get()
+        )
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]
             self.send_oscillator_enable(osc_name)
