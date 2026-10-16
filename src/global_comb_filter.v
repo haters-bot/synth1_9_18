@@ -54,6 +54,8 @@ module global_comb_filter #(
     wire signed [17:0] input_extended;
     wire signed [17:0] feedback_term;
     wire signed [17:0] write_value_wide;
+    wire signed [17:0] feedforward_term;
+    wire signed [17:0] wet_value_wide;
 
     assign in_ready = (state == STATE_IDLE);
 
@@ -91,6 +93,12 @@ module global_comb_filter #(
     assign write_value_wide = negative_feedback_latched
                             ? (input_extended - feedback_term)
                             : (input_extended + feedback_term);
+    // 固定0.5倍前馈延迟产生基础梳齿；Resonance只控制反馈峰值锐度。
+    // 因此前馈项在Resonance=0时仍然存在，Cutoff依然能够改变音色。
+    assign feedforward_term = damped_sample >>> 1;
+    assign wet_value_wide = negative_feedback_latched
+                          ? (input_extended - feedforward_term)
+                          : (input_extended + feedforward_term);
 
     function signed [15:0] saturate_s18_to_s16;
         input signed [17:0] value;
@@ -178,7 +186,7 @@ module global_comb_filter #(
                 end
 
                 STATE_WRITE: begin
-                    sample_out <= saturate_s18_to_s16(write_value_wide);
+                    sample_out <= saturate_s18_to_s16(wet_value_wide);
                     write_pointer <= write_pointer + {{(ADDR_WIDTH-1){1'b0}}, 1'b1};
                     if (filled_samples < DELAY_DEPTH)
                         filled_samples <= filled_samples

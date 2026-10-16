@@ -66,11 +66,12 @@ Cutoff采用16级/倍频程映射，端点约为`69.9 Hz`和`17.4 kHz`；Resonan
 
 ## 4. Comb延迟线
 
-Comb使用反馈结构：
+Comb同时使用固定前馈和可调反馈结构：
 
 ```text
-Comb+：y[n] = sat(x[n] + g * damp(y[n-D]))
-Comb-：y[n] = sat(x[n] - g * damp(y[n-D]))
+d = damp(delay[n-D])
+delay[n] = sat(x[n] +/- Resonance * d)
+wet[n]   = sat(x[n] +/- 0.5 * d)
 ```
 
 - 延迟线深度：`2048 x 16 bit`，约`32 Kibit / 4 KiB`；
@@ -78,7 +79,8 @@ Comb-：y[n] = sat(x[n] - g * damp(y[n-D]))
 - 延迟长度：8～2047个96 kHz样本，约`83.3 us～21.32 ms`；
 - 基础梳齿频率约为`96 kHz / D`，对应约`12 kHz～46.9 Hz`；
 - Cutoff使用16级/倍频程的只移位映射，不在音频路径中使用除法器；
-- Resonance=127时反馈系数约为`0.981`，不会设置为1；
+- 固定0.5倍前馈延迟负责形成基础梳齿，所以Resonance=0时Cutoff仍会改变音色；
+- Resonance控制反馈峰值的锐度，127时反馈系数约为`0.981`，不会设置为1；
 - 反馈路径使用固定1/4更新量的一阶低通阻尼；
 - 写回BRAM前饱和到signed 16-bit，阻止二进制回绕；
 - 上电不清空整块RAM，而用已写样本计数屏蔽未初始化区域，保留BSRAM推断条件。
@@ -122,7 +124,9 @@ CC45：Filter Mix，0～127
 - 陷波保留直流；
 - 低通抑制逐样本翻转信号，高通保留该信号；
 - Mix=0、Mix=127端点和中间混合比例；
-- 8点延迟下Comb+首个回声为正，Comb-首个回声为负；
+- Cutoff=0、64、127分别映射为2047、127、8点Comb延迟；
+- Resonance=0时仍存在前馈梳状响应；
+- 8点延迟下Comb+首个延迟项为正，Comb-首个延迟项为负；
 - 正常输入节奏下没有`input_overrun`；
 - SVF忙时重复输入会置位粘滞错误标志。
 

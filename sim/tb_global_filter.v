@@ -97,19 +97,57 @@ module tb_global_filter;
             errors = errors + 1;
         end
 
-        // 最高Cutoff对应8点延迟。正反馈时，第8点的回声必须为正。
+        // Cutoff必须实际改变Comb延迟地址，覆盖低、中、高三个控制点。
+        filter_mode = 3'd5;
+        resonance_control = 7'd0;
+        mix_control = 7'd0;
+        cutoff_control = 7'd0;
+        process_sample(16'sd0);
+        if (dut.u_global_comb_filter.delay_length_latched !== 12'd2047) begin
+            $display("ERROR: Comb Cutoff=0 delay mapping failed: %0d",
+                     dut.u_global_comb_filter.delay_length_latched);
+            errors = errors + 1;
+        end
+        cutoff_control = 7'd64;
+        process_sample(16'sd0);
+        if (dut.u_global_comb_filter.delay_length_latched !== 12'd127) begin
+            $display("ERROR: Comb Cutoff=64 delay mapping failed: %0d",
+                     dut.u_global_comb_filter.delay_length_latched);
+            errors = errors + 1;
+        end
+        cutoff_control = 7'd127;
+        process_sample(16'sd0);
+        if (dut.u_global_comb_filter.delay_length_latched !== 12'd8) begin
+            $display("ERROR: Comb Cutoff=127 delay mapping failed: %0d",
+                     dut.u_global_comb_filter.delay_length_latched);
+            errors = errors + 1;
+        end
+
+        // 最高Cutoff对应8点延迟。Resonance=0时前馈梳状项仍必须存在，
+        // 证明Cutoff并不依赖反馈才能改变频率响应。
         reset_dut();
         filter_mode = 3'd5;
         cutoff_control = 7'd127;
-        resonance_control = 7'd127;
+        resonance_control = 7'd0;
         mix_control = 7'd127;
         process_sample(16'sd12000);
         for (sample_index = 1; sample_index < 8;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd2000) begin
-            $display("ERROR: positive Comb echo missing: %0d", captured_sample);
+        if (captured_sample < 16'sd1000) begin
+            $display("ERROR: zero-resonance Comb feedforward missing: %0d",
+                     captured_sample);
+            errors = errors + 1;
+        end
+
+        // 提高Resonance后仍应保留正极性的梳状输出。
+        resonance_control = 7'd127;
+        for (sample_index = 0; sample_index < 8;
+             sample_index = sample_index + 1)
+            process_sample(16'sd0);
+        if (captured_sample < 16'sd0) begin
+            $display("ERROR: positive Comb polarity failed: %0d", captured_sample);
             errors = errors + 1;
         end
 
@@ -124,7 +162,7 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd1000 || captured_sample > 16'sd2000) begin
+        if (captured_sample < 16'sd400 || captured_sample > 16'sd1100) begin
             $display("ERROR: intermediate Mix scaling failed: %0d",
                      captured_sample);
             errors = errors + 1;
@@ -141,7 +179,7 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample > -16'sd2000) begin
+        if (captured_sample > -16'sd1000) begin
             $display("ERROR: negative Comb echo missing: %0d", captured_sample);
             errors = errors + 1;
         end
