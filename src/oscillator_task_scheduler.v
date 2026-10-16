@@ -27,7 +27,8 @@ module oscillator_task_scheduler #(
     output reg [6:0]  task_update_velocity,
     output reg        task_update_enable,
     output reg        task_update_phase_reset,
-    output reg [5:0]  active_task_count,
+    // 8 voices × unison 8 = 64 tasks, so 6 bits are insufficient.
+    output reg [6:0]  active_task_count,
     output reg        scheduler_busy
 );
 
@@ -77,7 +78,7 @@ module oscillator_task_scheduler #(
     reg matching_note_found;
     reg steal_note_found;
     reg [6:0] steal_note;
-    reg [5:0] retired_task_count;
+    reg [6:0] retired_task_count;
     integer search_index;
     integer reset_index;
 
@@ -167,14 +168,14 @@ module oscillator_task_scheduler #(
         matching_note_found = 1'b0;
         steal_note_found = 1'b0;
         steal_note = 7'd0;
-        retired_task_count = 6'd0;
+        retired_task_count = 7'd0;
 
         for (search_index = 0;
              search_index < TOTAL_SLOTS;
              search_index = search_index + 1) begin
             if (task_idle_mask[search_index]
                 && slot_releasing[search_index])
-                retired_task_count = retired_task_count + 6'd1;
+                retired_task_count = retired_task_count + 7'd1;
 
             if (slot_active[search_index]) begin
                 if (slot_note[search_index] == note_event_note)
@@ -220,7 +221,7 @@ module oscillator_task_scheduler #(
             detune_product_stage <= 42'd0;
             detune_base_product_stage <= 32'd0;
             detune_negative_product_stage <= 1'b0;
-            active_task_count <= 6'd0;
+            active_task_count <= 7'd0;
 
             for (reset_index = 0;
                  reset_index < TOTAL_SLOTS;
@@ -236,7 +237,7 @@ module oscillator_task_scheduler #(
 
             // 活动任务数由分配和Release完成事件增量维护，避免每拍把32个
             // slot_active串接成组合计数器并直接送入后级音频乘法路径。
-            if (retired_task_count != 6'd0)
+            if (retired_task_count != 7'd0)
                 active_task_count
                     <= active_task_count - retired_task_count;
 
@@ -363,7 +364,7 @@ module oscillator_task_scheduler #(
                         slot_active[allocation_candidate] <= 1'b1;
                         slot_releasing[allocation_candidate] <= 1'b0;
                         active_task_count
-                            <= active_task_count - retired_task_count + 6'd1;
+                            <= active_task_count - retired_task_count + 7'd1;
 
                         if (scan_index == TOTAL_SLOTS-1)
                             allocation_cursor <= 6'd0;

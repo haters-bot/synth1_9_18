@@ -36,7 +36,8 @@ module oscillator_tdm_bank #(
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
-    input  wire [5:0]            active_task_count,
+    // 7 bits represent all active tasks when 8 voices each use unison=8.
+    input  wire [6:0]            active_task_count,
 
     output reg signed [15:0] sample_out,
     output reg               sample_valid,
@@ -126,7 +127,7 @@ module oscillator_tdm_bank #(
 
     reg signed [BANK_SUM_WIDTH-1:0] combined_sum;
     reg [16:0] mix_gain_q16;
-    reg [5:0] active_task_count_batch;
+    reg [6:0] active_task_count_batch;
     wire [16:0] target_gain_q16;
     wire [16:0] applied_gain_q16;
     wire signed [17:0] signed_mix_gain_q16;
@@ -139,41 +140,74 @@ module oscillator_tdm_bank #(
     // Q1.16倒数表。0个声部时保持单位增益，使下一次单音可以立即满增益启动。
     // 表项使用round(65536/N)，避免在音频路径中推断动态除法器。
     function [16:0] reciprocal_gain_q16;
-        input [5:0] voice_count;
+        input [6:0] voice_count;
         begin
             case (voice_count)
-                6'd0, 6'd1: reciprocal_gain_q16 = 17'd65536;
-                6'd2:  reciprocal_gain_q16 = 17'd32768;
-                6'd3:  reciprocal_gain_q16 = 17'd21845;
-                6'd4:  reciprocal_gain_q16 = 17'd16384;
-                6'd5:  reciprocal_gain_q16 = 17'd13107;
-                6'd6:  reciprocal_gain_q16 = 17'd10923;
-                6'd7:  reciprocal_gain_q16 = 17'd9362;
-                6'd8:  reciprocal_gain_q16 = 17'd8192;
-                6'd9:  reciprocal_gain_q16 = 17'd7282;
-                6'd10: reciprocal_gain_q16 = 17'd6554;
-                6'd11: reciprocal_gain_q16 = 17'd5958;
-                6'd12: reciprocal_gain_q16 = 17'd5461;
-                6'd13: reciprocal_gain_q16 = 17'd5041;
-                6'd14: reciprocal_gain_q16 = 17'd4681;
-                6'd15: reciprocal_gain_q16 = 17'd4369;
-                6'd16: reciprocal_gain_q16 = 17'd4096;
-                6'd17: reciprocal_gain_q16 = 17'd3855;
-                6'd18: reciprocal_gain_q16 = 17'd3641;
-                6'd19: reciprocal_gain_q16 = 17'd3449;
-                6'd20: reciprocal_gain_q16 = 17'd3277;
-                6'd21: reciprocal_gain_q16 = 17'd3121;
-                6'd22: reciprocal_gain_q16 = 17'd2979;
-                6'd23: reciprocal_gain_q16 = 17'd2849;
-                6'd24: reciprocal_gain_q16 = 17'd2731;
-                6'd25: reciprocal_gain_q16 = 17'd2621;
-                6'd26: reciprocal_gain_q16 = 17'd2521;
-                6'd27: reciprocal_gain_q16 = 17'd2427;
-                6'd28: reciprocal_gain_q16 = 17'd2341;
-                6'd29: reciprocal_gain_q16 = 17'd2260;
-                6'd30: reciprocal_gain_q16 = 17'd2185;
-                6'd31: reciprocal_gain_q16 = 17'd2114;
-                default: reciprocal_gain_q16 = 17'd2048;
+                7'd0, 7'd1: reciprocal_gain_q16 = 17'd65536;
+                7'd2:  reciprocal_gain_q16 = 17'd32768;
+                7'd3:  reciprocal_gain_q16 = 17'd21845;
+                7'd4:  reciprocal_gain_q16 = 17'd16384;
+                7'd5:  reciprocal_gain_q16 = 17'd13107;
+                7'd6:  reciprocal_gain_q16 = 17'd10923;
+                7'd7:  reciprocal_gain_q16 = 17'd9362;
+                7'd8:  reciprocal_gain_q16 = 17'd8192;
+                7'd9:  reciprocal_gain_q16 = 17'd7282;
+                7'd10: reciprocal_gain_q16 = 17'd6554;
+                7'd11: reciprocal_gain_q16 = 17'd5958;
+                7'd12: reciprocal_gain_q16 = 17'd5461;
+                7'd13: reciprocal_gain_q16 = 17'd5041;
+                7'd14: reciprocal_gain_q16 = 17'd4681;
+                7'd15: reciprocal_gain_q16 = 17'd4369;
+                7'd16: reciprocal_gain_q16 = 17'd4096;
+                7'd17: reciprocal_gain_q16 = 17'd3855;
+                7'd18: reciprocal_gain_q16 = 17'd3641;
+                7'd19: reciprocal_gain_q16 = 17'd3449;
+                7'd20: reciprocal_gain_q16 = 17'd3277;
+                7'd21: reciprocal_gain_q16 = 17'd3121;
+                7'd22: reciprocal_gain_q16 = 17'd2979;
+                7'd23: reciprocal_gain_q16 = 17'd2849;
+                7'd24: reciprocal_gain_q16 = 17'd2731;
+                7'd25: reciprocal_gain_q16 = 17'd2621;
+                7'd26: reciprocal_gain_q16 = 17'd2521;
+                7'd27: reciprocal_gain_q16 = 17'd2427;
+                7'd28: reciprocal_gain_q16 = 17'd2341;
+                7'd29: reciprocal_gain_q16 = 17'd2260;
+                7'd30: reciprocal_gain_q16 = 17'd2185;
+                7'd31: reciprocal_gain_q16 = 17'd2114;
+                7'd32: reciprocal_gain_q16 = 17'd2048;
+                7'd33: reciprocal_gain_q16 = 17'd1986;
+                7'd34: reciprocal_gain_q16 = 17'd1928;
+                7'd35: reciprocal_gain_q16 = 17'd1872;
+                7'd36: reciprocal_gain_q16 = 17'd1820;
+                7'd37: reciprocal_gain_q16 = 17'd1771;
+                7'd38: reciprocal_gain_q16 = 17'd1725;
+                7'd39: reciprocal_gain_q16 = 17'd1680;
+                7'd40: reciprocal_gain_q16 = 17'd1638;
+                7'd41: reciprocal_gain_q16 = 17'd1598;
+                7'd42: reciprocal_gain_q16 = 17'd1560;
+                7'd43: reciprocal_gain_q16 = 17'd1524;
+                7'd44: reciprocal_gain_q16 = 17'd1489;
+                7'd45: reciprocal_gain_q16 = 17'd1456;
+                7'd46: reciprocal_gain_q16 = 17'd1425;
+                7'd47: reciprocal_gain_q16 = 17'd1394;
+                7'd48: reciprocal_gain_q16 = 17'd1365;
+                7'd49: reciprocal_gain_q16 = 17'd1337;
+                7'd50: reciprocal_gain_q16 = 17'd1311;
+                7'd51: reciprocal_gain_q16 = 17'd1285;
+                7'd52: reciprocal_gain_q16 = 17'd1260;
+                7'd53: reciprocal_gain_q16 = 17'd1237;
+                7'd54: reciprocal_gain_q16 = 17'd1214;
+                7'd55: reciprocal_gain_q16 = 17'd1192;
+                7'd56: reciprocal_gain_q16 = 17'd1170;
+                7'd57: reciprocal_gain_q16 = 17'd1150;
+                7'd58: reciprocal_gain_q16 = 17'd1129;
+                7'd59: reciprocal_gain_q16 = 17'd1111;
+                7'd60: reciprocal_gain_q16 = 17'd1092;
+                7'd61: reciprocal_gain_q16 = 17'd1074;
+                7'd62: reciprocal_gain_q16 = 17'd1057;
+                7'd63: reciprocal_gain_q16 = 17'd1040;
+                7'd64: reciprocal_gain_q16 = 17'd1024;
+                default: reciprocal_gain_q16 = 17'd1024;
             endcase
         end
     endfunction
@@ -231,7 +265,7 @@ module oscillator_tdm_bank #(
             sample_out   <= 16'sd0;
             sample_valid <= 1'b0;
             mix_gain_q16 <= UNITY_GAIN_Q16;
-            active_task_count_batch <= 6'd0;
+            active_task_count_batch <= 7'd0;
         end else begin
             sample_valid <= all_engines_valid;
             if (start_tick)
@@ -242,7 +276,7 @@ module oscillator_tdm_bank #(
 
                 // 仅在完成一个内部音频采样时更新一次增益。声部数为0时
                 // 在静音期间立即恢复单位增益，为下一次单音做好准备。
-                if (active_task_count_batch == 6'd0) begin
+                if (active_task_count_batch == 7'd0) begin
                     mix_gain_q16 <= UNITY_GAIN_Q16;
                 end else if (mix_gain_q16 < target_gain_q16) begin
                     if (((target_gain_q16 - mix_gain_q16)

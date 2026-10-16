@@ -26,7 +26,7 @@ module tb_oscillator_tdm_bank;
     reg [6:0] task_update_velocity;
     reg task_update_enable;
     reg task_update_phase_reset;
-    reg [5:0] active_task_count;
+    reg [6:0] active_task_count;
 
     wire signed [15:0] sample_out;
     wire sample_valid;
@@ -152,7 +152,7 @@ module tb_oscillator_tdm_bank;
         task_update_velocity    = 7'd127;
         task_update_enable      = 1'b0;
         task_update_phase_reset = 1'b0;
-        active_task_count = 6'd0;
+        active_task_count = 7'd0;
         errors          = 0;
         expected_slot   = 0;
         commit_count    = 0;
@@ -186,7 +186,7 @@ module tb_oscillator_tdm_bank;
                               32'h00010000 + init_index*32'h00001000,
                               1'b1, 1'b1);
 
-        active_task_count = 6'd32;
+        active_task_count = 7'd32;
 
         for (check_index = 0;
              check_index < TOTAL_SLOTS;
@@ -211,7 +211,7 @@ module tb_oscillator_tdm_bank;
         clear_phase = 1'b0;
         launch_internal_sample();
         #1;
-        if (dut.active_task_count_batch !== 6'd32
+        if (dut.active_task_count_batch !== 7'd32
             || dut.applied_gain_q16 !== 17'd2048) begin
             $display("ERROR: first 32-voice batch did not use immediate attenuation");
             errors = errors + 1;
@@ -268,7 +268,7 @@ module tb_oscillator_tdm_bank;
         end
 
         // Release声部在归零之前仍计入活动数；收到idle完成后才从32减为31。
-        active_task_count = 6'd31;
+        active_task_count = 7'd31;
 
         if (commit_count !== ((ENABLED_SCHEDULES + 3) * TOTAL_SLOTS)) begin
             $display("ERROR: expected %0d slot commits, got %0d",
@@ -306,7 +306,7 @@ module tb_oscillator_tdm_bank;
 
         // 单独重触发槽位5，确认更新接口不会清除其他槽位的相位。
         update_voice_slot(5, 32'h00015000, 1'b1, 1'b1);
-        active_task_count = 6'd32;
+        active_task_count = 7'd32;
         #1;
         if (dut.GEN_ENGINE[0].u_oscillator_tdm_core
                 .phase_state[5] !== 32'd0) begin

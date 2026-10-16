@@ -52,8 +52,8 @@ module top #(
 
     wire [OSC_TOTAL_SLOTS-1:0] osc_a_task_idle_mask;
     wire [OSC_TOTAL_SLOTS-1:0] osc_b_task_idle_mask;
-    wire [5:0] osc_a_active_task_count;
-    wire [5:0] osc_b_active_task_count;
+    wire [6:0] osc_a_active_task_count;
+    wire [6:0] osc_b_active_task_count;
 
     wire       debug_osc_a_busy;
     wire [7:0] debug_osc_a_slot;
