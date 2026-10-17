@@ -14,6 +14,7 @@ vlog -work work_top_dual_unison8 \
     src/midi_note_parser.v \
     src/highres_parameter_parser.v \
     src/parameter_linear_interpolator.v \
+    src/filter_curve_lfo.v \
     src/synth_control_router.v \
     src/adsr_parameter_mapper.v \
     src/oscillator_task_scheduler.v \

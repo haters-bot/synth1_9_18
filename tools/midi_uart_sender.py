@@ -40,9 +40,24 @@ FILTER_MODE_CC = 42
 FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
 FILTER_MIX_CC = 45
-HIGHRES_PARAMETER_FILTER_CUTOFF = 1
-# 200 Hz控制刷新使10 Hz LFO仍有20个控制时刻；数值不变时不重复发送。
+# FPGA三点Cutoff LFO的影子寄存器参数编号。
+FILTER_LFO_PARAMETER = {
+    "enable": 16,
+    "step_0": 17,
+    "step_1": 18,
+    "depth": 19,
+    "point_0": 20,
+    "point_1": 21,
+    "point_2": 22,
+    "curve_0": 23,
+    "curve_1": 24,
+    "commit": 25,
+}
+# 该定时器只服务于OSC A/B的临时Warp LFO；Cutoff LFO已移入FPGA。
 LFO_UPDATE_MS = 5
+FILTER_LFO_CONFIG_DEBOUNCE_MS = 75
+FILTER_LFO_PHASE_BITS = 24
+FILTER_LFO_SAMPLE_RATE = 96000.0
 OSC_A_CC = {
     "enable": 36,
     "warp_mode": 38,
@@ -117,10 +132,9 @@ class MidiUartSender:
         self.keyboard_notes: set[int] = set()
         self.lfo_phase = {"A": 0.0, "B": 0.0}
         self.lfo_last_value: dict[str, int | None] = {"A": None, "B": None}
-        self.filter_lfo_phase = 0.0
-        self.filter_lfo_last_value: int | None = None
         self.filter_lfo_curve = LfoCurve()
         self.filter_lfo_window: tk.Toplevel | None = None
+        self.filter_lfo_config_after_id: str | None = None
         self.lfo_last_time = time.monotonic()
         self.lfo_after_id: str | None = None
 
@@ -321,7 +335,7 @@ class MidiUartSender:
         ttk.Label(filter_frame, text="LFO速率/Hz").grid(
             row=2, column=0, padx=4, sticky="w"
         )
-        tk.Scale(
+        lfo_rate_scale = tk.Scale(
             filter_frame,
             from_=0.1,
             to=10.0,
@@ -329,19 +343,29 @@ class MidiUartSender:
             orient=tk.HORIZONTAL,
             variable=self.filter_lfo_rate,
             length=210,
-        ).grid(row=2, column=1, columnspan=2, padx=4)
+        )
+        lfo_rate_scale.grid(row=2, column=1, columnspan=2, padx=4)
+        lfo_rate_scale.bind(
+            "<ButtonRelease-1>",
+            lambda _event: self.send_filter_lfo_configuration(),
+        )
 
         ttk.Label(filter_frame, text="LFO深度").grid(
             row=2, column=3, padx=(12, 4), sticky="w"
         )
-        tk.Scale(
+        lfo_depth_scale = tk.Scale(
             filter_frame,
             from_=0,
             to=127,
             orient=tk.HORIZONTAL,
             variable=self.filter_lfo_depth,
             length=210,
-        ).grid(row=2, column=4, columnspan=2, padx=4)
+        )
+        lfo_depth_scale.grid(row=2, column=4, columnspan=2, padx=4)
+        lfo_depth_scale.bind(
+            "<ButtonRelease-1>",
+            lambda _event: self.send_filter_lfo_configuration(),
+        )
 
         ttk.Button(
             filter_frame,
@@ -575,7 +599,6 @@ class MidiUartSender:
         self.connect_button.configure(text="连接")
         self.status.set("未连接")
         self.lfo_last_value = {"A": None, "B": None}
-        self.filter_lfo_last_value = None
 
     def _send(self, message: bytes, log_message: bool = True) -> bool:
         if self.port is None or not self.port.is_open:
@@ -591,7 +614,6 @@ class MidiUartSender:
             self.active_notes.clear()
             self.keyboard_notes.clear()
             self.lfo_last_value = {"A": None, "B": None}
-            self.filter_lfo_last_value = None
             self.connect_button.configure(text="连接")
             self.status.set("串口连接已断开")
             messagebox.showerror("发送失败", str(exc))
@@ -637,19 +659,19 @@ class MidiUartSender:
     def send_highres_parameter(
         self,
         parameter_id: int,
-        value_q7_7: int,
+        value: int,
         log_message: bool = True,
     ) -> bool:
         """发送F0 7D id value_msb value_lsb F7格式的14位参数。"""
         parameter_id = max(0, min(127, int(parameter_id)))
-        value_q7_7 = max(0, min(127 << 7, int(value_q7_7)))
+        value = max(0, min(0x3FFF, int(value)))
         message = bytes(
             (
                 0xF0,
                 0x7D,
                 parameter_id,
-                (value_q7_7 >> 7) & 0x7F,
-                value_q7_7 & 0x7F,
+                (value >> 7) & 0x7F,
+                value & 0x7F,
                 0xF7,
             )
         )
@@ -692,28 +714,72 @@ class MidiUartSender:
 
     def send_filter_cutoff(self) -> None:
         base_value = max(0, min(127, int(self.filter_cutoff.get())))
-        self.filter_lfo_last_value = None
-        if self.filter_lfo_enabled.get():
-            self.status.set(f"Filter Cutoff LFO中心值：{base_value}")
-        else:
-            self.send_synth_control(FILTER_CUTOFF_CC, base_value)
+        self.send_synth_control(FILTER_CUTOFF_CC, base_value)
 
     def toggle_filter_lfo(self) -> None:
-        enabled = bool(self.filter_lfo_enabled.get())
-        self.filter_lfo_phase = 0.0
-        self.filter_lfo_last_value = None
-
-        if enabled:
-            self.status.set("Filter Cutoff LFO已开启")
-        else:
-            base_value = max(0, min(127, int(self.filter_cutoff.get())))
-            self.send_control_change(
-                FILTER_CUTOFF_CC, base_value, CONTROL_CHANNEL
-            )
-            self.status.set("Filter Cutoff LFO已关闭")
+        self.send_filter_lfo_configuration()
 
     def _filter_lfo_curve_changed(self) -> None:
-        self.filter_lfo_last_value = None
+        # 拖动节点会高频触发回调。等待75 ms后一次性发送完整配置，
+        # 避免31250 bit/s串口积压。
+        if self.filter_lfo_config_after_id is not None:
+            self.root.after_cancel(self.filter_lfo_config_after_id)
+        self.filter_lfo_config_after_id = self.root.after(
+            FILTER_LFO_CONFIG_DEBOUNCE_MS,
+            self.send_filter_lfo_configuration,
+        )
+
+    @staticmethod
+    def _encode_bipolar_q13(value: float) -> int:
+        value = max(-1.0, min(1.0, float(value)))
+        return max(0, min(0x3FFF, round((value + 1.0) * 8191.5)))
+
+    def send_filter_lfo_configuration(self) -> None:
+        """发送三点LFO配置；最后的commit使全部字段在FPGA中同时生效。"""
+        self.filter_lfo_config_after_id = None
+        if self.port is None or not self.port.is_open:
+            return
+
+        points = self.filter_lfo_curve.points
+        middle_time = max(0.125, min(0.875, float(points[1].time)))
+        rate_hz = max(0.1, min(10.0, float(self.filter_lfo_rate.get())))
+        phase_scale = float(1 << FILTER_LFO_PHASE_BITS)
+        step_0 = round(
+            rate_hz * phase_scale / (FILTER_LFO_SAMPLE_RATE * middle_time)
+        )
+        step_1 = round(
+            rate_hz * phase_scale
+            / (FILTER_LFO_SAMPLE_RATE * (1.0 - middle_time))
+        )
+
+        values = (
+            (FILTER_LFO_PARAMETER["enable"], 1 if self.filter_lfo_enabled.get() else 0),
+            (FILTER_LFO_PARAMETER["step_0"], max(1, min(0x3FFF, step_0))),
+            (FILTER_LFO_PARAMETER["step_1"], max(1, min(0x3FFF, step_1))),
+            (
+                FILTER_LFO_PARAMETER["depth"],
+                max(0, min(127 << 7, int(self.filter_lfo_depth.get()) << 7)),
+            ),
+            (FILTER_LFO_PARAMETER["point_0"], self._encode_bipolar_q13(points[0].level)),
+            (FILTER_LFO_PARAMETER["point_1"], self._encode_bipolar_q13(points[1].level)),
+            (FILTER_LFO_PARAMETER["point_2"], self._encode_bipolar_q13(points[2].level)),
+            (FILTER_LFO_PARAMETER["curve_0"], self._encode_bipolar_q13(points[0].curve)),
+            (FILTER_LFO_PARAMETER["curve_1"], self._encode_bipolar_q13(points[1].curve)),
+        )
+
+        for parameter_id, value in values:
+            if not self.send_highres_parameter(parameter_id, value, log_message=False):
+                return
+        if not self.send_highres_parameter(
+            FILTER_LFO_PARAMETER["commit"], 1, log_message=False
+        ):
+            return
+
+        state = "开启" if self.filter_lfo_enabled.get() else "关闭"
+        self.status.set(
+            f"FPGA Cutoff LFO已{state}：{rate_hz:.1f} Hz，"
+            f"Depth={self.filter_lfo_depth.get()}"
+        )
 
     def open_filter_lfo_editor(self) -> None:
         if self.filter_lfo_window is not None:
@@ -784,31 +850,6 @@ class MidiUartSender:
                 ):
                     self.lfo_last_value[osc_name] = lfo_value
 
-        if (
-            self.filter_lfo_enabled.get()
-            and self.port is not None
-            and self.port.is_open
-        ):
-            rate = max(0.1, min(10.0, float(self.filter_lfo_rate.get())))
-            depth = max(0, min(127, int(self.filter_lfo_depth.get())))
-            base_value = max(0, min(127, int(self.filter_cutoff.get())))
-            phase = self.filter_lfo_phase + rate * elapsed
-            self.filter_lfo_phase = phase % 1.0
-            curve_value = self.filter_lfo_curve.table_value(self.filter_lfo_phase)
-            cutoff_value = max(
-                0.0,
-                min(127.0, base_value + depth * curve_value),
-            )
-            cutoff_q7_7 = round(cutoff_value * 128.0)
-
-            if cutoff_q7_7 != self.filter_lfo_last_value:
-                if self.send_highres_parameter(
-                    HIGHRES_PARAMETER_FILTER_CUTOFF,
-                    cutoff_q7_7,
-                    log_message=False,
-                ):
-                    self.filter_lfo_last_value = cutoff_q7_7
-
         self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 
     def send_all_synth_controls(self) -> None:
@@ -819,6 +860,7 @@ class MidiUartSender:
             FILTER_RESONANCE_CC, self.filter_resonance.get()
         )
         self.send_synth_control(FILTER_MIX_CC, self.filter_mix.get())
+        self.send_filter_lfo_configuration()
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]
             self.send_oscillator_enable(osc_name)
@@ -869,6 +911,9 @@ class MidiUartSender:
         self.log.configure(state=tk.DISABLED)
 
     def close(self) -> None:
+        if self.filter_lfo_config_after_id is not None:
+            self.root.after_cancel(self.filter_lfo_config_after_id)
+            self.filter_lfo_config_after_id = None
         if self.lfo_after_id is not None:
             self.root.after_cancel(self.lfo_after_id)
             self.lfo_after_id = None

@@ -14,6 +14,7 @@ vlog -work work_top_midi \
     src/midi_note_parser.v \
     src/highres_parameter_parser.v \
     src/parameter_linear_interpolator.v \
+    src/filter_curve_lfo.v \
     src/synth_control_router.v \
     src/adsr_parameter_mapper.v \
     src/oscillator_task_scheduler.v \
@@ -52,8 +53,12 @@ add wave sim:/tb_top_midi_input/dut/pan_target
 add wave sim:/tb_top_midi_input/dut/filter_mode_target
 add wave sim:/tb_top_midi_input/dut/filter_mode_active
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_target
-add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_current
+add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_manual_q8
+add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_current_q8
 add wave sim:/tb_top_midi_input/dut/filter_cutoff_interpolation_busy
+add wave sim:/tb_top_midi_input/dut/filter_lfo_enabled
+add wave sim:/tb_top_midi_input/dut/filter_lfo_active_segment
+add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_lfo_segment_phase
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_target
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_current
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_mix_target

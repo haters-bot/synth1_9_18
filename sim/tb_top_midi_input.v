@@ -273,12 +273,14 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
-        // 高精度Cutoff采用Q7.7消息；110.25应成为Q7.8的110.25目标。
-        send_highres_parameter(7'd1, 14'd14112);
+        // 高精度SysEx现在只写FPGA LFO配置；字段在commit后同时生效。
+        send_highres_parameter(7'd16, 14'd1);
+        send_highres_parameter(7'd19, 14'd4096);
+        send_highres_parameter(7'd25, 14'd1);
         repeat (3) @(posedge sys_clk);
-        if (dut.u_filter_cutoff_interpolator.target_latched !== 15'd28224
-            || !dut.filter_cutoff_interpolation_busy) begin
-            $display("ERROR: high-resolution cutoff was not accepted");
+        if (!dut.filter_lfo_enabled
+            || dut.u_filter_curve_lfo.active_depth !== 14'd4096) begin
+            $display("ERROR: FPGA filter LFO configuration was not committed");
             errors = errors + 1;
         end
 

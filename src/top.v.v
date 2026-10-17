@@ -20,8 +20,6 @@ module top #(
     // 参数接口为后续扩展保留；当前活动计数与归一化路径按每组最多32任务验证。
     localparam integer OSC_TOTAL_SLOTS      =
         OSC_ENGINE_COUNT * SLOTS_PER_ENGINE;
-    localparam [6:0] HIGHRES_PARAMETER_FILTER_CUTOFF = 7'd1;
-
     wire clk_sys;
     wire rst_n_sys;
     wire pll_locked;
@@ -94,11 +92,12 @@ module top #(
     wire       highres_parameter_valid;
     wire [6:0] highres_parameter_id;
     wire [13:0] highres_parameter_value;
-    wire       filter_cutoff_highres_valid;
     wire       filter_cutoff_cc_valid;
     wire       filter_cutoff_interpolation_busy;
-    wire [14:0] filter_cutoff_interpolation_target_q8;
-    wire [13:0] filter_cutoff_highres_clamped_q7;
+    wire [14:0] filter_cutoff_manual_q8;
+    wire        filter_lfo_enabled;
+    wire        filter_lfo_active_segment;
+    wire [23:0] filter_lfo_segment_phase;
     wire       routed_note_event_valid;
     wire       routed_note_event_on;
     wire [6:0] routed_note_event_note;
@@ -108,7 +107,6 @@ module top #(
     reg  [2:0] filter_mode_active;
     wire [6:0] filter_cutoff_target;
     wire [14:0] filter_cutoff_current_q8;
-    wire [6:0] filter_cutoff_current;
     wire [6:0] filter_resonance_target;
     reg  [6:0] filter_resonance_current;
     wire [6:0] filter_mix_target;
@@ -175,22 +173,9 @@ module top #(
     );
 
     assign oscillator_start_tick = oversample_tick;
-    assign filter_cutoff_current = filter_cutoff_current_q8[14:8];
-    assign filter_cutoff_highres_valid = highres_parameter_valid
-                                      && (highres_parameter_id
-                                          == HIGHRES_PARAMETER_FILTER_CUTOFF);
     assign filter_cutoff_cc_valid = midi_control_change_valid
                                   && (midi_control_change_channel == 4'd15)
                                   && (midi_control_change_number == 7'd43);
-    assign filter_cutoff_highres_clamped_q7 =
-        (highres_parameter_value > {7'd127, 7'd0})
-        ? {7'd127, 7'd0} : highres_parameter_value;
-    // 高精度消息采用Q7.7，补一个低位后转换为滤波器使用的Q7.8。
-    // 普通CC43仍可直接覆盖目标，保持现有控制器和测试流程兼容。
-    assign filter_cutoff_interpolation_target_q8 =
-        filter_cutoff_highres_valid
-        ? {filter_cutoff_highres_clamped_q7, 1'b0}
-        : {midi_control_change_value, 8'd0};
 
     // 两组WT Position、Warp Amount和全局滤波参数均在96 kHz边界平滑。
     always @(posedge clk_sys or negedge rst_n_sys) begin
@@ -348,8 +333,8 @@ module top #(
         .parameter_value(highres_parameter_value)
     );
 
-    // 512个96 kHz样本约为5.33 ms。商余数分配保证最后一个样本精确
-    // 到达目标；中途收到新目标时从当前值重新起步，不产生参数跳变。
+    // 静态CC43仍经过5.33 ms平滑器。高精度SysEx只负责写入LFO配置，
+    // 不再周期性覆盖Cutoff目标。
     parameter_linear_interpolator #(
         .VALUE_WIDTH(15),
         .INTERPOLATION_SHIFT(9),
@@ -358,11 +343,26 @@ module top #(
         .clk          (clk_sys),
         .rst_n        (rst_n_sys),
         .sample_tick  (sample_tick),
-        .target_valid (filter_cutoff_highres_valid
-                       || filter_cutoff_cc_valid),
-        .target_value (filter_cutoff_interpolation_target_q8),
-        .current_value(filter_cutoff_current_q8),
+        .target_valid (filter_cutoff_cc_valid),
+        .target_value ({midi_control_change_value, 8'd0}),
+        .current_value(filter_cutoff_manual_q8),
         .busy         (filter_cutoff_interpolation_busy)
+    );
+
+    // 三点两曲率LFO在FPGA内部以96 kHz运行。SysEx参数先写影子寄存器，
+    // 收到commit后同时生效，避免逐字段更新造成中间状态。
+    filter_curve_lfo u_filter_curve_lfo (
+        .clk            (clk_sys),
+        .rst_n          (rst_n_sys),
+        .sample_tick    (sample_tick),
+        .parameter_valid(highres_parameter_valid),
+        .parameter_id   (highres_parameter_id),
+        .parameter_value(highres_parameter_value),
+        .base_cutoff_q8 (filter_cutoff_manual_q8),
+        .cutoff_q8      (filter_cutoff_current_q8),
+        .lfo_enabled    (filter_lfo_enabled),
+        .active_segment (filter_lfo_active_segment),
+        .segment_phase  (filter_lfo_segment_phase)
     );
 
     synth_control_router #(

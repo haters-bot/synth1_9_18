@@ -301,8 +301,8 @@ Resonance映射为最大约0.981的反馈系数；正负
 插值后的延迟样本等权相加或相减，因此Resonance=0时也能形成完整深度的梳齿，Cutoff
 会连续移动梳齿位置。该延迟线带BSRAM推断属性，实际资源映射需要通过综合报告确认。
 
-Cutoff在顶层使用Q7.8状态。每次收到CC43或高精度Cutoff目标后，在512个96 kHz样本
-内线性插值到新目标，过渡时间约5.33 ms；
+静态Cutoff在顶层使用Q7.8状态。每次收到CC43后，在512个96 kHz样本内线性插值到
+新目标，过渡时间约5.33 ms；FPGA三点LFO在该静态值上叠加调制；
 Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0为全干声，Mix=127
 为全湿声。模式切换时先把Mix退到0，提交新模式后再恢复，避免不同滤波状态直接跳变。
 
@@ -326,18 +326,17 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 - OSC A/B及全局参数固定通过通道16发送；
 - 连接串口后自动发送Pan以及OSC A/B各自的Enable、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
-- 全局滤波器面板带可编辑Cutoff LFO，以Cutoff滑块为中心，可调`0.1～10 Hz`速率和
-  `0～127`深度；曲线支持2～16个控制点，LFO发送Q7.7高精度SysEx参数；
+- 全局滤波器面板带FPGA Cutoff LFO，以Cutoff滑块为中心，可调`0.1～10 Hz`速率和
+  `0～127`深度；曲线固定为三个控制点和两段独立曲率；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
 OSC A和OSC B面板各带一个临时`Warp LFO`。它只存在于Python测试工具中，以当前
 `Warp Amount`滑块为中心，用正弦波按设定深度产生CC39或CC41。速率范围为
 `0.1～10 Hz`，更新周期为5 ms。即使设置为10 Hz，每个周期仍有20个控制时刻，
 比原来的20 ms刷新更适合听辨快速Warp调制。数值超过0～127时会钳位；关闭LFO后
-立即恢复到滑块所设的基础值。Cutoff LFO采用相同更新周期，每条高精度消息为6字节，
-最坏占用约12000 bit/s。两个Warp LFO和一个Cutoff LFO同时开启时最坏约占
-24000 bit/s，即31250 bit/s链路的76.8%；音符消息仍有余量，但正式版本应使用高速
-控制UART或SPI。发送器只在量化后的数值发生变化时发送，因此实际占用通常更低。
+立即恢复到滑块所设的基础值。Cutoff LFO只在参数变化时发送一次完整配置，运行时不再
+占用串口带宽，也不受桌面定时器抖动影响。两个临时Warp LFO仍由Python周期性发送，
+正式版本可继续迁移到FPGA或外部控制单片机。
 
 外部控制单片机发送示例：
 
@@ -424,12 +423,14 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 
 本次只执行RTL编译与ModelSim功能仿真，没有运行Gowin综合和布局布线。
 
-## 13. 高精度LFO参数扩展
+## 13. FPGA三点LFO参数扩展
 
-可编辑Cutoff LFO不再通过7位CC43逐点传输，而使用以下非商业厂商SysEx消息：
+Cutoff LFO配置使用以下非商业厂商SysEx消息：
 
 ```text
 F0 7D parameter_id value_msb value_lsb F7
 ```
 
-`parameter_id=1`表示全局Filter Cutoff，14位负载采用Q7.7。FPGA将它转换为Q7.8，并在512个96 kHz样本内从当前值线性插值到新目标。CC43继续保留，并与高精度消息共用同一个插值器。控制点结构、曲线编辑方式和定点计算见`docs/lfo_curve_control.md`。
+参数ID 16～24分别写入Enable、两段相位步进、Depth、三个点和两个曲率；ID 25执行
+原子提交。FPGA在96 kHz下运行相位累加器和曲率插值。CC43继续控制静态Cutoff，
+控制点结构、编码和定点计算见`docs/lfo_curve_control.md`。
