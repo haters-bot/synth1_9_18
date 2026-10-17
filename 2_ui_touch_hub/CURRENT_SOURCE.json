@@ -1,7 +1,7 @@
 {
-  "ui_source_commit": "2fc69d8cbecbf3573191c7cc0faba14eac1baab2",
+  "ui_source_commit": "a2b6e6cf629ac22738df7d88e05012e7a164fe28",
   "baseline_manifest": "V1_0_SOURCE.json",
-  "source_archive_sha256": "4166B1334192E3CCA57F70D6390760C57A0A42D9052505C09750FBD5134993C7",
+  "source_archive_sha256": "1888C72D2934C698559D214177E32C7851B2759D79837D52BBCEF12D39CDE89E",
   "excluded_source_paths": [
     "sim/transcript"
   ],
@@ -9,5 +9,6 @@
     "Ignore sim/transcript; stop tracking the shared copy while keeping the file on disk"
   ],
   "diagnostic_bitstream_sha256": "F34A5197EE10D99C7AC58A0CC9392222C6F206DCE79E9C83B986207336D60226",
-  "hardware_validation": "UART STATUS received on COM6; camera normal; no real touch events captured yet; programmer exit missing after SSH loss; timing not closed"
+  "hardware_validation": "UART STATUS received on COM6; camera normal; no real touch events captured yet; programmer exit missing after SSH loss; timing not closed",
+  "pull_request": "https://github.com/haters-bot/synth1_9_18/pull/1"
 }

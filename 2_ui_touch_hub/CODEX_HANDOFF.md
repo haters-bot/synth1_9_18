@@ -9,6 +9,8 @@
   [给队友的说明](doc/TEAM_SYNC_V1_0.md)。
 - 共享仓库 `haters-bot/synth1_9_18`，分支 `ui-touch-hub-v1.0`，仅新增 `2_ui_touch_hub/`。
   本轮上传已经用户授权，下面历史“不自动推送”不禁止本次授权发布。V1.0 标签保持，诊断扩展另行提交。
+- 分支与基线标签已推送；草稿 PR：https://github.com/haters-bot/synth1_9_18/pull/1 ，未合并 main。
+  本轮 120 秒采集仅 STATUS、无真实 touch，操作验证仍待用户；缓存与序号空洞详见交接。
 
 ## 已验收普通固件状态（2026-10-17，历史基线）
 

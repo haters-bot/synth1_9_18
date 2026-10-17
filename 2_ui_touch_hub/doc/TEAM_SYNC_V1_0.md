@@ -2,6 +2,8 @@
 
 UI Touch Hub 已整理为 V1.0（已验收 R15I：触控跟手，FILTER/ENV/LFO 可直接拖动），
 位于共享仓库 ui-touch-hub-v1.0 分支的 2_ui_touch_hub/。音频根目录布局保持原样。
+已上传草稿 PR：https://github.com/haters-bot/synth1_9_18/pull/1 ，尚未合并 main。
+已验收普通固件标签为 ui-v1.0.0，日志扩展单独提交，不混为同一版硬件验收。
 
 新增独立点击日志诊断工程：DEBUG USB 的 COM6、115200 8N1，可记录坐标、按钮/旋钮、
 曲线和内部参数请求；PC 实时打印并保存 bin/JSONL。普通工程仍为 MIDI 31250。

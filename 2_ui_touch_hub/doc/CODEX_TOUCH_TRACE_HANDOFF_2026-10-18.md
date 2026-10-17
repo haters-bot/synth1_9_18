@@ -18,6 +18,13 @@
 - 历史考证和接口差异见 `TEAM_INTEGRATION_2026-10-17.md`。现有历史不支持“队友改回目录结构”；
   本轮只新增 UI 子目录，不搬音频根目录，不创建空队友工程。
 
+发布已执行：分支和 `ui-v1.0.0` 标签均成功推送；首个日志扩展共享提交 `8de4b3a`，
+来源 UI 提交 `2fc69d8cbecbf3573191c7cc0faba14eac1baab2`。
+草稿 PR：https://github.com/haters-bot/synth1_9_18/pull/1 ，未合并 main。
+源码入口：https://github.com/haters-bot/synth1_9_18/tree/ui-touch-hub-v1.0/2_ui_touch_hub 。
+后续提交只补发布记录，准确最新提交见两仓库 git log 与 CURRENT_SOURCE.json。
+共享目录停止跟踪源仓库旧 `sim/transcript` 并忽略，磁盘原件仍在；不改已发布基线标签。
+
 ## 实现与使用
 
 新增 `rtl/debug/ui_debug_trace.v`、debug wrapper / GPRJ / SDC / build脚本、UART bench 和 PC/远程采集工具。
