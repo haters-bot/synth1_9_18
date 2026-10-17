@@ -114,6 +114,8 @@ class MidiUartSender:
         self.keyboard_notes: set[int] = set()
         self.lfo_phase = {"A": 0.0, "B": 0.0}
         self.lfo_last_value: dict[str, int | None] = {"A": None, "B": None}
+        self.filter_lfo_phase = 0.0
+        self.filter_lfo_last_value: int | None = None
         self.lfo_last_time = time.monotonic()
         self.lfo_after_id: str | None = None
 
@@ -126,6 +128,9 @@ class MidiUartSender:
         self.filter_cutoff = tk.IntVar(value=127)
         self.filter_resonance = tk.IntVar(value=0)
         self.filter_mix = tk.IntVar(value=127)
+        self.filter_lfo_enabled = tk.BooleanVar(value=False)
+        self.filter_lfo_rate = tk.DoubleVar(value=0.5)
+        self.filter_lfo_depth = tk.IntVar(value=32)
         self.osc_controls = {}
         for osc_name in ("A", "B"):
             # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
@@ -262,9 +267,7 @@ class MidiUartSender:
         cutoff_scale.grid(row=0, column=3, padx=4)
         cutoff_scale.bind(
             "<ButtonRelease-1>",
-            lambda _event: self.send_synth_control(
-                FILTER_CUTOFF_CC, self.filter_cutoff.get()
-            ),
+            lambda _event: self.send_filter_cutoff(),
         )
 
         ttk.Label(filter_frame, text="Resonance").grid(
@@ -302,6 +305,38 @@ class MidiUartSender:
                 FILTER_MIX_CC, self.filter_mix.get()
             ),
         )
+
+        ttk.Checkbutton(
+            filter_frame,
+            text="Cutoff LFO",
+            variable=self.filter_lfo_enabled,
+            command=self.toggle_filter_lfo,
+        ).grid(row=1, column=0, columnspan=2, padx=4, sticky="w")
+
+        ttk.Label(filter_frame, text="LFO速率/Hz").grid(
+            row=2, column=0, padx=4, sticky="w"
+        )
+        tk.Scale(
+            filter_frame,
+            from_=0.1,
+            to=10.0,
+            resolution=0.1,
+            orient=tk.HORIZONTAL,
+            variable=self.filter_lfo_rate,
+            length=210,
+        ).grid(row=2, column=1, columnspan=2, padx=4)
+
+        ttk.Label(filter_frame, text="LFO深度").grid(
+            row=2, column=3, padx=(12, 4), sticky="w"
+        )
+        tk.Scale(
+            filter_frame,
+            from_=0,
+            to=127,
+            orient=tk.HORIZONTAL,
+            variable=self.filter_lfo_depth,
+            length=210,
+        ).grid(row=2, column=4, columnspan=2, padx=4)
 
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
@@ -529,6 +564,7 @@ class MidiUartSender:
         self.connect_button.configure(text="连接")
         self.status.set("未连接")
         self.lfo_last_value = {"A": None, "B": None}
+        self.filter_lfo_last_value = None
 
     def _send(self, message: bytes, log_message: bool = True) -> bool:
         if self.port is None or not self.port.is_open:
@@ -544,6 +580,7 @@ class MidiUartSender:
             self.active_notes.clear()
             self.keyboard_notes.clear()
             self.lfo_last_value = {"A": None, "B": None}
+            self.filter_lfo_last_value = None
             self.connect_button.configure(text="连接")
             self.status.set("串口连接已断开")
             messagebox.showerror("发送失败", str(exc))
@@ -621,6 +658,28 @@ class MidiUartSender:
         if self.send_control_change(FILTER_MODE_CC, value, CONTROL_CHANNEL):
             self.status.set(f"全局滤波器模式：{mode_name}")
 
+    def send_filter_cutoff(self) -> None:
+        base_value = max(0, min(127, int(self.filter_cutoff.get())))
+        self.filter_lfo_last_value = None
+        if self.filter_lfo_enabled.get():
+            self.status.set(f"Filter Cutoff LFO中心值：{base_value}")
+        else:
+            self.send_synth_control(FILTER_CUTOFF_CC, base_value)
+
+    def toggle_filter_lfo(self) -> None:
+        enabled = bool(self.filter_lfo_enabled.get())
+        self.filter_lfo_phase = 0.0
+        self.filter_lfo_last_value = None
+
+        if enabled:
+            self.status.set("Filter Cutoff LFO已开启")
+        else:
+            base_value = max(0, min(127, int(self.filter_cutoff.get())))
+            self.send_control_change(
+                FILTER_CUTOFF_CC, base_value, CONTROL_CHANNEL
+            )
+            self.status.set("Filter Cutoff LFO已关闭")
+
     def toggle_warp_lfo(self, osc_name: str) -> None:
         controls = self.osc_controls[osc_name]
         enabled = bool(controls["lfo_enabled"].get())
@@ -666,6 +725,28 @@ class MidiUartSender:
                     log_message=False,
                 ):
                     self.lfo_last_value[osc_name] = lfo_value
+
+        if (
+            self.filter_lfo_enabled.get()
+            and self.port is not None
+            and self.port.is_open
+        ):
+            rate = max(0.1, min(10.0, float(self.filter_lfo_rate.get())))
+            depth = max(0, min(127, int(self.filter_lfo_depth.get())))
+            base_value = max(0, min(127, int(self.filter_cutoff.get())))
+            phase = self.filter_lfo_phase + math.tau * rate * elapsed
+            self.filter_lfo_phase = phase % math.tau
+            lfo_value = round(base_value + depth * math.sin(phase))
+            lfo_value = max(0, min(127, lfo_value))
+
+            if lfo_value != self.filter_lfo_last_value:
+                if self.send_control_change(
+                    FILTER_CUTOFF_CC,
+                    lfo_value,
+                    CONTROL_CHANNEL,
+                    log_message=False,
+                ):
+                    self.filter_lfo_last_value = lfo_value
 
         self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 

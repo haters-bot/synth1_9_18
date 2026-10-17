@@ -9,7 +9,7 @@ module global_filter(
     output wire               in_ready,
 
     input  wire [2:0]         filter_mode,
-    input  wire [6:0]         cutoff_control,
+    input  wire [14:0]        cutoff_control_q8,
     input  wire [6:0]         resonance_control,
     input  wire [6:0]         mix_control,
 
@@ -73,7 +73,7 @@ module global_filter(
         .sample_in        (sample_in),
         .in_ready         (svf_in_ready),
         .filter_mode      (filter_mode),
-        .cutoff_control   (cutoff_control),
+        .cutoff_control   (cutoff_control_q8[14:8]),
         .resonance_control(resonance_control),
         .out_valid        (svf_out_valid),
         .sample_out       (svf_sample_out),
@@ -87,7 +87,7 @@ module global_filter(
         .sample_in           (sample_in),
         .in_ready            (comb_in_ready),
         .negative_feedback   (filter_mode == FILTER_COMB_NEGATIVE),
-        .cutoff_control      (cutoff_control),
+        .cutoff_control_q8   (cutoff_control_q8),
         .resonance_control   (selected_comb ? resonance_control : 7'd0),
         .out_valid           (comb_out_valid),
         .sample_out          (comb_sample_out),

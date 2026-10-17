@@ -7,7 +7,7 @@ module tb_global_filter;
     reg in_valid;
     reg signed [15:0] sample_in;
     reg [2:0] filter_mode;
-    reg [6:0] cutoff_control;
+    reg [14:0] cutoff_control_q8;
     reg [6:0] resonance_control;
     reg [6:0] mix_control;
 
@@ -28,7 +28,7 @@ module tb_global_filter;
         .sample_in(sample_in),
         .in_ready(in_ready),
         .filter_mode(filter_mode),
-        .cutoff_control(cutoff_control),
+        .cutoff_control_q8(cutoff_control_q8),
         .resonance_control(resonance_control),
         .mix_control(mix_control),
         .out_valid(out_valid),
@@ -80,7 +80,7 @@ module tb_global_filter;
         in_valid = 1'b0;
         sample_in = 16'sd0;
         filter_mode = 3'd0;
-        cutoff_control = 7'd127;
+        cutoff_control_q8 = {7'd127, 8'd0};
         resonance_control = 7'd0;
         mix_control = 7'd127;
         errors = 0;
@@ -89,7 +89,7 @@ module tb_global_filter;
 
         // Mix=0必须逐位输出原声，即使内部选择低通。
         filter_mode = 3'd1;
-        cutoff_control = 7'd32;
+        cutoff_control_q8 = {7'd32, 8'd0};
         mix_control = 7'd0;
         process_sample(16'sd12345);
         if (captured_sample !== 16'sd12345) begin
@@ -101,25 +101,51 @@ module tb_global_filter;
         filter_mode = 3'd5;
         resonance_control = 7'd0;
         mix_control = 7'd0;
-        cutoff_control = 7'd0;
+        cutoff_control_q8 = {7'd0, 8'd0};
         process_sample(16'sd0);
         if (dut.u_global_comb_filter.delay_length_latched !== 12'd2047) begin
             $display("ERROR: Comb Cutoff=0 delay mapping failed: %0d",
                      dut.u_global_comb_filter.delay_length_latched);
             errors = errors + 1;
         end
-        cutoff_control = 7'd64;
+        if (dut.u_global_comb_filter.delay_fraction_latched !== 8'd0) begin
+            $display("ERROR: Comb Cutoff=0 fraction failed: %0d",
+                     dut.u_global_comb_filter.delay_fraction_latched);
+            errors = errors + 1;
+        end
+        cutoff_control_q8 = {7'd64, 8'd0};
         process_sample(16'sd0);
         if (dut.u_global_comb_filter.delay_length_latched !== 12'd127) begin
             $display("ERROR: Comb Cutoff=64 delay mapping failed: %0d",
                      dut.u_global_comb_filter.delay_length_latched);
             errors = errors + 1;
         end
-        cutoff_control = 7'd127;
+        if (dut.u_global_comb_filter.delay_fraction_latched !== 8'd240) begin
+            $display("ERROR: Comb Cutoff=64 fraction failed: %0d",
+                     dut.u_global_comb_filter.delay_fraction_latched);
+            errors = errors + 1;
+        end
+        cutoff_control_q8 = {7'd127, 8'd0};
         process_sample(16'sd0);
         if (dut.u_global_comb_filter.delay_length_latched !== 12'd8) begin
             $display("ERROR: Comb Cutoff=127 delay mapping failed: %0d",
                      dut.u_global_comb_filter.delay_length_latched);
+            errors = errors + 1;
+        end
+        if (dut.u_global_comb_filter.delay_fraction_latched !== 8'd96) begin
+            $display("ERROR: Comb Cutoff=127 fraction failed: %0d",
+                     dut.u_global_comb_filter.delay_fraction_latched);
+            errors = errors + 1;
+        end
+
+        // 半个CC刻度必须落在相邻两组延迟映射之间。
+        cutoff_control_q8 = {7'd126, 8'd128};
+        process_sample(16'sd0);
+        if (dut.u_global_comb_filter.delay_length_mapped_q8
+            >= dut.u_global_comb_filter.delay_at_integer_q8
+            || dut.u_global_comb_filter.delay_length_mapped_q8
+               <= dut.u_global_comb_filter.delay_at_next_q8) begin
+            $display("ERROR: fractional Cutoff interpolation failed");
             errors = errors + 1;
         end
 
@@ -127,7 +153,7 @@ module tb_global_filter;
         // 证明Cutoff并不依赖反馈才能改变频率响应。
         reset_dut();
         filter_mode = 3'd5;
-        cutoff_control = 7'd127;
+        cutoff_control_q8 = {7'd127, 8'd0};
         resonance_control = 7'd0;
         mix_control = 7'd127;
         process_sample(16'sd12000);
@@ -135,9 +161,16 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd5900
-            || captured_sample > 16'sd6100) begin
+        if (captured_sample < 16'sd3650
+            || captured_sample > 16'sd3850) begin
             $display("ERROR: zero-resonance Comb feedforward depth failed: %0d",
+                     captured_sample);
+            errors = errors + 1;
+        end
+        process_sample(16'sd0);
+        if (captured_sample < 16'sd2150
+            || captured_sample > 16'sd2350) begin
+            $display("ERROR: fractional Comb second tap failed: %0d",
                      captured_sample);
             errors = errors + 1;
         end
@@ -145,7 +178,7 @@ module tb_global_filter;
         // 延迟改为127点后，第8个样本不应再出现回声，证明Cutoff确实移动梳齿。
         reset_dut();
         filter_mode = 3'd5;
-        cutoff_control = 7'd64;
+        cutoff_control_q8 = {7'd64, 8'd0};
         resonance_control = 7'd0;
         mix_control = 7'd127;
         process_sample(16'sd12000);
@@ -160,7 +193,7 @@ module tb_global_filter;
         end
 
         // 提高Resonance后仍应保留正极性的梳状输出。
-        cutoff_control = 7'd127;
+        cutoff_control_q8 = {7'd127, 8'd0};
         resonance_control = 7'd127;
         for (sample_index = 0; sample_index < 8;
              sample_index = sample_index + 1)
@@ -173,7 +206,7 @@ module tb_global_filter;
         // 中间Mix应按比例减小同一个首回声。
         reset_dut();
         filter_mode = 3'd5;
-        cutoff_control = 7'd127;
+        cutoff_control_q8 = {7'd127, 8'd0};
         resonance_control = 7'd127;
         mix_control = 7'd64;
         process_sample(16'sd12000);
@@ -181,7 +214,7 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd2900 || captured_sample > 16'sd3100) begin
+        if (captured_sample < 16'sd1800 || captured_sample > 16'sd2000) begin
             $display("ERROR: intermediate Mix scaling failed: %0d",
                      captured_sample);
             errors = errors + 1;
@@ -190,7 +223,7 @@ module tb_global_filter;
         // 负反馈使用相同延迟，首个回声必须反相。
         reset_dut();
         filter_mode = 3'd6;
-        cutoff_control = 7'd127;
+        cutoff_control_q8 = {7'd127, 8'd0};
         resonance_control = 7'd127;
         mix_control = 7'd127;
         process_sample(16'sd12000);

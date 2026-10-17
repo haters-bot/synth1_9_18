@@ -20,6 +20,7 @@ module top #(
     // 参数接口为后续扩展保留；当前活动计数与归一化路径按每组最多32任务验证。
     localparam integer OSC_TOTAL_SLOTS      =
         OSC_ENGINE_COUNT * SLOTS_PER_ENGINE;
+    localparam [14:0] FILTER_CUTOFF_SLEW_Q8 = 15'd16;
 
     wire clk_sys;
     wire rst_n_sys;
@@ -98,7 +99,9 @@ module top #(
     wire [2:0] filter_mode_target;
     reg  [2:0] filter_mode_active;
     wire [6:0] filter_cutoff_target;
-    reg  [6:0] filter_cutoff_current;
+    wire [14:0] filter_cutoff_target_q8;
+    reg  [14:0] filter_cutoff_current_q8;
+    wire [6:0] filter_cutoff_current;
     wire [6:0] filter_resonance_target;
     reg  [6:0] filter_resonance_current;
     wire [6:0] filter_mix_target;
@@ -165,6 +168,8 @@ module top #(
     );
 
     assign oscillator_start_tick = oversample_tick;
+    assign filter_cutoff_target_q8 = {filter_cutoff_target, 8'd0};
+    assign filter_cutoff_current = filter_cutoff_current_q8[14:8];
 
     // 两组WT Position、Warp Amount和全局滤波参数均在96 kHz边界平滑。
     always @(posedge clk_sys or negedge rst_n_sys) begin
@@ -175,7 +180,7 @@ module top #(
             osc_b_warp_mode_active <= 4'd0;
             osc_a_warp_amount_current <= 7'd0;
             osc_b_warp_amount_current <= 7'd0;
-            filter_cutoff_current <= 7'd127;
+            filter_cutoff_current_q8 <= {7'd127, 8'd0};
             filter_resonance_current <= 7'd0;
             filter_mode_active <= 3'd0;
             filter_mix_current <= 7'd127;
@@ -218,10 +223,26 @@ module top #(
                 osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
             end
 
-            if (filter_cutoff_current < filter_cutoff_target)
-                filter_cutoff_current <= filter_cutoff_current + 7'd1;
-            else if (filter_cutoff_current > filter_cutoff_target)
-                filter_cutoff_current <= filter_cutoff_current - 7'd1;
+            // Q7.8 Cutoff每个96 kHz样本移动1/16个CC单位。
+            // 完整0～127行程约21 ms，可平滑上位机LFO产生的7位MIDI台阶。
+            if (filter_cutoff_current_q8 < filter_cutoff_target_q8) begin
+                if ((filter_cutoff_target_q8 - filter_cutoff_current_q8)
+                    > FILTER_CUTOFF_SLEW_Q8)
+                    filter_cutoff_current_q8
+                        <= filter_cutoff_current_q8
+                         + FILTER_CUTOFF_SLEW_Q8;
+                else
+                    filter_cutoff_current_q8 <= filter_cutoff_target_q8;
+            end else if (filter_cutoff_current_q8
+                         > filter_cutoff_target_q8) begin
+                if ((filter_cutoff_current_q8 - filter_cutoff_target_q8)
+                    > FILTER_CUTOFF_SLEW_Q8)
+                    filter_cutoff_current_q8
+                        <= filter_cutoff_current_q8
+                         - FILTER_CUTOFF_SLEW_Q8;
+                else
+                    filter_cutoff_current_q8 <= filter_cutoff_target_q8;
+            end
 
             if (filter_resonance_current < filter_resonance_target)
                 filter_resonance_current <= filter_resonance_current + 7'd1;
@@ -562,7 +583,7 @@ module top #(
         .sample_in        (fir_filtered_sample),
         .in_ready         (global_filter_input_ready),
         .filter_mode      (filter_mode_active),
-        .cutoff_control   (filter_cutoff_current),
+        .cutoff_control_q8(filter_cutoff_current_q8),
         .resonance_control(filter_resonance_current),
         .mix_control      (filter_mix_current),
         .out_valid        (global_filter_output_valid),
