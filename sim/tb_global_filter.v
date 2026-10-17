@@ -135,13 +135,32 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd1000) begin
-            $display("ERROR: zero-resonance Comb feedforward missing: %0d",
+        if (captured_sample < 16'sd5900
+            || captured_sample > 16'sd6100) begin
+            $display("ERROR: zero-resonance Comb feedforward depth failed: %0d",
+                     captured_sample);
+            errors = errors + 1;
+        end
+
+        // 延迟改为127点后，第8个样本不应再出现回声，证明Cutoff确实移动梳齿。
+        reset_dut();
+        filter_mode = 3'd5;
+        cutoff_control = 7'd64;
+        resonance_control = 7'd0;
+        mix_control = 7'd127;
+        process_sample(16'sd12000);
+        for (sample_index = 1; sample_index < 8;
+             sample_index = sample_index + 1)
+            process_sample(16'sd0);
+        process_sample(16'sd0);
+        if (captured_sample !== 16'sd0) begin
+            $display("ERROR: Comb Cutoff did not move echo position: %0d",
                      captured_sample);
             errors = errors + 1;
         end
 
         // 提高Resonance后仍应保留正极性的梳状输出。
+        cutoff_control = 7'd127;
         resonance_control = 7'd127;
         for (sample_index = 0; sample_index < 8;
              sample_index = sample_index + 1)
@@ -162,7 +181,7 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd400 || captured_sample > 16'sd1100) begin
+        if (captured_sample < 16'sd2900 || captured_sample > 16'sd3100) begin
             $display("ERROR: intermediate Mix scaling failed: %0d",
                      captured_sample);
             errors = errors + 1;

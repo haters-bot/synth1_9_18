@@ -54,7 +54,8 @@ module global_comb_filter #(
     wire signed [17:0] input_extended;
     wire signed [17:0] feedback_term;
     wire signed [17:0] write_value_wide;
-    wire signed [17:0] feedforward_term;
+    wire signed [17:0] delayed_sample_extended;
+    wire signed [17:0] comb_sum_wide;
     wire signed [17:0] wet_value_wide;
 
     assign in_ready = (state == STATE_IDLE);
@@ -93,12 +94,19 @@ module global_comb_filter #(
     assign write_value_wide = negative_feedback_latched
                             ? (input_extended - feedback_term)
                             : (input_extended + feedback_term);
-    // 固定0.5倍前馈延迟产生基础梳齿；Resonance只控制反馈峰值锐度。
-    // 因此前馈项在Resonance=0时仍然存在，Cutoff依然能够改变音色。
-    assign feedforward_term = damped_sample >>> 1;
-    assign wet_value_wide = negative_feedback_latched
-                          ? (input_extended - feedforward_term)
-                          : (input_extended + feedforward_term);
+    // 前馈支路直接使用原始延迟样本，使Resonance=0时也能形成完整深度的梳齿。
+    // 输入与延迟各占0.5，最大同相增益为1，避免增强梳齿时引入额外削顶。
+    // 低通阻尼只保留在反馈回路中，用于控制高Resonance时的尖锐程度。
+    assign delayed_sample_extended = history_valid_latched
+                                   ? {{2{memory_read_data[15]}},
+                                      memory_read_data}
+                                   : 18'sd0;
+    assign comb_sum_wide = negative_feedback_latched
+                         ? (input_extended - delayed_sample_extended)
+                         : (input_extended + delayed_sample_extended);
+    assign wet_value_wide = history_valid_latched
+                          ? ($signed(comb_sum_wide) >>> 1)
+                          : input_extended;
 
     function signed [15:0] saturate_s18_to_s16;
         input signed [17:0] value;
