@@ -20,7 +20,7 @@ module top #(
     // 参数接口为后续扩展保留；当前活动计数与归一化路径按每组最多32任务验证。
     localparam integer OSC_TOTAL_SLOTS      =
         OSC_ENGINE_COUNT * SLOTS_PER_ENGINE;
-    localparam [14:0] FILTER_CUTOFF_SLEW_Q8 = 15'd16;
+    localparam [14:0] FILTER_CUTOFF_SLEW_Q8 = 15'd1;
 
     wire clk_sys;
     wire rst_n_sys;
@@ -223,8 +223,8 @@ module top #(
                 osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
             end
 
-            // Q7.8 Cutoff每个96 kHz样本移动1/16个CC单位。
-            // 完整0～127行程约21 ms，可平滑上位机LFO产生的7位MIDI台阶。
+            // Q7.8 Cutoff每个96 kHz样本移动1/256个CC单位。
+            // 每个整数CC约用2.67 ms过渡，用于平滑上位机LFO的7位MIDI台阶。
             if (filter_cutoff_current_q8 < filter_cutoff_target_q8) begin
                 if ((filter_cutoff_target_q8 - filter_cutoff_current_q8)
                     > FILTER_CUTOFF_SLEW_Q8)
