@@ -34,6 +34,7 @@ module synth_control_router #(
     output reg [6:0]  filter_cutoff,
     output reg [6:0]  filter_resonance,
     output reg [6:0]  filter_mix,
+    output reg [6:0]  master_level,
 
     output reg [6:0]  osc_a_wt_position_target,
     output reg [2:0]  osc_a_waveform_select,
@@ -46,6 +47,7 @@ module synth_control_router #(
     output reg        osc_a_enabled,
     output reg [3:0]  osc_a_warp_mode,
     output reg [6:0]  osc_a_warp_amount,
+    output reg [6:0]  osc_a_level,
 
     output reg [6:0]  osc_b_wt_position_target,
     output reg [2:0]  osc_b_waveform_select,
@@ -57,7 +59,8 @@ module synth_control_router #(
     output reg [6:0]  osc_b_release_control,
     output reg        osc_b_enabled,
     output reg [3:0]  osc_b_warp_mode,
-    output reg [6:0]  osc_b_warp_amount
+    output reg [6:0]  osc_b_warp_amount,
+    output reg [6:0]  osc_b_level
 );
 
     localparam [6:0] CC_PAN = 7'd10;
@@ -89,6 +92,9 @@ module synth_control_router #(
     localparam [6:0] CC_FILTER_CUTOFF      = 7'd43;
     localparam [6:0] CC_FILTER_RESONANCE   = 7'd44;
     localparam [6:0] CC_FILTER_MIX         = 7'd45;
+    localparam [6:0] CC_A_LEVEL            = 7'd46;
+    localparam [6:0] CC_B_LEVEL            = 7'd47;
+    localparam [6:0] CC_MASTER_LEVEL       = 7'd48;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -132,6 +138,7 @@ module synth_control_router #(
             filter_cutoff       <= 7'd127;
             filter_resonance    <= 7'd0;
             filter_mix          <= 7'd127;
+            master_level        <= 7'd127;
 
             osc_a_wt_position_target <= 7'd0;
             osc_a_waveform_select    <= 3'd2;
@@ -144,6 +151,7 @@ module synth_control_router #(
             osc_a_enabled            <= 1'b1;
             osc_a_warp_mode          <= 4'd0;
             osc_a_warp_amount        <= 7'd0;
+            osc_a_level              <= 7'd127;
 
             osc_b_wt_position_target <= 7'd0;
             osc_b_waveform_select    <= 3'd2;
@@ -156,6 +164,7 @@ module synth_control_router #(
             osc_b_enabled            <= 1'b1;
             osc_b_warp_mode          <= 4'd0;
             osc_b_warp_amount        <= 7'd0;
+            osc_b_level              <= 7'd127;
         end else begin
             note_event_valid <= 1'b0;
 
@@ -233,6 +242,12 @@ module synth_control_router #(
                         filter_resonance <= raw_control_change_value;
                     CC_FILTER_MIX:
                         filter_mix <= raw_control_change_value;
+                    CC_A_LEVEL:
+                        osc_a_level <= raw_control_change_value;
+                    CC_B_LEVEL:
+                        osc_b_level <= raw_control_change_value;
+                    CC_MASTER_LEVEL:
+                        master_level <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

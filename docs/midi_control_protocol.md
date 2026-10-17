@@ -43,7 +43,9 @@ OSC A调度器/Bank     OSC B调度器/Bank
         |                 |
         +--------+--------+
                  |
-       开关平滑增益与A/B混音
+       开关/Level平滑增益与A/B混音
+                 |
+            固定6 dB余量
                  |
              共享FIR
                  |
@@ -124,6 +126,9 @@ BF 14 55    通道16，OSC A的CC20，WT Position=85
 | 全局 | Filter Cutoff | 16 | 43 | 0～127 | 127 |
 | 全局 | Filter Resonance | 16 | 44 | 0～127 | 0 |
 | 全局 | Filter Mix | 16 | 45 | 0～127 | 127 |
+| OSC A | Level | 16 | 46 | 0～127 | 127 |
+| OSC B | Level | 16 | 47 | 0～127 | 127 |
+| 全局 | Master Level | 16 | 48 | 0～127 | 127 |
 
 两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
 波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。
@@ -324,7 +329,7 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 
 - “演奏通道”只影响Note On和Note Off，正常测试保持通道1；
 - OSC A/B及全局参数固定通过通道16发送；
-- 连接串口后自动发送Pan以及OSC A/B各自的Enable、Waveform、Warp、WT Position、Detune、Unison和ADSR；
+- 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
 - 全局滤波器面板带FPGA Cutoff LFO，以Cutoff滑块为中心，可调`0.1～10 Hz`速率和
   `0～127`协议深度；曲线固定为三个控制点和两段独立曲率。Comb+和Comb-在FPGA
@@ -372,6 +377,9 @@ BF 2A 01    全局滤波器选择低通
 BF 2B 60    全局滤波器Cutoff=96
 BF 2C 30    全局滤波器Resonance=48
 BF 2D 7F    全局滤波器Mix=127
+BF 2E 60    OSC A Level=96
+BF 2F 40    OSC B Level=64
+BF 30 7F    Master Level=127
 ```
 
 如果连续发送多个CC，可以只发送一次`BF`，随后按“CC编号、数值”成对发送。只要中间
@@ -407,7 +415,7 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 顶层仿真覆盖以下行为：
 
 1. 通道1的CC不能修改合成参数；
-2. 通道16的CC10、20～27、28～35和36～37正确进入全局、OSC A和OSC B寄存器；
+2. 通道16的CC10、20～48正确进入对应的全局、OSC A和OSC B寄存器；
 3. 通道16的Note On不能进入声部调度器；
 4. 通道1的Note On/Off、力度和Running Status保持原有行为；
 5. MIDI实时字节穿插不会破坏解析状态；
@@ -419,8 +427,10 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 11. Sustain为0时，Gate保持有效而包络在Decay后归零；
 12. 可调Release完成后能通知调度器回收槽位；
 13. 同一Note事件会按两组独立的Unison/Detune设置生成不同的任务数与相位步进；
-14. 两个1×32 Bank的输出有效脉冲对齐，调度无超时，并以0.5增益相加。
-15. CC36/CC37能独立关闭两路音频，并在单路与双路模式间平滑交叉调整增益。
+14. 两个1×32 Bank的输出有效脉冲对齐，调度无超时，并在宽位乘加后进入FIR。
+15. CC36/CC37能独立关闭两路音频，CC46/CC47独立控制两路Level；单路最大增益0.5，
+    双路最大增益各0.25，为FIR和滤波器保留6 dB余量。
+16. CC48控制滤波器后的Master Level，0～127映射为0～1.0，并在96 kHz边界平滑。
 
 本次只执行RTL编译与ModelSim功能仿真，没有运行Gowin综合和布局布线。
 

@@ -40,6 +40,7 @@ FILTER_MODE_CC = 42
 FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
 FILTER_MIX_CC = 45
+MASTER_LEVEL_CC = 48
 # FPGA三点Cutoff LFO的影子寄存器参数编号。
 FILTER_LFO_PARAMETER = {
     "enable": 16,
@@ -70,6 +71,7 @@ OSC_A_CC = {
     "decay": 25,
     "sustain": 26,
     "release": 27,
+    "level": 46,
 }
 OSC_B_CC = {
     "enable": 37,
@@ -83,6 +85,7 @@ OSC_B_CC = {
     "decay": 33,
     "sustain": 34,
     "release": 35,
+    "level": 47,
 }
 WAVEFORM_VALUES = {
     "正弦波": 0,
@@ -147,6 +150,7 @@ class MidiUartSender:
         self.filter_cutoff = tk.IntVar(value=127)
         self.filter_resonance = tk.IntVar(value=0)
         self.filter_mix = tk.IntVar(value=127)
+        self.master_level = tk.IntVar(value=127)
         self.filter_lfo_enabled = tk.BooleanVar(value=False)
         self.filter_lfo_rate = tk.DoubleVar(value=0.5)
         self.filter_lfo_depth = tk.IntVar(value=32)
@@ -168,6 +172,7 @@ class MidiUartSender:
                 "decay": tk.IntVar(value=54),
                 "sustain": tk.IntVar(value=89),
                 "release": tk.IntVar(value=67),
+                "level": tk.IntVar(value=127),
             }
         self.status = tk.StringVar(value="未连接")
 
@@ -325,6 +330,25 @@ class MidiUartSender:
             ),
         )
 
+        ttk.Label(filter_frame, text="Master Level").grid(
+            row=1, column=4, padx=(12, 4)
+        )
+        master_scale = tk.Scale(
+            filter_frame,
+            from_=0,
+            to=127,
+            orient=tk.HORIZONTAL,
+            variable=self.master_level,
+            length=210,
+        )
+        master_scale.grid(row=1, column=5, padx=4)
+        master_scale.bind(
+            "<ButtonRelease-1>",
+            lambda _event: self.send_synth_control(
+                MASTER_LEVEL_CC, self.master_level.get()
+            ),
+        )
+
         ttk.Checkbutton(
             filter_frame,
             text="Cutoff LFO",
@@ -455,6 +479,7 @@ class MidiUartSender:
             ("WT Position", "wt_position", 0, 127),
             ("Detune", "detune", 0, 127),
             ("Unison", "unison", 1, 8),
+            ("Level", "level", 0, 127),
             ("Attack", "attack", 0, 127),
             ("Decay", "decay", 0, 127),
             ("Sustain", "sustain", 0, 127),
@@ -865,6 +890,7 @@ class MidiUartSender:
             FILTER_RESONANCE_CC, self.filter_resonance.get()
         )
         self.send_synth_control(FILTER_MIX_CC, self.filter_mix.get())
+        self.send_synth_control(MASTER_LEVEL_CC, self.master_level.get())
         self.send_filter_lfo_configuration()
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]
@@ -876,6 +902,7 @@ class MidiUartSender:
                 "wt_position",
                 "detune",
                 "unison",
+                "level",
                 "attack",
                 "decay",
                 "sustain",

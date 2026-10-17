@@ -42,12 +42,24 @@ module top #(
     reg  signed [25:0]  osc_a_scaled_product;
     reg  signed [25:0]  osc_b_scaled_product;
     wire signed [26:0]  oscillator_scaled_sum;
+    wire signed [26:0]  oscillator_mix_shifted;
     wire signed [15:0]  oscillator_mix;
+    wire                oscillator_mix_clip_now;
     reg                 oscillator_mix_valid;
     wire                oscillator_schedule_overrun;
     wire signed [15:0]  fir_input_sample;
     wire signed [15:0]  fir_filtered_sample;
     wire signed [15:0]  global_filtered_sample;
+    reg  signed [15:0]  master_output_sample;
+    wire signed [25:0]  master_scaled_product;
+    wire signed [26:0]  master_scaled_product_extended;
+    wire signed [26:0]  master_scaled_shifted;
+    wire                master_output_clip_now;
+    wire                filter_output_limit_now;
+    reg                 oscillator_mix_clip;
+    reg                 filter_output_limit;
+    reg                 master_output_clip;
+    reg  [31:0]         audio_clip_count;
 
     wire [OSC_TOTAL_SLOTS-1:0] osc_a_task_idle_mask;
     wire [OSC_TOTAL_SLOTS-1:0] osc_b_task_idle_mask;
@@ -111,6 +123,9 @@ module top #(
     reg  [6:0] filter_resonance_current;
     wire [6:0] filter_mix_target;
     reg  [6:0] filter_mix_current;
+    wire [6:0] master_level_target;
+    reg  [8:0] master_gain_q8;
+    wire [8:0] master_gain_target_q8;
 
     wire [6:0] osc_a_wt_position_target;
     reg  [6:0] osc_a_wt_position_current;
@@ -127,6 +142,7 @@ module top #(
     wire [15:0] osc_a_sustain_level;
     wire [31:0] osc_a_release_phase_step;
     wire        osc_a_enabled;
+    wire [6:0]  osc_a_level;
     wire [3:0]  osc_a_warp_mode;
     reg  [3:0]  osc_a_warp_mode_active;
     wire [6:0]  osc_a_warp_amount_target;
@@ -147,6 +163,7 @@ module top #(
     wire [15:0] osc_b_sustain_level;
     wire [31:0] osc_b_release_phase_step;
     wire        osc_b_enabled;
+    wire [6:0]  osc_b_level;
     wire [3:0]  osc_b_warp_mode;
     reg  [3:0]  osc_b_warp_mode_active;
     wire [6:0]  osc_b_warp_amount_target;
@@ -247,17 +264,43 @@ module top #(
         end
     end
 
-    // 两个振荡器都开启时各占一半增益；只开启一路时该路使用单位增益。
-    // Q1.8增益在96 kHz边界每次移动1，完整0～1斜坡约为2.67 ms。
+    // 把0～127线性映射为Q1.8的0～0.5。最大值精确为128，
+    // 其余点的误差不超过一个Q1.8最低位，不需要推断除法器。
+    function [8:0] level_to_half_gain_q8;
+        input [6:0] level;
+        begin
+            level_to_half_gain_q8 = {2'b00, level}
+                                  + (level >= 7'd64 ? 9'd1 : 9'd0);
+        end
+    endfunction
+
+    // 把0～127线性映射为Q1.8的0～1.0。32和96是对2/127余数
+    // 进行四舍五入的分界点，最大值精确为256。
+    function [8:0] level_to_unity_gain_q8;
+        input [6:0] level;
+        begin
+            level_to_unity_gain_q8 = {1'b0, level, 1'b0}
+                                   + (level >= 7'd32 ? 9'd1 : 9'd0)
+                                   + (level >= 7'd96 ? 9'd1 : 9'd0);
+        end
+    endfunction
+
+    // Bank已经按活动任务数做1/N归一化。这里为后级FIR和滤波器固定保留6 dB：
+    // 只开启一路时最大增益0.5；两路都开启时每路最大增益0.25。
+    // OSC Level与开关共用该平滑增益，目标总增益始终不超过0.5。
     assign osc_a_mix_gain_target_q8 = !osc_a_enabled ? 9'd0
-                                         : osc_b_enabled ? 9'd128 : 9'd256;
+        : osc_b_enabled ? (level_to_half_gain_q8(osc_a_level) >> 1)
+        : level_to_half_gain_q8(osc_a_level);
     assign osc_b_mix_gain_target_q8 = !osc_b_enabled ? 9'd0
-                                         : osc_a_enabled ? 9'd128 : 9'd256;
+        : osc_a_enabled ? (level_to_half_gain_q8(osc_b_level) >> 1)
+        : level_to_half_gain_q8(osc_b_level);
+    assign master_gain_target_q8 = level_to_unity_gain_q8(master_level_target);
 
     always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
-            osc_a_mix_gain_q8 <= 9'd128;
-            osc_b_mix_gain_q8 <= 9'd128;
+            osc_a_mix_gain_q8 <= 9'd64;
+            osc_b_mix_gain_q8 <= 9'd64;
+            master_gain_q8    <= 9'd256;
         end else if (sample_tick) begin
             if (osc_a_mix_gain_q8 < osc_a_mix_gain_target_q8)
                 osc_a_mix_gain_q8 <= osc_a_mix_gain_q8 + 9'd1;
@@ -268,6 +311,11 @@ module top #(
                 osc_b_mix_gain_q8 <= osc_b_mix_gain_q8 + 9'd1;
             else if (osc_b_mix_gain_q8 > osc_b_mix_gain_target_q8)
                 osc_b_mix_gain_q8 <= osc_b_mix_gain_q8 - 9'd1;
+
+            if (master_gain_q8 < master_gain_target_q8)
+                master_gain_q8 <= master_gain_q8 + 9'd1;
+            else if (master_gain_q8 > master_gain_target_q8)
+                master_gain_q8 <= master_gain_q8 - 9'd1;
         end
     end
 
@@ -391,6 +439,7 @@ module top #(
         .filter_cutoff             (filter_cutoff_target),
         .filter_resonance          (filter_resonance_target),
         .filter_mix                (filter_mix_target),
+        .master_level              (master_level_target),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
         .osc_a_detune_amount       (osc_a_detune_amount),
@@ -402,6 +451,7 @@ module top #(
         .osc_a_enabled             (osc_a_enabled),
         .osc_a_warp_mode           (osc_a_warp_mode),
         .osc_a_warp_amount         (osc_a_warp_amount_target),
+        .osc_a_level               (osc_a_level),
         .osc_b_wt_position_target  (osc_b_wt_position_target),
         .osc_b_waveform_select     (osc_b_waveform_select),
         .osc_b_detune_amount       (osc_b_detune_amount),
@@ -412,7 +462,8 @@ module top #(
         .osc_b_release_control     (osc_b_release_control),
         .osc_b_enabled             (osc_b_enabled),
         .osc_b_warp_mode           (osc_b_warp_mode),
-        .osc_b_warp_amount         (osc_b_warp_amount_target)
+        .osc_b_warp_amount         (osc_b_warp_amount_target),
+        .osc_b_level               (osc_b_level)
     );
 
     adsr_parameter_mapper u_osc_a_adsr_parameter_mapper (
@@ -547,8 +598,8 @@ module top #(
         .debug_engine0_slot_commit (debug_osc_b_slot_commit)
     );
 
-    // 每组Bank已经按自己的活动任务数归一化。这里应用开关平滑增益，
-    // 两路目标增益之和始终不超过1.0，最后再饱和到16位。
+    // 每组Bank已经按自己的活动任务数归一化。这里应用开关和Level共用的
+    // 平滑增益，两路目标增益之和始终不超过0.5，给FIR与滤波器保留6 dB。
     assign osc_a_scaled_product_next =
         $signed(osc_a_mix) * $signed({1'b0, osc_a_mix_gain_q8});
     assign osc_b_scaled_product_next =
@@ -572,6 +623,9 @@ module top #(
 
     assign oscillator_scaled_sum =
         $signed(osc_a_scaled_product) + $signed(osc_b_scaled_product);
+    assign oscillator_mix_shifted = oscillator_scaled_sum >>> 8;
+    assign oscillator_mix_clip_now = (oscillator_mix_shifted > 32767)
+                                   || (oscillator_mix_shifted < -32768);
 
     function signed [15:0] saturate_mix_q8;
         input signed [26:0] value;
@@ -618,10 +672,51 @@ module top #(
         .input_overrun    (global_filter_input_overrun)
     );
 
+    // Master Level位于全局滤波器之后。Q1.8乘法结果先保持宽位，再在一个
+    // 50 MHz周期内完成饱和和寄存；该延迟远小于一个96 kHz采样周期。
+    assign master_scaled_product =
+        $signed(global_filtered_sample) * $signed({1'b0, master_gain_q8});
+    assign master_scaled_product_extended = {master_scaled_product[25],
+                                              master_scaled_product};
+    assign master_scaled_shifted = master_scaled_product_extended >>> 8;
+    assign master_output_clip_now = (master_scaled_shifted > 32767)
+                                  || (master_scaled_shifted < -32768);
+    // 现有滤波器接口已经在内部压回16位。端点命中可用于发现可能的
+    // 滤波器饱和；后续若需要精确峰值限制器，再单独扩宽滤波器接口。
+    assign filter_output_limit_now = (global_filtered_sample == 16'sh7FFF)
+                                   || (global_filtered_sample == 16'sh8000);
+
+    always @(posedge clk_sys or negedge rst_n_sys) begin
+        if (!rst_n_sys) begin
+            master_output_sample <= 16'sd0;
+            oscillator_mix_clip  <= 1'b0;
+            filter_output_limit  <= 1'b0;
+            master_output_clip   <= 1'b0;
+            audio_clip_count     <= 32'd0;
+        end else begin
+            if (global_filter_output_valid) begin
+                master_output_sample
+                    <= saturate_mix_q8(master_scaled_product_extended);
+                if (filter_output_limit_now)
+                    filter_output_limit <= 1'b1;
+                if (master_output_clip_now)
+                    master_output_clip <= 1'b1;
+            end
+
+            if (oscillator_mix_valid && oscillator_mix_clip_now)
+                oscillator_mix_clip <= 1'b1;
+
+            if ((oscillator_mix_valid && oscillator_mix_clip_now)
+                || (global_filter_output_valid
+                    && (filter_output_limit_now || master_output_clip_now)))
+                audio_clip_count <= audio_clip_count + 32'd1;
+        end
+    end
+
     i2s_tx u_max98357a_i2s_tx (
         .sys_clk        (clk_sys),
         .rst_n          (rst_n_sys),
-        .sample_data    (global_filtered_sample),
+        .sample_data    (master_output_sample),
         .bclk           (MAX_BCLK),
         .lrck           (MAX_LRC),
         .sdata          (MAX_DIN),

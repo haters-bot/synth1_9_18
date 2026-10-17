@@ -123,9 +123,10 @@ CC42：Filter Mode，0～6
 CC43：Filter Cutoff，0～127
 CC44：Filter Resonance，0～127
 CC45：Filter Mix，0～127
+CC48：Master Level，0～127
 ```
 
-控制消息通过MIDI通道16发送。上位机连接串口后会发送四个滤波器参数的当前值。
+控制消息通过MIDI通道16发送。上位机连接串口后会发送滤波器参数和Master Level的当前值。
 静态Cutoff继续使用CC43；可编辑Cutoff LFO通过SysEx发送三点、两段曲率、速率和
 深度配置，曲线随后由FPGA以96 kHz实时生成。LFO Depth的协议值统一为0～127；
 Comb+和Comb-在FPGA内部按`70/127`等比例缩放，实际深度上限约70，其他模式保持
