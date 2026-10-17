@@ -358,6 +358,7 @@ module top #(
         .parameter_valid(highres_parameter_valid),
         .parameter_id   (highres_parameter_id),
         .parameter_value(highres_parameter_value),
+        .filter_mode    (filter_mode_active),
         .base_cutoff_q8 (filter_cutoff_manual_q8),
         .cutoff_q8      (filter_cutoff_current_q8),
         .lfo_enabled    (filter_lfo_enabled),

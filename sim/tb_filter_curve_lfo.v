@@ -8,6 +8,7 @@ module tb_filter_curve_lfo;
     reg parameter_valid;
     reg [6:0] parameter_id;
     reg [13:0] parameter_value;
+    reg [2:0] filter_mode;
     reg [14:0] base_cutoff_q8;
 
     wire [14:0] cutoff_q8;
@@ -28,6 +29,7 @@ module tb_filter_curve_lfo;
         .parameter_valid(parameter_valid),
         .parameter_id   (parameter_id),
         .parameter_value(parameter_value),
+        .filter_mode    (filter_mode),
         .base_cutoff_q8 (base_cutoff_q8),
         .cutoff_q8      (cutoff_q8),
         .lfo_enabled    (lfo_enabled),
@@ -67,6 +69,7 @@ module tb_filter_curve_lfo;
         parameter_valid = 1'b0;
         parameter_id = 7'd0;
         parameter_value = 14'd0;
+        filter_mode = 3'd0;
         base_cutoff_q8 = {7'd64, 8'd0};
         errors = 0;
 
@@ -122,6 +125,27 @@ module tb_filter_curve_lfo;
             $display("ERROR: LFO loop boundary jumped by %0d Q7.8 LSB", boundary_delta);
             errors = errors + 1;
         end
+
+        // Comb模式把协议中的0～127深度等比例缩放到约0～70；
+        // 其他滤波模式仍使用完整深度。
+        write_parameter(7'd19, 14'd16256);
+        write_parameter(7'd25, 14'd1);
+        filter_mode = 3'd5;
+        #1;
+        if (dut.effective_depth_target !== 14'd8954) begin
+            $display("ERROR: Comb depth scaling got %0d, expected 8954",
+                     dut.effective_depth_target);
+            errors = errors + 1;
+        end
+        filter_mode = 3'd0;
+        #1;
+        if (dut.effective_depth_target !== 14'd16256) begin
+            $display("ERROR: non-Comb depth was unexpectedly scaled");
+            errors = errors + 1;
+        end
+        // 恢复较小深度，保持后续关闭渐变测试时间不变。
+        write_parameter(7'd19, 14'd4096);
+        write_parameter(7'd25, 14'd1);
 
         // 关闭后深度在约10 ms内退到0，最终输出回到静态Cutoff。
         write_parameter(7'd16, 14'd0);

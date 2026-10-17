@@ -327,7 +327,8 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 - 连接串口后自动发送Pan以及OSC A/B各自的Enable、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
 - 全局滤波器面板带FPGA Cutoff LFO，以Cutoff滑块为中心，可调`0.1～10 Hz`速率和
-  `0～127`深度；曲线固定为三个控制点和两段独立曲率；
+  `0～127`协议深度；曲线固定为三个控制点和两段独立曲率。Comb+和Comb-在FPGA
+  内部把该深度按`70/127`缩放，实际上限约70，其他滤波模式不缩放；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
 OSC A和OSC B面板各带一个临时`Warp LFO`。它只存在于Python测试工具中，以当前
@@ -433,4 +434,5 @@ F0 7D parameter_id value_msb value_lsb F7
 
 参数ID 16～24分别写入Enable、两段相位步进、Depth、三个点和两个曲率；ID 25执行
 原子提交。FPGA在96 kHz下运行相位累加器和曲率插值。CC43继续控制静态Cutoff，
-控制点结构、编码和定点计算见`docs/lfo_curve_control.md`。
+控制点结构、编码和定点计算见`docs/lfo_curve_control.md`。Depth继续按0～127编码；
+Comb模式在FPGA内部应用约`70/127`的缩放，不需要上位机发送另一套数值。

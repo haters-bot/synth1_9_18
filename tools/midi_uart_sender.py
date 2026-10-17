@@ -350,7 +350,7 @@ class MidiUartSender:
             lambda _event: self.send_filter_lfo_configuration(),
         )
 
-        ttk.Label(filter_frame, text="LFO深度").grid(
+        ttk.Label(filter_frame, text="LFO深度（Comb按70/127缩放）").grid(
             row=2, column=3, padx=(12, 4), sticky="w"
         )
         lfo_depth_scale = tk.Scale(
@@ -776,9 +776,14 @@ class MidiUartSender:
             return
 
         state = "开启" if self.filter_lfo_enabled.get() else "关闭"
+        depth = int(self.filter_lfo_depth.get())
+        if self.filter_mode.get() in ("梳状 +", "梳状 -"):
+            depth_text = f"{depth}（Comb有效约{round(depth * 70 / 127)}）"
+        else:
+            depth_text = str(depth)
         self.status.set(
             f"FPGA Cutoff LFO已{state}：{rate_hz:.1f} Hz，"
-            f"Depth={self.filter_lfo_depth.get()}"
+            f"Depth={depth_text}"
         )
 
     def open_filter_lfo_editor(self) -> None:

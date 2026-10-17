@@ -22,6 +22,7 @@ module filter_curve_lfo #(
     input  wire        parameter_valid,
     input  wire [6:0]  parameter_id,
     input  wire [13:0] parameter_value,
+    input  wire [2:0]  filter_mode,
     input  wire [14:0] base_cutoff_q8,
     output reg  [14:0] cutoff_q8,
     output wire        lfo_enabled,
@@ -58,6 +59,15 @@ module filter_curve_lfo #(
                                           ? active_step_1 : active_step_0;
     wire [24:0] segment_phase_sum = {1'b0, segment_phase}
                                    + {11'd0, selected_phase_step};
+    wire comb_filter_mode = (filter_mode == 3'd5)
+                          || (filter_mode == 3'd6);
+    // 141/256约等于70/127。Depth协议继续使用0～127，Comb模式的
+    // 实际上限约为70；乘以常数141可由综合器实现为移位加法。
+    wire [21:0] comb_depth_product = active_depth * 8'd141;
+    wire [13:0] comb_depth_scaled =
+        (comb_depth_product + 22'd128) >> 8;
+    wire [13:0] effective_depth_target = comb_filter_mode
+                                       ? comb_depth_scaled : active_depth;
 
     assign lfo_enabled = active_enable;
 
@@ -216,17 +226,18 @@ module filter_curve_lfo #(
                 end
 
                 if (active_enable) begin
-                    if ((depth_current < active_depth)
-                        && ((active_depth - depth_current) > DEPTH_SLEW_STEP))
+                    if ((depth_current < effective_depth_target)
+                        && ((effective_depth_target - depth_current)
+                            > DEPTH_SLEW_STEP))
                         depth_current <= depth_current + DEPTH_SLEW_STEP;
-                    else if (depth_current < active_depth)
-                        depth_current <= active_depth;
-                    else if ((depth_current > active_depth)
-                             && ((depth_current - active_depth)
+                    else if (depth_current < effective_depth_target)
+                        depth_current <= effective_depth_target;
+                    else if ((depth_current > effective_depth_target)
+                             && ((depth_current - effective_depth_target)
                                  > DEPTH_SLEW_STEP))
                         depth_current <= depth_current - DEPTH_SLEW_STEP;
-                    else if (depth_current > active_depth)
-                        depth_current <= active_depth;
+                    else if (depth_current > effective_depth_target)
+                        depth_current <= effective_depth_target;
                 end else begin
                     if (depth_current > DEPTH_SLEW_STEP)
                         depth_current <= depth_current - DEPTH_SLEW_STEP;
