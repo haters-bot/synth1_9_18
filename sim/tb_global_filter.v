@@ -103,7 +103,12 @@ module tb_global_filter;
         mix_control = 7'd0;
         cutoff_control_q8 = {7'd0, 8'd0};
         process_sample(16'sd0);
-        if (dut.u_global_comb_filter.delay_length_latched !== 12'd2047) begin
+        if (latency_cycles != 15) begin
+            $display("ERROR: Catmull Comb latency mismatch: %0d",
+                     latency_cycles);
+            errors = errors + 1;
+        end
+        if (dut.u_global_comb_filter.delay_length_latched !== 12'd2045) begin
             $display("ERROR: Comb Cutoff=0 delay mapping failed: %0d",
                      dut.u_global_comb_filter.delay_length_latched);
             errors = errors + 1;
@@ -157,20 +162,34 @@ module tb_global_filter;
         resonance_control = 7'd0;
         mix_control = 7'd127;
         process_sample(16'sd12000);
-        for (sample_index = 1; sample_index < 8;
+        for (sample_index = 1; sample_index < 7;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd3650
-            || captured_sample > 16'sd3850) begin
-            $display("ERROR: zero-resonance Comb feedforward depth failed: %0d",
+        if (captured_sample > -16'sd350
+            || captured_sample < -16'sd550) begin
+            $display("ERROR: Catmull leading tap failed: %0d",
                      captured_sample);
             errors = errors + 1;
         end
         process_sample(16'sd0);
-        if (captured_sample < 16'sd2150
-            || captured_sample > 16'sd2350) begin
-            $display("ERROR: fractional Comb second tap failed: %0d",
+        if (captured_sample < 16'sd4260
+            || captured_sample > 16'sd4470) begin
+            $display("ERROR: Catmull main tap failed: %0d",
+                     captured_sample);
+            errors = errors + 1;
+        end
+        process_sample(16'sd0);
+        if (captured_sample < 16'sd2230
+            || captured_sample > 16'sd2440) begin
+            $display("ERROR: Catmull second main tap failed: %0d",
+                     captured_sample);
+            errors = errors + 1;
+        end
+        process_sample(16'sd0);
+        if (captured_sample > -16'sd170
+            || captured_sample < -16'sd360) begin
+            $display("ERROR: Catmull trailing tap failed: %0d",
                      captured_sample);
             errors = errors + 1;
         end
@@ -193,12 +212,17 @@ module tb_global_filter;
         end
 
         // 提高Resonance后仍应保留正极性的梳状输出。
+        reset_dut();
+        filter_mode = 3'd5;
         cutoff_control_q8 = {7'd127, 8'd0};
         resonance_control = 7'd127;
-        for (sample_index = 0; sample_index < 8;
+        mix_control = 7'd127;
+        process_sample(16'sd12000);
+        for (sample_index = 1; sample_index < 8;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
-        if (captured_sample < 16'sd0) begin
+        process_sample(16'sd0);
+        if (captured_sample < 16'sd4000) begin
             $display("ERROR: positive Comb polarity failed: %0d", captured_sample);
             errors = errors + 1;
         end
@@ -214,7 +238,7 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample < 16'sd1800 || captured_sample > 16'sd2000) begin
+        if (captured_sample < 16'sd2080 || captured_sample > 16'sd2280) begin
             $display("ERROR: intermediate Mix scaling failed: %0d",
                      captured_sample);
             errors = errors + 1;
@@ -231,7 +255,7 @@ module tb_global_filter;
              sample_index = sample_index + 1)
             process_sample(16'sd0);
         process_sample(16'sd0);
-        if (captured_sample > -16'sd1000) begin
+        if (captured_sample > -16'sd4000) begin
             $display("ERROR: negative Comb echo missing: %0d", captured_sample);
             errors = errors + 1;
         end

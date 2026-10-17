@@ -1,8 +1,8 @@
 // 96 kHz全局反馈梳状滤波器。
 //
-// 使用2048点、16位循环延迟线。单口RAM分时读取相邻两个样本并做线性插值，
-// Cutoff使用Q7.8控制量，映射为约8～2047点延迟。Resonance映射到
-// 0～约0.98的反馈系数，反馈写回前经过固定一阶低通阻尼和饱和。
+// 使用2048点、16位循环延迟线。单口RAM分时读取四个相邻样本，使用
+// Catmull-Rom三次插值生成分数延迟样本。Cutoff使用Q7.8控制量，
+// Resonance映射到0～约0.98的反馈系数，反馈写回前经过固定一阶低通阻尼和饱和。
 module global_comb_filter #(
     parameter integer DELAY_DEPTH = 2048,
     parameter integer ADDR_WIDTH  = 11
@@ -23,14 +23,27 @@ module global_comb_filter #(
     output reg                input_overrun
 );
 
-    localparam [3:0] STATE_IDLE               = 4'd0;
-    localparam [3:0] STATE_READ_NEAR          = 4'd1;
-    localparam [3:0] STATE_READ_FAR           = 4'd2;
-    localparam [3:0] STATE_INTERPOLATE        = 4'd3;
-    localparam [3:0] STATE_INTERPOLATE_RESULT = 4'd4;
-    localparam [3:0] STATE_DAMP               = 4'd5;
-    localparam [3:0] STATE_FEEDBACK           = 4'd6;
-    localparam [3:0] STATE_WRITE              = 4'd7;
+    localparam [3:0] STATE_IDLE          = 4'd0;
+    localparam [3:0] STATE_READ_MINUS_1  = 4'd1;
+    localparam [3:0] STATE_READ_0        = 4'd2;
+    localparam [3:0] STATE_READ_1        = 4'd3;
+    localparam [3:0] STATE_READ_2        = 4'd4;
+    localparam [3:0] STATE_COEFFICIENTS  = 4'd5;
+    localparam [3:0] STATE_CUBIC_MUL_0   = 4'd6;
+    localparam [3:0] STATE_CUBIC_ACC_0   = 4'd7;
+    localparam [3:0] STATE_CUBIC_MUL_1   = 4'd8;
+    localparam [3:0] STATE_CUBIC_ACC_1   = 4'd9;
+    localparam [3:0] STATE_CUBIC_MUL_2   = 4'd10;
+    localparam [3:0] STATE_CUBIC_RESULT  = 4'd11;
+    localparam [3:0] STATE_DAMP          = 4'd12;
+    localparam [3:0] STATE_FEEDBACK      = 4'd13;
+    localparam [3:0] STATE_WRITE         = 4'd14;
+
+    // 四点插值需要D-1、D、D+1和D+2四个历史位置。
+    // 最大延迟保留三个RAM位置，避免最深延迟处缺少插值邻点。
+    localparam [ADDR_WIDTH:0] MAX_CATMULL_DELAY = DELAY_DEPTH - 3;
+    localparam [19:0] MAX_CATMULL_DELAY_Q8 =
+        {MAX_CATMULL_DELAY, 8'd0};
 
     reg [3:0] state;
 
@@ -40,18 +53,28 @@ module global_comb_filter #(
 
     reg [ADDR_WIDTH-1:0] write_pointer;
     reg [ADDR_WIDTH:0]   filled_samples;
-    reg [ADDR_WIDTH-1:0] read_address_near_latched;
-    reg [ADDR_WIDTH-1:0] read_address_far_latched;
+    reg [ADDR_WIDTH-1:0] read_address_minus_1_latched;
+    reg [ADDR_WIDTH-1:0] read_address_0_latched;
+    reg [ADDR_WIDTH-1:0] read_address_1_latched;
+    reg [ADDR_WIDTH-1:0] read_address_2_latched;
     reg [ADDR_WIDTH:0]   delay_length_latched;
     reg [7:0]            delay_fraction_latched;
+    reg                  history_minus_1_valid_latched;
     reg                  history_valid_latched;
-    reg                  far_history_valid_latched;
+    reg                  history_1_valid_latched;
+    reg                  history_2_valid_latched;
     reg                  negative_feedback_latched;
     reg signed [15:0]    input_latched;
     reg signed [15:0]    memory_read_data;
-    reg signed [15:0]    near_sample;
+    reg signed [15:0]    sample_minus_1;
+    reg signed [15:0]    sample_0;
+    reg signed [15:0]    sample_1;
+    reg signed [19:0]    catmull_a0;
+    reg signed [19:0]    catmull_a1;
+    reg signed [19:0]    catmull_a2;
+    reg signed [23:0]    cubic_stage;
+    reg signed [32:0]    cubic_product;
     reg signed [17:0]    interpolated_sample;
-    reg signed [25:0]    interpolation_product;
     reg signed [17:0]    damped_state;
     reg signed [17:0]    damped_sample;
     reg signed [15:0]    feedback_coefficient_q15;
@@ -64,14 +87,23 @@ module global_comb_filter #(
     wire [19:0] delay_at_next_q8;
     wire [19:0] delay_delta_q8;
     wire [27:0] delay_interpolation_product;
+    wire [19:0] delay_length_unclamped_q8;
     wire [19:0] delay_length_mapped_q8;
     wire [ADDR_WIDTH:0] delay_length_mapped;
     wire [7:0] delay_fraction_mapped;
     wire [14:0] feedback_magnitude_q15;
-    wire signed [16:0] interpolation_difference;
-    wire signed [15:0] far_sample_effective;
-    wire signed [25:0] near_sample_q8;
-    wire signed [25:0] interpolation_accumulator;
+    wire signed [8:0] delay_fraction_signed;
+    wire signed [15:0] sample_2_effective;
+    wire signed [19:0] sample_minus_1_extended;
+    wire signed [19:0] sample_0_extended;
+    wire signed [19:0] sample_1_extended;
+    wire signed [19:0] sample_2_extended;
+    wire signed [19:0] catmull_a0_next;
+    wire signed [19:0] catmull_a1_next;
+    wire signed [19:0] catmull_a2_next;
+    wire signed [23:0] cubic_multiplier_a;
+    wire signed [32:0] cubic_multiplier_result;
+    wire interpolation_history_valid;
     wire signed [17:0] input_extended;
     wire signed [17:0] feedback_term;
     wire signed [17:0] write_value_wide;
@@ -110,7 +142,7 @@ module global_comb_filter #(
         end
     endfunction
 
-    // Q7.8控制量位于两个MIDI刻度之间时，再在两组指数映射结果之间插值。
+    // Q7.8控制量位于两个MIDI刻度之间时，在两组指数映射结果之间插值。
     assign cutoff_integer = cutoff_control_q8[14:8];
     assign cutoff_fraction = cutoff_control_q8[7:0];
     assign cutoff_next_integer = (cutoff_integer == 7'd127)
@@ -119,19 +151,47 @@ module global_comb_filter #(
     assign delay_at_next_q8 = map_cutoff_to_delay_q8(cutoff_next_integer);
     assign delay_delta_q8 = delay_at_integer_q8 - delay_at_next_q8;
     assign delay_interpolation_product = delay_delta_q8 * cutoff_fraction;
-    assign delay_length_mapped_q8 = delay_at_integer_q8
-                                  - ((delay_interpolation_product + 28'd128)
-                                     >> 8);
+    assign delay_length_unclamped_q8 = delay_at_integer_q8
+                                     - ((delay_interpolation_product + 28'd128)
+                                        >> 8);
+    assign delay_length_mapped_q8 =
+        (delay_length_unclamped_q8 > MAX_CATMULL_DELAY_Q8)
+        ? MAX_CATMULL_DELAY_Q8 : delay_length_unclamped_q8;
     assign delay_length_mapped = delay_length_mapped_q8[19:8];
     assign delay_fraction_mapped = delay_length_mapped_q8[7:0];
-    // 两个相邻延迟样本使用Q0.8权重插值。
-    assign far_sample_effective = far_history_valid_latched
-                                ? memory_read_data : 16'sd0;
-    assign interpolation_difference =
-        $signed(far_sample_effective) - $signed(near_sample);
-    assign near_sample_q8 = {{2{near_sample[15]}}, near_sample, 8'd0};
-    assign interpolation_accumulator = near_sample_q8
-                                     + interpolation_product;
+
+    // Catmull-Rom形式：
+    // y(t)=y0+0.5*t*(a2+t*(a1+t*a0))，t使用Q0.8。
+    // 三次乘法在连续状态中复用同一条乘法寄存路径。
+    assign delay_fraction_signed = {1'b0, delay_fraction_latched};
+    assign sample_2_effective = history_2_valid_latched
+                              ? memory_read_data : 16'sd0;
+    assign sample_minus_1_extended =
+        {{4{sample_minus_1[15]}}, sample_minus_1};
+    assign sample_0_extended = {{4{sample_0[15]}}, sample_0};
+    assign sample_1_extended = {{4{sample_1[15]}}, sample_1};
+    assign sample_2_extended =
+        {{4{sample_2_effective[15]}}, sample_2_effective};
+    assign catmull_a0_next = -sample_minus_1_extended
+                           + (sample_0_extended <<< 1)
+                           + sample_0_extended
+                           - (sample_1_extended <<< 1)
+                           - sample_1_extended
+                           + sample_2_extended;
+    assign catmull_a1_next = (sample_minus_1_extended <<< 1)
+                           - (sample_0_extended <<< 2)
+                           - sample_0_extended
+                           + (sample_1_extended <<< 2)
+                           - sample_2_extended;
+    assign catmull_a2_next = -sample_minus_1_extended
+                           + sample_1_extended;
+    assign cubic_multiplier_a = (state == STATE_CUBIC_MUL_0)
+        ? $signed({{4{catmull_a0[19]}}, catmull_a0}) : cubic_stage;
+    assign cubic_multiplier_result = cubic_multiplier_a
+                                   * delay_fraction_signed;
+    assign interpolation_history_valid = history_valid_latched
+        || ((delay_fraction_latched != 8'd0)
+            && history_minus_1_valid_latched);
 
     // 253/32768约为0.00772，因此CC127对应约0.981的反馈系数。
     assign feedback_magnitude_q15 =
@@ -146,12 +206,12 @@ module global_comb_filter #(
 
     // 前馈使用插值后的原始延迟样本；输入与延迟各占0.5，避免额外削顶。
     // 一阶低通只作用于反馈回路，不削弱基础梳齿的高频深度。
-    assign delayed_sample_extended = history_valid_latched
+    assign delayed_sample_extended = interpolation_history_valid
                                    ? interpolated_sample : 18'sd0;
     assign comb_sum_wide = negative_feedback_latched
                          ? (input_extended - delayed_sample_extended)
                          : (input_extended + delayed_sample_extended);
-    assign wet_value_wide = history_valid_latched
+    assign wet_value_wide = interpolation_history_valid
                           ? ($signed(comb_sum_wide) >>> 1)
                           : input_extended;
 
@@ -167,12 +227,16 @@ module global_comb_filter #(
         end
     endfunction
 
-    // 单口RAM在两个连续状态读取D和D+1，在写状态写回当前样本。
+    // 单口RAM在四个连续状态读取四个相邻样本，在写状态写回当前样本。
     always @(posedge clk) begin
-        if (state == STATE_READ_NEAR)
-            memory_read_data <= delay_memory[read_address_near_latched];
-        else if (state == STATE_READ_FAR)
-            memory_read_data <= delay_memory[read_address_far_latched];
+        if (state == STATE_READ_MINUS_1)
+            memory_read_data <= delay_memory[read_address_minus_1_latched];
+        else if (state == STATE_READ_0)
+            memory_read_data <= delay_memory[read_address_0_latched];
+        else if (state == STATE_READ_1)
+            memory_read_data <= delay_memory[read_address_1_latched];
+        else if (state == STATE_READ_2)
+            memory_read_data <= delay_memory[read_address_2_latched];
         else if (state == STATE_WRITE)
             delay_memory[write_pointer]
                 <= saturate_s18_to_s16(write_value_wide);
@@ -180,27 +244,37 @@ module global_comb_filter #(
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            state                       <= STATE_IDLE;
-            write_pointer               <= {ADDR_WIDTH{1'b0}};
-            filled_samples              <= {(ADDR_WIDTH+1){1'b0}};
-            read_address_near_latched   <= {ADDR_WIDTH{1'b0}};
-            read_address_far_latched    <= {ADDR_WIDTH{1'b0}};
-            delay_length_latched        <= {{ADDR_WIDTH{1'b0}}, 1'b1};
-            delay_fraction_latched      <= 8'd0;
-            history_valid_latched       <= 1'b0;
-            far_history_valid_latched   <= 1'b0;
-            negative_feedback_latched   <= 1'b0;
-            input_latched               <= 16'sd0;
-            near_sample                 <= 16'sd0;
-            interpolated_sample         <= 18'sd0;
-            interpolation_product       <= 26'sd0;
-            damped_state                <= 18'sd0;
-            damped_sample               <= 18'sd0;
-            feedback_coefficient_q15    <= 16'sd0;
-            feedback_product            <= 34'sd0;
-            out_valid                   <= 1'b0;
-            sample_out                  <= 16'sd0;
-            input_overrun               <= 1'b0;
+            state                         <= STATE_IDLE;
+            write_pointer                 <= {ADDR_WIDTH{1'b0}};
+            filled_samples                <= {(ADDR_WIDTH+1){1'b0}};
+            read_address_minus_1_latched <= {ADDR_WIDTH{1'b0}};
+            read_address_0_latched       <= {ADDR_WIDTH{1'b0}};
+            read_address_1_latched       <= {ADDR_WIDTH{1'b0}};
+            read_address_2_latched       <= {ADDR_WIDTH{1'b0}};
+            delay_length_latched         <= {{ADDR_WIDTH{1'b0}}, 1'b1};
+            delay_fraction_latched       <= 8'd0;
+            history_minus_1_valid_latched <= 1'b0;
+            history_valid_latched        <= 1'b0;
+            history_1_valid_latched      <= 1'b0;
+            history_2_valid_latched      <= 1'b0;
+            negative_feedback_latched    <= 1'b0;
+            input_latched                <= 16'sd0;
+            sample_minus_1               <= 16'sd0;
+            sample_0                     <= 16'sd0;
+            sample_1                     <= 16'sd0;
+            catmull_a0                   <= 20'sd0;
+            catmull_a1                   <= 20'sd0;
+            catmull_a2                   <= 20'sd0;
+            cubic_stage                  <= 24'sd0;
+            cubic_product                <= 33'sd0;
+            interpolated_sample          <= 18'sd0;
+            damped_state                 <= 18'sd0;
+            damped_sample                <= 18'sd0;
+            feedback_coefficient_q15     <= 16'sd0;
+            feedback_product             <= 34'sd0;
+            out_valid                    <= 1'b0;
+            sample_out                   <= 16'sd0;
+            input_overrun                <= 1'b0;
         end else begin
             out_valid <= 1'b0;
 
@@ -213,49 +287,99 @@ module global_comb_filter #(
                         input_latched <= sample_in;
                         delay_length_latched <= delay_length_mapped;
                         delay_fraction_latched <= delay_fraction_mapped;
-                        read_address_near_latched <= write_pointer
-                            - delay_length_mapped[ADDR_WIDTH-1:0];
-                        read_address_far_latched <= write_pointer
+                        read_address_minus_1_latched <= write_pointer
                             - delay_length_mapped[ADDR_WIDTH-1:0]
-                            - ((delay_fraction_mapped != 8'd0)
-                               ? {{(ADDR_WIDTH-1){1'b0}}, 1'b1}
-                               : {ADDR_WIDTH{1'b0}});
+                            + {{(ADDR_WIDTH-1){1'b0}}, 1'b1};
+                        read_address_0_latched <= write_pointer
+                            - delay_length_mapped[ADDR_WIDTH-1:0];
+                        read_address_1_latched <= write_pointer
+                            - delay_length_mapped[ADDR_WIDTH-1:0]
+                            - {{(ADDR_WIDTH-1){1'b0}}, 1'b1};
+                        read_address_2_latched <= write_pointer
+                            - delay_length_mapped[ADDR_WIDTH-1:0]
+                            - {{(ADDR_WIDTH-2){1'b0}}, 2'd2};
+                        history_minus_1_valid_latched <=
+                            (filled_samples >= (delay_length_mapped
+                             - {{ADDR_WIDTH{1'b0}}, 1'b1}));
                         history_valid_latched <=
                             (filled_samples >= delay_length_mapped);
-                        far_history_valid_latched <=
+                        history_1_valid_latched <=
                             (filled_samples >= (delay_length_mapped
                              + {{ADDR_WIDTH{1'b0}}, 1'b1}));
+                        history_2_valid_latched <=
+                            (filled_samples >= (delay_length_mapped
+                             + {{(ADDR_WIDTH-1){1'b0}}, 2'd2}));
                         negative_feedback_latched <= negative_feedback;
                         feedback_coefficient_q15 <= $signed({
                             1'b0, feedback_magnitude_q15
                         });
-                        state <= STATE_READ_NEAR;
+                        state <= STATE_READ_MINUS_1;
                     end
                 end
 
-                STATE_READ_NEAR: begin
-                    state <= STATE_READ_FAR;
+                STATE_READ_MINUS_1: begin
+                    state <= STATE_READ_0;
                 end
 
-                STATE_READ_FAR: begin
-                    near_sample <= history_valid_latched
-                                 ? memory_read_data : 16'sd0;
-                    state <= STATE_INTERPOLATE;
+                STATE_READ_0: begin
+                    sample_minus_1 <= history_minus_1_valid_latched
+                                    ? memory_read_data : 16'sd0;
+                    state <= STATE_READ_1;
                 end
 
-                STATE_INTERPOLATE: begin
-                    interpolation_product <= interpolation_difference
-                                           * $signed({
-                                               1'b0,
-                                               delay_fraction_latched
-                                           });
-                    state <= STATE_INTERPOLATE_RESULT;
+                STATE_READ_1: begin
+                    sample_0 <= history_valid_latched
+                              ? memory_read_data : 16'sd0;
+                    state <= STATE_READ_2;
                 end
 
-                STATE_INTERPOLATE_RESULT: begin
-                    if (history_valid_latched)
+                STATE_READ_2: begin
+                    sample_1 <= history_1_valid_latched
+                              ? memory_read_data : 16'sd0;
+                    state <= STATE_COEFFICIENTS;
+                end
+
+                STATE_COEFFICIENTS: begin
+                    catmull_a0 <= catmull_a0_next;
+                    catmull_a1 <= catmull_a1_next;
+                    catmull_a2 <= catmull_a2_next;
+                    state <= STATE_CUBIC_MUL_0;
+                end
+
+                STATE_CUBIC_MUL_0: begin
+                    cubic_product <= cubic_multiplier_result;
+                    state <= STATE_CUBIC_ACC_0;
+                end
+
+                STATE_CUBIC_ACC_0: begin
+                    cubic_stage <= ($signed(cubic_product) >>> 8)
+                                 + $signed({{4{catmull_a1[19]}},
+                                            catmull_a1});
+                    state <= STATE_CUBIC_MUL_1;
+                end
+
+                STATE_CUBIC_MUL_1: begin
+                    cubic_product <= cubic_multiplier_result;
+                    state <= STATE_CUBIC_ACC_1;
+                end
+
+                STATE_CUBIC_ACC_1: begin
+                    cubic_stage <= ($signed(cubic_product) >>> 8)
+                                 + $signed({{4{catmull_a2[19]}},
+                                            catmull_a2});
+                    state <= STATE_CUBIC_MUL_2;
+                end
+
+                STATE_CUBIC_MUL_2: begin
+                    cubic_product <= cubic_multiplier_result;
+                    state <= STATE_CUBIC_RESULT;
+                end
+
+                STATE_CUBIC_RESULT: begin
+                    if (interpolation_history_valid)
                         interpolated_sample <=
-                            $signed(interpolation_accumulator) >>> 8;
+                            $signed({{2{sample_0[15]}}, sample_0})
+                            + ($signed(cubic_product) >>> 9);
                     else
                         interpolated_sample <= 18'sd0;
                     state <= STATE_DAMP;
@@ -263,7 +387,7 @@ module global_comb_filter #(
 
                 STATE_DAMP: begin
                     // 固定1/4更新量的一阶低通，削弱反馈回路中的尖锐高频。
-                    if (history_valid_latched) begin
+                    if (interpolation_history_valid) begin
                         damped_sample <= damped_state
                             + ((interpolated_sample - damped_state) >>> 2);
                         damped_state <= damped_state

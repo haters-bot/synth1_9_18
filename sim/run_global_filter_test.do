@@ -47,6 +47,10 @@ add wave sim:/tb_global_filter/out_valid
 add wave -radix decimal sim:/tb_global_filter/sample_out
 add wave -radix unsigned sim:/tb_global_filter/dut/u_global_comb_filter/delay_length_latched
 add wave -radix unsigned sim:/tb_global_filter/dut/u_global_comb_filter/delay_fraction_latched
+add wave -radix decimal sim:/tb_global_filter/dut/u_global_comb_filter/sample_minus_1
+add wave -radix decimal sim:/tb_global_filter/dut/u_global_comb_filter/sample_0
+add wave -radix decimal sim:/tb_global_filter/dut/u_global_comb_filter/sample_1
+add wave -radix decimal sim:/tb_global_filter/dut/u_global_comb_filter/interpolated_sample
 add wave -radix decimal sim:/tb_global_filter/dut/u_global_comb_filter/damped_sample
 
 run -all
