@@ -2,7 +2,7 @@
 module top #(
     parameter integer UART_BAUD_RATE = 31250,
     parameter integer DEFAULT_UNISON_COUNT = 1,
-    parameter integer OSC_ENGINE_COUNT = 2,
+    parameter integer OSC_ENGINE_COUNT = 1,
     parameter integer SLOTS_PER_ENGINE = 32
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
