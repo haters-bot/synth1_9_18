@@ -8,6 +8,8 @@ import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from lfo_curve import LfoCurve, LfoCurveEditor
+
 try:
     import serial
     from serial.tools import list_ports
@@ -38,7 +40,8 @@ FILTER_MODE_CC = 42
 FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
 FILTER_MIX_CC = 45
-# 200 Hz控制刷新使10 Hz LFO仍有20个控制点；仅在量化值变化时发送CC。
+HIGHRES_PARAMETER_FILTER_CUTOFF = 1
+# 200 Hz控制刷新使10 Hz LFO仍有20个控制时刻；数值不变时不重复发送。
 LFO_UPDATE_MS = 5
 OSC_A_CC = {
     "enable": 36,
@@ -116,6 +119,8 @@ class MidiUartSender:
         self.lfo_last_value: dict[str, int | None] = {"A": None, "B": None}
         self.filter_lfo_phase = 0.0
         self.filter_lfo_last_value: int | None = None
+        self.filter_lfo_curve = LfoCurve()
+        self.filter_lfo_window: tk.Toplevel | None = None
         self.lfo_last_time = time.monotonic()
         self.lfo_after_id: str | None = None
 
@@ -337,6 +342,12 @@ class MidiUartSender:
             variable=self.filter_lfo_depth,
             length=210,
         ).grid(row=2, column=4, columnspan=2, padx=4)
+
+        ttk.Button(
+            filter_frame,
+            text="编辑LFO曲线",
+            command=self.open_filter_lfo_editor,
+        ).grid(row=3, column=0, columnspan=2, padx=4, pady=(6, 2), sticky="w")
 
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
@@ -623,6 +634,27 @@ class MidiUartSender:
             log_message=log_message,
         )
 
+    def send_highres_parameter(
+        self,
+        parameter_id: int,
+        value_q7_7: int,
+        log_message: bool = True,
+    ) -> bool:
+        """发送F0 7D id value_msb value_lsb F7格式的14位参数。"""
+        parameter_id = max(0, min(127, int(parameter_id)))
+        value_q7_7 = max(0, min(127 << 7, int(value_q7_7)))
+        message = bytes(
+            (
+                0xF0,
+                0x7D,
+                parameter_id,
+                (value_q7_7 >> 7) & 0x7F,
+                value_q7_7 & 0x7F,
+                0xF7,
+            )
+        )
+        return self._send(message, log_message=log_message)
+
     def send_waveform_selection(self, osc_name: str) -> None:
         controls = self.osc_controls[osc_name]
         cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
@@ -680,6 +712,32 @@ class MidiUartSender:
             )
             self.status.set("Filter Cutoff LFO已关闭")
 
+    def _filter_lfo_curve_changed(self) -> None:
+        self.filter_lfo_last_value = None
+
+    def open_filter_lfo_editor(self) -> None:
+        if self.filter_lfo_window is not None:
+            self.filter_lfo_window.lift()
+            self.filter_lfo_window.focus_force()
+            return
+
+        window = tk.Toplevel(self.root)
+        window.title("Cutoff LFO曲线编辑器")
+        window.resizable(False, False)
+        editor = LfoCurveEditor(
+            window,
+            self.filter_lfo_curve,
+            on_change=self._filter_lfo_curve_changed,
+        )
+        editor.pack(padx=10, pady=10)
+        self.filter_lfo_window = window
+
+        def close_editor() -> None:
+            window.destroy()
+            self.filter_lfo_window = None
+
+        window.protocol("WM_DELETE_WINDOW", close_editor)
+
     def toggle_warp_lfo(self, osc_name: str) -> None:
         controls = self.osc_controls[osc_name]
         enabled = bool(controls["lfo_enabled"].get())
@@ -734,19 +792,22 @@ class MidiUartSender:
             rate = max(0.1, min(10.0, float(self.filter_lfo_rate.get())))
             depth = max(0, min(127, int(self.filter_lfo_depth.get())))
             base_value = max(0, min(127, int(self.filter_cutoff.get())))
-            phase = self.filter_lfo_phase + math.tau * rate * elapsed
-            self.filter_lfo_phase = phase % math.tau
-            lfo_value = round(base_value + depth * math.sin(phase))
-            lfo_value = max(0, min(127, lfo_value))
+            phase = self.filter_lfo_phase + rate * elapsed
+            self.filter_lfo_phase = phase % 1.0
+            curve_value = self.filter_lfo_curve.table_value(self.filter_lfo_phase)
+            cutoff_value = max(
+                0.0,
+                min(127.0, base_value + depth * curve_value),
+            )
+            cutoff_q7_7 = round(cutoff_value * 128.0)
 
-            if lfo_value != self.filter_lfo_last_value:
-                if self.send_control_change(
-                    FILTER_CUTOFF_CC,
-                    lfo_value,
-                    CONTROL_CHANNEL,
+            if cutoff_q7_7 != self.filter_lfo_last_value:
+                if self.send_highres_parameter(
+                    HIGHRES_PARAMETER_FILTER_CUTOFF,
+                    cutoff_q7_7,
                     log_message=False,
                 ):
-                    self.filter_lfo_last_value = lfo_value
+                    self.filter_lfo_last_value = cutoff_q7_7
 
         self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 

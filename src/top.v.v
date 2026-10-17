@@ -20,7 +20,7 @@ module top #(
     // 参数接口为后续扩展保留；当前活动计数与归一化路径按每组最多32任务验证。
     localparam integer OSC_TOTAL_SLOTS      =
         OSC_ENGINE_COUNT * SLOTS_PER_ENGINE;
-    localparam [14:0] FILTER_CUTOFF_SLEW_Q8 = 15'd1;
+    localparam [6:0] HIGHRES_PARAMETER_FILTER_CUTOFF = 7'd1;
 
     wire clk_sys;
     wire rst_n_sys;
@@ -91,6 +91,14 @@ module top #(
     wire [3:0] midi_control_change_channel;
     wire [6:0] midi_control_change_number;
     wire [6:0] midi_control_change_value;
+    wire       highres_parameter_valid;
+    wire [6:0] highres_parameter_id;
+    wire [13:0] highres_parameter_value;
+    wire       filter_cutoff_highres_valid;
+    wire       filter_cutoff_cc_valid;
+    wire       filter_cutoff_interpolation_busy;
+    wire [14:0] filter_cutoff_interpolation_target_q8;
+    wire [13:0] filter_cutoff_highres_clamped_q7;
     wire       routed_note_event_valid;
     wire       routed_note_event_on;
     wire [6:0] routed_note_event_note;
@@ -99,8 +107,7 @@ module top #(
     wire [2:0] filter_mode_target;
     reg  [2:0] filter_mode_active;
     wire [6:0] filter_cutoff_target;
-    wire [14:0] filter_cutoff_target_q8;
-    reg  [14:0] filter_cutoff_current_q8;
+    wire [14:0] filter_cutoff_current_q8;
     wire [6:0] filter_cutoff_current;
     wire [6:0] filter_resonance_target;
     reg  [6:0] filter_resonance_current;
@@ -168,8 +175,22 @@ module top #(
     );
 
     assign oscillator_start_tick = oversample_tick;
-    assign filter_cutoff_target_q8 = {filter_cutoff_target, 8'd0};
     assign filter_cutoff_current = filter_cutoff_current_q8[14:8];
+    assign filter_cutoff_highres_valid = highres_parameter_valid
+                                      && (highres_parameter_id
+                                          == HIGHRES_PARAMETER_FILTER_CUTOFF);
+    assign filter_cutoff_cc_valid = midi_control_change_valid
+                                  && (midi_control_change_channel == 4'd15)
+                                  && (midi_control_change_number == 7'd43);
+    assign filter_cutoff_highres_clamped_q7 =
+        (highres_parameter_value > {7'd127, 7'd0})
+        ? {7'd127, 7'd0} : highres_parameter_value;
+    // 高精度消息采用Q7.7，补一个低位后转换为滤波器使用的Q7.8。
+    // 普通CC43仍可直接覆盖目标，保持现有控制器和测试流程兼容。
+    assign filter_cutoff_interpolation_target_q8 =
+        filter_cutoff_highres_valid
+        ? {filter_cutoff_highres_clamped_q7, 1'b0}
+        : {midi_control_change_value, 8'd0};
 
     // 两组WT Position、Warp Amount和全局滤波参数均在96 kHz边界平滑。
     always @(posedge clk_sys or negedge rst_n_sys) begin
@@ -180,7 +201,6 @@ module top #(
             osc_b_warp_mode_active <= 4'd0;
             osc_a_warp_amount_current <= 7'd0;
             osc_b_warp_amount_current <= 7'd0;
-            filter_cutoff_current_q8 <= {7'd127, 8'd0};
             filter_resonance_current <= 7'd0;
             filter_mode_active <= 3'd0;
             filter_mix_current <= 7'd127;
@@ -221,27 +241,6 @@ module top #(
                 osc_b_warp_amount_current <= osc_b_warp_amount_current + 7'd1;
             end else if (osc_b_warp_amount_current > osc_b_warp_amount_target) begin
                 osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
-            end
-
-            // Q7.8 Cutoff每个96 kHz样本移动1/256个CC单位。
-            // 每个整数CC约用2.67 ms过渡，用于平滑上位机LFO的7位MIDI台阶。
-            if (filter_cutoff_current_q8 < filter_cutoff_target_q8) begin
-                if ((filter_cutoff_target_q8 - filter_cutoff_current_q8)
-                    > FILTER_CUTOFF_SLEW_Q8)
-                    filter_cutoff_current_q8
-                        <= filter_cutoff_current_q8
-                         + FILTER_CUTOFF_SLEW_Q8;
-                else
-                    filter_cutoff_current_q8 <= filter_cutoff_target_q8;
-            end else if (filter_cutoff_current_q8
-                         > filter_cutoff_target_q8) begin
-                if ((filter_cutoff_current_q8 - filter_cutoff_target_q8)
-                    > FILTER_CUTOFF_SLEW_Q8)
-                    filter_cutoff_current_q8
-                        <= filter_cutoff_current_q8
-                         - FILTER_CUTOFF_SLEW_Q8;
-                else
-                    filter_cutoff_current_q8 <= filter_cutoff_target_q8;
             end
 
             if (filter_resonance_current < filter_resonance_target)
@@ -337,6 +336,33 @@ module top #(
         .control_change_channel(midi_control_change_channel),
         .control_change_number (midi_control_change_number),
         .control_change_value  (midi_control_change_value)
+    );
+
+    highres_parameter_parser u_highres_parameter_parser (
+        .clk            (clk_sys),
+        .rst_n          (rst_n_sys),
+        .byte_data      (uart_byte),
+        .byte_valid     (uart_byte_valid),
+        .parameter_valid(highres_parameter_valid),
+        .parameter_id   (highres_parameter_id),
+        .parameter_value(highres_parameter_value)
+    );
+
+    // 512个96 kHz样本约为5.33 ms。商余数分配保证最后一个样本精确
+    // 到达目标；中途收到新目标时从当前值重新起步，不产生参数跳变。
+    parameter_linear_interpolator #(
+        .VALUE_WIDTH(15),
+        .INTERPOLATION_SHIFT(9),
+        .RESET_VALUE({7'd127, 8'd0})
+    ) u_filter_cutoff_interpolator (
+        .clk          (clk_sys),
+        .rst_n        (rst_n_sys),
+        .sample_tick  (sample_tick),
+        .target_valid (filter_cutoff_highres_valid
+                       || filter_cutoff_cc_valid),
+        .target_value (filter_cutoff_interpolation_target_q8),
+        .current_value(filter_cutoff_current_q8),
+        .busy         (filter_cutoff_interpolation_busy)
     );
 
     synth_control_router #(

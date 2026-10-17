@@ -111,6 +111,19 @@ module tb_top_midi_input;
         end
     endtask
 
+    task send_highres_parameter;
+        input [6:0] parameter_id;
+        input [13:0] value;
+        begin
+            send_uart_byte(8'hF0);
+            send_uart_byte(8'h7D);
+            send_uart_byte({1'b0, parameter_id});
+            send_uart_byte({1'b0, value[13:7]});
+            send_uart_byte({1'b0, value[6:0]});
+            send_uart_byte(8'hF7);
+        end
+    endtask
+
     task expect_a_update;
         input integer index;
         input [7:0] expected_slot;
@@ -257,6 +270,15 @@ module tb_top_midi_input;
             || dut.filter_resonance_target !== 7'd48
             || dut.filter_mix_target !== 7'd72) begin
             $display("ERROR: global filter controls were not routed");
+            errors = errors + 1;
+        end
+
+        // 高精度Cutoff采用Q7.7消息；110.25应成为Q7.8的110.25目标。
+        send_highres_parameter(7'd1, 14'd14112);
+        repeat (3) @(posedge sys_clk);
+        if (dut.u_filter_cutoff_interpolator.target_latched !== 15'd28224
+            || !dut.filter_cutoff_interpolation_busy) begin
+            $display("ERROR: high-resolution cutoff was not accepted");
             errors = errors + 1;
         end
 

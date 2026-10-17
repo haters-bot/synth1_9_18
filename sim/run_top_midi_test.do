@@ -12,6 +12,8 @@ vlog -work work_top_midi \
     src/sys_clock_manager.v \
     src/uart_rx.v \
     src/midi_note_parser.v \
+    src/highres_parameter_parser.v \
+    src/parameter_linear_interpolator.v \
     src/synth_control_router.v \
     src/adsr_parameter_mapper.v \
     src/oscillator_task_scheduler.v \
@@ -51,6 +53,7 @@ add wave sim:/tb_top_midi_input/dut/filter_mode_target
 add wave sim:/tb_top_midi_input/dut/filter_mode_active
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_target
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_current
+add wave sim:/tb_top_midi_input/dut/filter_cutoff_interpolation_busy
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_target
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_current
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_mix_target
