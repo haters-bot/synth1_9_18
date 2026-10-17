@@ -17,6 +17,9 @@ module tb_filter_curve_lfo;
 
     integer errors;
     integer index;
+    integer boundary_delta;
+    reg [14:0] boundary_before;
+    reg [14:0] boundary_after;
 
     filter_curve_lfo dut (
         .clk            (clk),
@@ -79,8 +82,9 @@ module tb_filter_curve_lfo;
         write_parameter(7'd20, 14'd8192);
         write_parameter(7'd21, 14'd16383);
         write_parameter(7'd22, 14'd8192);
-        write_parameter(7'd23, 14'd8192);
-        write_parameter(7'd24, 14'd8192);
+        // 使用两种极端曲率验证端点仍保持连续和零斜率。
+        write_parameter(7'd23, 14'd16383);
+        write_parameter(7'd24, 14'd0);
         if (lfo_enabled) begin
             $display("ERROR: shadow configuration became active before commit");
             errors = errors + 1;
@@ -98,6 +102,24 @@ module tb_filter_curve_lfo;
             pulse_sample();
         if (segment_phase == 24'd0 || cutoff_q8 <= base_cutoff_q8) begin
             $display("ERROR: FPGA LFO did not advance or modulate cutoff");
+            errors = errors + 1;
+        end
+
+        // 等待第二段结束并检查周期回绕。三次平滑曲线在端点斜率为0，
+        // 因此回绕前后两个样本的Cutoff差值应接近0。
+        while (!active_segment)
+            pulse_sample();
+        while (active_segment)
+            pulse_sample();
+        boundary_before = cutoff_q8;
+        pulse_sample();
+        boundary_after = cutoff_q8;
+        if (boundary_after >= boundary_before)
+            boundary_delta = boundary_after - boundary_before;
+        else
+            boundary_delta = boundary_before - boundary_after;
+        if (boundary_delta > 2) begin
+            $display("ERROR: LFO loop boundary jumped by %0d Q7.8 LSB", boundary_delta);
             errors = errors + 1;
         end
 

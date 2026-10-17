@@ -54,11 +54,11 @@ class LfoCurve:
 
     @staticmethod
     def _segment_weight(u: float, point: LfoPoint) -> float:
-        # 与FPGA定点实现一致：正曲率向t²混合，负曲率向
-        # 1-(1-t)²混合，0为线性。
-        strength = abs(point.curve)
-        quadratic = u * u if point.curve >= 0.0 else 2.0 * u - u * u
-        return u + (quadratic - u) * strength
+        # 与FPGA定点实现一致。基础smoothstep保证段首、段尾斜率均为0；
+        # 曲率项也在两个端点保持0值和0斜率，因此不会重新引入速度折角。
+        smooth = u * u * (3.0 - 2.0 * u)
+        bump = 3.0 * u * u * (1.0 - u) * (1.0 - u)
+        return smooth - point.curve * bump
 
     def evaluate(self, phase: float) -> float:
         phase = phase % 1.0

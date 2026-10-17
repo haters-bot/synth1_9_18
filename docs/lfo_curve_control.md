@@ -34,15 +34,18 @@ LFO关闭或深度回到0后，滤波器重新使用该静态值。
 “首尾连续”默认开启，使P2电平跟随P0。关闭后可以产生周期边界跳变，但梳状滤波
 可能把该跳变转换成明显的瞬态和宽带边带。
 
-曲率为0时是线性插值。正曲率向`t²`混合，负曲率向`1-(1-t)²`混合：
+每段以三次Smoothstep为基础，并加入端点值和端点斜率都为0的曲率项：
 
 ```text
-basis = curve >= 0 ? t² : 1-(1-t)²
-weight = t + (basis-t) * abs(curve)
+smooth = t² * (3-2t)
+bump = 3 * t² * (1-t)²
+weight = smooth - curve * bump
 value = start + (end-start) * weight
 ```
 
-Python编辑器和FPGA使用同一个公式，因此界面预览与RTL计算一致。
+无论曲率取-1、0还是+1，`weight`在段首和段尾的一阶导数都为0。因此P0、P1、P2
+以及周期回绕点不会出现变化速度的突然翻转。Python编辑器和FPGA使用同一个公式，
+因此界面预览与RTL计算一致。
 
 ## 3. 相位与速率
 
@@ -84,7 +87,7 @@ F0 7D parameter_id value_msb value_lsb F7
 
 ## 5. 平滑和延迟
 
-- LFO计算使用五级50 MHz流水线，结果在`sample_tick`后约100 ns得到；
+- LFO计算使用六级50 MHz流水线，结果在`sample_tick`后约120 ns得到；
 - Depth以每个96 kHz样本16个Q7.7最低位渐变，全范围约10.6 ms；
 - Enable从0变1时相位从P0重新开始；
 - Disable后Depth先平滑回零，再把相位复位到P0；

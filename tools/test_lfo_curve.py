@@ -29,9 +29,23 @@ class LfoCurveTest(unittest.TestCase):
         curve.points[0].curve = 0.0
         self.assertAlmostEqual(curve.evaluate(0.25), 0.0, places=6)
         curve.points[0].curve = 1.0
-        self.assertAlmostEqual(curve.evaluate(0.25), -0.5, places=6)
+        self.assertAlmostEqual(curve.evaluate(0.25), -0.375, places=6)
         curve.points[0].curve = -1.0
-        self.assertAlmostEqual(curve.evaluate(0.25), 0.5, places=6)
+        self.assertAlmostEqual(curve.evaluate(0.25), 0.375, places=6)
+
+    def test_segment_endpoint_slopes_are_zero(self) -> None:
+        curve = LfoCurve()
+        epsilon = 1.0e-5
+        for curvature in (-1.0, 0.0, 1.0):
+            curve.points[0].curve = curvature
+            start_slope = (
+                curve.evaluate(epsilon) - curve.evaluate(0.0)
+            ) / epsilon
+            end_slope = (
+                curve.evaluate(0.5) - curve.evaluate(0.5 - epsilon)
+            ) / epsilon
+            self.assertAlmostEqual(start_slope, 0.0, places=3)
+            self.assertAlmostEqual(end_slope, 0.0, places=3)
 
     def test_middle_time_is_hardware_safe(self) -> None:
         curve = LfoCurve()
