@@ -28,7 +28,18 @@ LFO、ENV2/3 为本地编辑；当前 MIDI 映射与音频队友最新协议存�
 
 ## 文档入口
 
+- `doc/TOUCH_TRACE_V1.md`：点击日志接口、二进制格式与 PC/远程采集方法。
+- `doc/CODEX_TOUCH_TRACE_HANDOFF_2026-10-18.md`：本轮构建、实机采集证据和后续交接。
 - `CODEX_HANDOFF.md`：当前状态、详细开发记录和回退方法。
 - `doc/RELEASE_V1_0.md`：已验收版本身份、比特流指纹与验证边界。
 - `doc/TEAM_INTEGRATION_2026-10-17.md`：仓库考证、三人分工及接口差异。
 - 历史 `ARCHITECTURE.md` / `MIDI_CONTROL_PROTOCOL.md` 含未实现规划，以实际 RTL 和上述新文档为准。
+
+## 点击日志诊断工程
+
+普通工程默认保留 MIDI 31250 输出。单独运行 `build_debug.tcl` 构建诊断工程，
+U15 切为 115200 8N1 二进制点击日志，内部 UI/MIDI 状态机继续运行。
+**诊断模式同一引脚暂停对外 MIDI；不要把日志接到音频接收器。**
+在工程机枚举确认 UART 后运行 `python tools/touch_trace_monitor.py --port COM6 --seconds 60`；
+主力机可用 `python tools/capture_remote_trace.py --port COM6 --seconds 30 --label clicks` 实时查看并回传。
+实际验证结果和时序限制以本轮交接文档为准。

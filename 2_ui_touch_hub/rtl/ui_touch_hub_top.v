@@ -16,7 +16,9 @@
 //   5. Teammate 3 Audio Engine UART MIDI Protocol Transmitter (Ch1 Notes, Ch16 CC)
 // ==============================================================================
 
-module ui_touch_hub_top (
+module ui_touch_hub_top #(
+    parameter DEBUG_TOUCH_LOG=0
+)(
     input  wire        clk,             // 板载 50MHz 有源晶振 (V22)
     input  wire        rst_n,           // 板载复位按键 S2 (AA13, 低有效)
 
@@ -40,8 +42,8 @@ module ui_touch_hub_top (
     input  wire        knob_spi_sclk,   // U15 (LVCMOS33)
     input  wire        knob_spi_mosi,   // V15 (LVCMOS33)
 
-    // 队友 3 (音频引擎组) UART MIDI 协议输出
-    output wire        midi_uart_tx,    // W14 (LVCMOS33)
+    // U15: normal build MIDI 31250; diagnostic build trace 115200.
+    output wire        midi_uart_tx,
 
     // 板载状态指示灯
     output wire [1:0]  led,             // T18: PLL Lock, R18: Heartbeat
@@ -419,8 +421,10 @@ module ui_touch_hub_top (
     wire        render_vsync;
     wire        render_den;
     wire [23:0] render_pixel;
+    wire [59:0] trace_lfo_state;
 
     ui_top_renderer u_render (
+        .trace_lfo_state(trace_lfo_state),
         .ui_touch_valid(ui_touch_valid), .ui_touch_down(ui_touch_down),
         .ui_touch_x(ui_touch_x), .ui_touch_y(ui_touch_y),
         .touch_diag_coords (touch_diag_coords),
@@ -528,6 +532,7 @@ module ui_touch_hub_top (
     // --------------------------------------------------------------------------
     // 8. 队友 3 音频引擎 UART MIDI 协议发送器 (31250 baud)
     // --------------------------------------------------------------------------
+    wire audio_midi_tx;
     midi_uart_tx #(
         .CLK_FREQ (62500000),
         .BAUD     (31250)
@@ -541,9 +546,113 @@ module ui_touch_hub_top (
         .cc_req        (midi_cc_req),
         .cc_param_id   (midi_cc_param_id),
         .cc_val        (midi_cc_val),
-        .uart_tx       (midi_uart_tx),
+        .uart_tx       (audio_midi_tx),
         .tx_busy       (midi_tx_busy)
     );
+
+    // Diagnostic firmware uses the existing board USB-UART TX, never injects
+    // trace bytes into MIDI. Internal MIDI generation/busy timing stays intact.
+    generate if(DEBUG_TOUCH_LOG) begin: g_trace
+        reg [15:0] trace_raw_x,trace_raw_y;
+        reg [1:0] trace_source;
+        always @(posedge clk_pixel or negedge sys_rst_n_sync) begin
+            if(!sys_rst_n_sync) begin trace_raw_x<=0;trace_raw_y<=0;trace_source<=0;end
+            else if(merged_touch_valid) begin
+                trace_raw_x<=merged_touch_x;trace_raw_y<=merged_touch_y;
+                trace_source<=usb_touch_valid ? 2'd1 : hspi_touch_valid ? 2'd2 : 2'd3;
+            end
+        end
+        reg [6:0] observed_value;
+        reg observed_value_valid;
+        always @(*) begin
+            observed_value=0;observed_value_valid=1;
+            case(selected_param_id)
+                8'h01:observed_value=val_macro1;
+                8'h02:observed_value=val_macro2;
+                8'h03:observed_value=val_macro3;
+                8'h04:observed_value=val_macro4;
+                8'h05:observed_value=val_master_vol;
+                8'h0A:observed_value={6'd0,val_osca_power};
+                8'h0B:observed_value={6'd0,val_oscb_power};
+                8'h0C:observed_value={6'd0,val_flt_power};
+                8'h0E:observed_value={5'd0,val_osca_wave};
+                8'h0F:observed_value={5'd0,val_oscb_wave};
+                8'h10:observed_value={3'd0,val_osca_oct};
+                8'h11:observed_value={2'd0,val_osca_semi};
+                8'h12:observed_value=val_osca_fine;
+                8'h13:observed_value=val_osca_unison;
+                8'h14:observed_value=val_osca_detune;
+                8'h15:observed_value=val_osca_blend;
+                8'h16:observed_value=val_osca_phase;
+                8'h17:observed_value=val_osca_wt_pos;
+                8'h18:observed_value=val_osca_warp;
+                8'h19:observed_value=val_osca_pan;
+                8'h1A:observed_value=val_osca_vol;
+                8'h1B:observed_value=val_osca_rand;
+                8'h20:observed_value={3'd0,val_oscb_oct};
+                8'h21:observed_value={2'd0,val_oscb_semi};
+                8'h22:observed_value=val_oscb_fine;
+                8'h23:observed_value=val_oscb_unison;
+                8'h24:observed_value=val_oscb_detune;
+                8'h25:observed_value=val_oscb_blend;
+                8'h26:observed_value=val_oscb_phase;
+                8'h27:observed_value=val_oscb_wt_pos;
+                8'h28:observed_value=val_oscb_warp;
+                8'h29:observed_value=val_oscb_pan;
+                8'h2A:observed_value=val_oscb_vol;
+                8'h2B:observed_value=val_oscb_rand;
+                8'h30:observed_value=val_flt_cutoff;
+                8'h31:observed_value=val_flt_res;
+                8'h32:observed_value=val_flt_pan;
+                8'h33:observed_value=val_flt_drive;
+                8'h34:observed_value=val_flt_fat;
+                8'h35:observed_value=val_flt_mix;
+                8'h36:observed_value={6'd0,val_flt_route_a};
+                8'h37:observed_value={6'd0,val_flt_route_b};
+                8'h38:observed_value={6'd0,val_flt_route_n};
+                8'h39:observed_value={6'd0,val_flt_route_s};
+                8'h3A:observed_value={6'd0,val_flt_keytrack};
+                8'h3B:observed_value={5'd0,val_flt_type};
+                8'h40:observed_value=val_env_attack;
+                8'h41:observed_value=val_env_hold;
+                8'h42:observed_value=val_env_decay;
+                8'h43:observed_value=val_env_sustain;
+                8'h44:observed_value=val_env_release;
+                8'h45:observed_value={5'd0,val_env_tab};
+                8'h50:observed_value=val_fx_reverb;
+                8'h51:observed_value=val_fx_delay;
+                8'h52:observed_value=val_fx_chorus;
+                8'h53:observed_value=val_portamento;
+                8'h54:observed_value={6'd0,val_slot_bypass[0]};
+                8'h55:observed_value={6'd0,val_slot_bypass[1]};
+                8'h56:observed_value={6'd0,val_slot_bypass[2]};
+                8'h57:observed_value={6'd0,val_slot_bypass[3]};
+                default:observed_value_valid=0;
+            endcase
+        end
+        ui_debug_trace u_trace(
+            .clk(clk_pixel),.rst_n(sys_rst_n_sync),
+            .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_source(trace_source),
+            .raw_x(trace_raw_x),.raw_y(trace_raw_y),.ui_x(ui_touch_x),.ui_y(ui_touch_y),
+            .selected_id(selected_param_id),.selected_valid(selected_param_id!=8'd0),
+            .selected_value(observed_value),.selected_value_valid(observed_value_valid),
+            .btn_valid(btn_tap_valid),.btn_id(btn_tap_id),.btn_action(btn_tap_action),
+            .delta_valid(touch_delta_valid),.delta_value(touch_delta_val),
+            .cc_valid(midi_cc_req),.cc_id(midi_cc_param_id),.cc_value(midi_cc_val),
+            .spi_valid(spi_param_valid),.spi_id(spi_param_id),.spi_value(spi_param_val),
+            .curve_valid(curve_update_valid),.curve_filter(curve_update_filter),
+            .curve_tab(curve_update_tab),.curve_mask(curve_update_mask),.curve_values(curve_update_values),
+            .env_tab(val_env_tab),.lfo_tab(trace_lfo_state[59:58]),.lfo_preset(trace_lfo_state[57:56]),
+            .lfo_rate(trace_lfo_state[55:53]),.lfo_once(trace_lfo_state[52]),
+            .lfo_stepped(trace_lfo_state[51]),.lfo_nodes(trace_lfo_state[48:0]),
+            .button_state({14'd0,val_slot_bypass,val_flt_keytrack,val_flt_route_s,val_flt_route_n,
+                val_flt_route_b,val_flt_route_a,val_flt_type,val_oscb_wave,val_osca_wave,
+                val_flt_power,val_oscb_power,val_osca_power}),
+            .uart_tx(midi_uart_tx),.dropped_records()
+        );
+    end else begin: g_midi
+        assign midi_uart_tx=audio_midi_tx;
+    end endgenerate
 
     // --------------------------------------------------------------------------
     // 9. 心跳与系统状态指示

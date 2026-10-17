@@ -1,0 +1,13 @@
+{
+  "ui_source_commit": "2fc69d8cbecbf3573191c7cc0faba14eac1baab2",
+  "baseline_manifest": "V1_0_SOURCE.json",
+  "source_archive_sha256": "4166B1334192E3CCA57F70D6390760C57A0A42D9052505C09750FBD5134993C7",
+  "excluded_source_paths": [
+    "sim/transcript"
+  ],
+  "packaging_adjustments": [
+    "Ignore sim/transcript; stop tracking the shared copy while keeping the file on disk"
+  ],
+  "diagnostic_bitstream_sha256": "F34A5197EE10D99C7AC58A0CC9392222C6F206DCE79E9C83B986207336D60226",
+  "hardware_validation": "UART STATUS received on COM6; camera normal; no real touch events captured yet; programmer exit missing after SSH loss; timing not closed"
+}

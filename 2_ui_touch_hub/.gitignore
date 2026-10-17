@@ -21,3 +21,6 @@ tools/*.png
 # Python cache
 __pycache__/
 *.pyc
+
+# Keep simulator console output local only
+/sim/transcript

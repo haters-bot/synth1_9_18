@@ -69,6 +69,7 @@ module usb_touch_intake (
     wire [9:0]  rom_addr;
     wire [3:0]  rom_dout;
     wire        rom_en;
+    wire        u_dev_conn;
 
     usb_hid_host #(
         .FULL_SPEED              (1),
@@ -118,8 +119,6 @@ module usb_touch_intake (
         .rom_dout                (rom_dout),
         .rom_en                  (rom_en)
     );
-
-    wire u_dev_conn;
 
     usb_hid_host_rom u_usb_rom (
         .clk                     (clk_usb),

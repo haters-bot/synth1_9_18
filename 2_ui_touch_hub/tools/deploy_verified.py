@@ -21,6 +21,15 @@ LOCAL_IP = "10.136.125.235"
 REMOTE_IP = "10.136.125.157"
 
 
+class RemoteCommandError(RuntimeError):
+    def __init__(self, result):
+        self.stdout = result.stdout
+        self.stderr = result.stderr
+        self.returncode = result.returncode
+        super().__init__(result.stdout.decode(errors="replace") +
+                         result.stderr.decode(errors="replace"))
+
+
 def remote(ps, timeout=180):
     encoded = base64.b64encode(ps.encode("utf-16le")).decode("ascii")
     result = subprocess.run(
@@ -31,8 +40,7 @@ def remote(ps, timeout=180):
         capture_output=True, timeout=timeout,
     )
     if result.returncode:
-        raise RuntimeError(result.stdout.decode(errors="replace") +
-                           result.stderr.decode(errors="replace"))
+        raise RemoteCommandError(result)
     return result.stdout
 
 
@@ -85,7 +93,8 @@ def main():
     fs = args.fs.resolve() if args.fs else ROOT / "impl" / "pnr" / "2_ui_touch_hub.fs"
     digest = hashlib.sha256(fs.read_bytes()).hexdigest().upper()
     manifest = {"run": run, "source": str(fs), "sha256": digest,
-                "bytes": fs.stat().st_size, "remote": REMOTE_IP}
+                "bytes": fs.stat().st_size, "remote": REMOTE_IP,
+                "programming_status": "not_confirmed"}
     with (output / "firmware.zip").open("xb") as stream:
         with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(fs, "2_ui_touch_hub.fs")
@@ -108,8 +117,9 @@ Expand-Archive -LiteralPath '{remote_dir}/firmware.zip' -DestinationPath '{remot
 $actual=(Get-FileHash -LiteralPath '{remote_dir}/2_ui_touch_hub.fs' -Algorithm SHA256).Hash
 if ($actual -ne '{digest}') {{ throw "Bitstream hash mismatch: $actual" }}
 Write-Output "VERIFIED_SHA256=$actual"
-& 'D:/Gowin/Gowin_V1.9.11.03_Education_x64/Programmer/bin/programmer_cli.exe' --device GW5AST-138B --run 2 --fsFile '{remote_dir}/2_ui_touch_hub.fs'
+& 'D:/Gowin/Gowin_V1.9.11.03_Education_x64/Programmer/bin/programmer_cli.exe' --device GW5AST-138B --run 2 --fsFile '{remote_dir}/2_ui_touch_hub.fs' 2>&1 | Tee-Object -FilePath '{remote_dir}/programmer.log'
 $programExit=$LASTEXITCODE
+$programExit | Set-Content -LiteralPath '{remote_dir}/programmer_exit.txt'
 Write-Output "PROGRAMMER_EXIT=$programExit"
 if ($programExit -ne 0) {{ exit $programExit }}
 Start-Sleep -Seconds 2
@@ -120,6 +130,19 @@ Write-Output 'CODEX_PROGRAM_COMPLETE'
         print(data.decode(errors="replace"), flush=True)
         if b"CODEX_PROGRAM_COMPLETE" not in data:
             raise RuntimeError("Programming completion marker missing")
+        manifest["programming_status"] = "verified"
+        (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    except Exception as error:
+        # An SSH failure can occur after SRAM changed. Preserve available output
+        # and leave the hardware outcome unconfirmed; never retry automatically.
+        for attr in ("stdout", "stderr"):
+            content = getattr(error, attr, None)
+            if content:
+                (output / ("remote_" + attr + ".log")).write_bytes(
+                    content if isinstance(content, bytes) else content.encode("utf-8"))
+        manifest["error"] = str(error)
+        (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        raise
     finally:
         server.shutdown()
         server.server_close()

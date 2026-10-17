@@ -74,6 +74,9 @@ module ui_top_renderer (
     input  wire       ui_touch_valid, ui_touch_down,
     input  wire [13:0] ui_touch_x, ui_touch_y,
 
+    // Observation only; phase/running are intentionally excluded (no log flood).
+    output wire [59:0] trace_lfo_state,
+
     // Timing & Video Outputs (to dvi_tx_top)
     output reg         out_hsync,
     output reg         out_vsync,
@@ -254,6 +257,7 @@ module ui_top_renderer (
     wire [2:0] lfo_rate;
     wire lfo_once, lfo_stepped, lfo_running;
     wire [8:0] lfo_phase;
+    assign trace_lfo_state={lfo_tab,lfo_preset,lfo_rate,lfo_once,lfo_stepped,2'b0,lfo_nodes};
     lfo_editor_state u_lfo_state (
         .clk(clk), .rst_n(rst_n),
         .touch_valid(ui_touch_valid), .touch_down(ui_touch_down),
