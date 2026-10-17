@@ -3,7 +3,7 @@
 ## 追加记录（2026-10-18：ENV 点位与掉电启动 Flash）
 
 - ENV 图中从左往右数、包含最左端起点时，第三个白点为 HOLD 手柄，参数只代表峰值平台的保持时间，因此只允许水平拖动。右侧下降段终点可调 DECAY 时间与 SUSTAIN 高度；最右侧平台点只调 SUSTAIN。`sim/tb_curve_touch_editor.v` 新增 DECAY 手柄垂直调节 Sustain 并还原的断言，`python tools/test_curve_editor.py` 已通过。
-- GitHub 团队仓库 `haters-bot/synth1_9_18` 的 `ui-touch-hub-v1.0` 分支已包含本地源码提交 `a2b6e6c` 的诊断版本；最新共享提交 `bee0a80` 同步了本记录和 ENV Sustain 纵向拖动回归。草稿 PR #1 已存在，未合并主分支。此分支已有诊断 UART 扩展。
+- GitHub 团队仓库 `haters-bot/synth1_9_18` 的 `ui-touch-hub-v1.0` 分支已包含本地源码提交 `a2b6e6c` 的诊断版本；共享提交 `bee0a80` 加入本记录和 ENV Sustain 纵向拖动回归，`5a97181` 更新了共享版本记录。草稿 PR #1 已存在，未合并主分支。此分支已有诊断 UART 扩展。
 - 工程机远程只读检测 `programmer_cli --device GW5AST-138B --run 51` 成功识别外部 Flash ID `0x0B4018`。Gowin Programmer 1.9.11.03 CLI 支持操作 69（exFlash 经 GAO-Bridge 5A 擦除、写入并校验）。Sipeed 官方 [Tang Mega 138K Wiki](https://wiki.sipeed.com/hardware/en/tang/tang-mega-138k/mega-138k.html) 列出单颗 128/64 Mbit Flash，并建议使用 GAO-Bridge 5A（V1.9.11.03+）或 Arora V（V1.9.12+）；同页还要求按 Flash 烧录图设置 DIP 开关。当前仅检测到芯片，尚未擦写 Flash，也未确认板上 DIP 状态。
 - 掉电启动候选固件：普通 R15I 保留 U15 MIDI 31250、不带诊断日志；U15 诊断版输出 115200 日志并暂停 U15 对外 MIDI。不要把两种用途混淆。Flash 擦写会替换非易失配置，待用户确认要将哪种版本作为默认启动镜像、且按官方图确认 DIP/模式后，再执行操作 69 并回读校验。普通 R15I 已验收 fs 的 SHA256 为 `3974EC45CAAA7FC88B8B2358ECC81CF563E5C2E0132572065CB94B52F2D8DC20`；诊断位流的历史 hash 与当前构建产物见诊断交接，不把缺失的 SRAM Programmer 返回码写成成功。
 
