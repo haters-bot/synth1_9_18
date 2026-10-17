@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW5AST-138B" pn="GW5AST-LV138PG484AC1/I0">gw5ast138b-011</Device>
+    <FileList>
+        <File path="rtl/dvi_tx/dvi_tx_clk_drv.v" type="file.verilog" enable="1"/>
+        <File path="rtl/dvi_tx/dvi_tx_tmds_enc.v" type="file.verilog" enable="1"/>
+        <File path="rtl/dvi_tx/dvi_tx_tmds_phy.v" type="file.verilog" enable="1"/>
+        <File path="rtl/dvi_tx/dvi_tx_top.v" type="file.verilog" enable="1"/>
+        <File path="rtl/pll/gowin_pll.v" type="file.verilog" enable="1"/>
+        <File path="rtl/timing/video_timing_ctrl.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/params.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/font_3x5.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/font_7x10.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/pixel_coverage.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/sine_table.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/knob_vector_unit.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/osc_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/filter_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/env_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/button_vector_unit.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/fx_matrix_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_editor_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/curve_hint_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/ui_top_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/uart_touch_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/hspi_touch_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/pll/gowin_pll_usb.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/usb_hid_host_rom.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/usb_hid_host.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/usb_touch_intake.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/touch_event_router.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/curve_touch_editor.v" type="file.verilog" enable="1"/>
+        <File path="rtl/knob_spi_intake/knob_spi_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/midi_uart_tx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_touch_hub_top.v" type="file.verilog" enable="1"/>
+        <File path="constraints/ui_touch_hub.cst" type="file.cst" enable="1"/>
+        <File path="constraints/ui_touch_hub.sdc" type="file.sdc" enable="1"/>
+    </FileList>
+</Project>

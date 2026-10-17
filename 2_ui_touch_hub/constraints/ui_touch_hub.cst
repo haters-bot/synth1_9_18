@@ -1,0 +1,106 @@
+// ==============================================================================
+// Physical Constraints: ui_touch_hub.cst
+// Target Board: Sipeed Tang Mega 138K Dock (GW5AST-LV138PG484AC1/I0, PBGA484A)
+// Bank Voltage: 3.3V LVCMOS
+// ==============================================================================
+
+// 50MHz System Clock & Reset
+IO_LOC  "clk"             V22;
+IO_PORT "clk"             IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=OFF BANK_VCCIO=3.3;
+
+IO_LOC  "rst_n"           AA13;
+IO_PORT "rst_n"           IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// Status LEDs
+IO_LOC  "led[0]"          T18;
+IO_PORT "led[0]"          IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "led[1]"          R18;
+IO_PORT "led[1]"          IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+// HDMI Type-A Differential Video Port (J29)
+IO_LOC  "tmds_d_p_0[0]"   J14,H14;
+IO_PORT "tmds_d_p_0[0]"   IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "tmds_d_p_0[1]"   J15,H15;
+IO_PORT "tmds_d_p_0[1]"   IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "tmds_d_p_0[2]"   K17,J17;
+IO_PORT "tmds_d_p_0[2]"   IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "tmds_clk_p_0"    G15,G16;
+IO_PORT "tmds_clk_p_0"    IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+// Board USB-A Host Port (J18 via SW4 in FPGA position on Tang Mega NEO Dock)
+IO_LOC  "usb_dp"              H13;
+IO_PORT "usb_dp"              IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "usb_dm"              G13;
+IO_PORT "usb_dm"              IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+// Screen Touch UART / USB Bridge Inputs (V14 and Y14 dual-pin)
+IO_LOC  "touch_uart_rx"       V14;
+IO_PORT "touch_uart_rx"       IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "touch_uart_rx_y14"   Y14;
+IO_PORT "touch_uart_rx_y14"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// Teammate 1 (Hardware Panel) Physical Knobs SPI (W16/U16/T16 on Header)
+IO_LOC  "knob_spi_cs_n"   W16;
+IO_PORT "knob_spi_cs_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "knob_spi_sclk"   U16;
+IO_PORT "knob_spi_sclk"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "knob_spi_mosi"   T16;
+IO_PORT "knob_spi_mosi"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// Teammate 3 (Audio Engine) UART MIDI Output (txp)
+IO_LOC  "midi_uart_tx"    U15;
+IO_PORT "midi_uart_tx"    IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+// Board CH569 USB Host HSPI Interface (Direct Portable Screen USB Touch Intake)
+IO_LOC  "ch569_htclk"     L20;
+IO_PORT "ch569_htclk"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+IO_LOC  "ch569_htreq"     N20;
+IO_PORT "ch569_htreq"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+IO_LOC  "ch569_htvld"     L15;
+IO_PORT "ch569_htvld"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+IO_LOC  "ch569_htrdy"     J22;
+IO_PORT "ch569_htrdy"     IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "hspi_hd[0]"      G17;
+IO_LOC  "hspi_hd[1]"      H22;
+IO_LOC  "hspi_hd[2]"      L14;
+IO_LOC  "hspi_hd[3]"      K22;
+IO_LOC  "hspi_hd[4]"      K21;
+IO_LOC  "hspi_hd[5]"      K18;
+IO_LOC  "hspi_hd[6]"      L21;
+IO_LOC  "hspi_hd[7]"      M21;
+IO_LOC  "hspi_hd[8]"      M22;
+IO_LOC  "hspi_hd[9]"      N22;
+IO_LOC  "hspi_hd[10]"     L18;
+IO_LOC  "hspi_hd[11]"     M18;
+IO_LOC  "hspi_hd[12]"     N19;
+IO_LOC  "hspi_hd[13]"     N18;
+IO_LOC  "hspi_hd[14]"     K16;
+IO_LOC  "hspi_hd[15]"     L16;
+IO_PORT "hspi_hd[0]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[1]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[2]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[3]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[4]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[5]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[6]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[7]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[8]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[9]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[10]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[11]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[12]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[13]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[14]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[15]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;

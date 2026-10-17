@@ -1,0 +1,23 @@
+# Gowin EDA temporary and build outputs
+impl/
+temp/
+*.fs
+*.bin
+*.db
+*.rpt
+*.log
+*.temp
+*.gprj.user
+
+# Modelsim work directory
+sim/work/
+
+# Ephemeral audit photos and crops
+*.jpg
+*.png
+tools/*.jpg
+tools/*.png
+
+# Python cache
+__pycache__/
+*.pyc

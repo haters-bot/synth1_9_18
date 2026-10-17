@@ -1,0 +1,36 @@
+# UI Touch Hub 当前交接入口
+
+## 当前状态（2026-10-17）
+
+- 工程 `D:\github\gaoyun\2_ui_touch_hub` 有独立本地 Git；上级目录不是仓库。保持 master，不重写历史、不删除旧产物、不自动推送远程。
+- **板上当前 R15I，已部署且用户验收通过**：用户明确回复“更精细，触控正常”。细化主要名称 / 数值 / 页签、平滑曲线；保持 1280×720、PLL 与触摸映射。`verified/ui-R15I-20261017` → RTL `c988661`；部署 `20261017_233834_R15I_final`，双机 SHA256 和 Programmer 返回 0 均确认，实景照片已检查。详细哈希、时序与 Gowin 启动器退出异常见本轮交接文档。
+- **已验收回退基线 R15H**：`verified/ui-R15H-20261017` → `2dfbd73`。用户此前确认 FILTER XY 与 ENV 白点拖动及数值联动正常。
+- 屏幕原生分辨率仅口述“可能 1920×1200”，未验证；不要据此直接升 PLL 或修改触摸比例。
+
+## 详细记录
+
+1. [本轮像素细节与验证、时序、部署记录](doc/CODEX_PIXEL_DETAIL_HANDOFF_2026-10-17.md)
+2. [R15H FILTER / ENV 控制与已验收基线](doc/CODEX_DIRECT_CURVE_HANDOFF_2026-10-17.md)
+3. [R15G LFO 面板与音频接口边界](doc/CODEX_LFO_PANEL_HANDOFF_2026-10-17.md)
+4. [R15F 文字清晰度](doc/CODEX_UI_LEGIBILITY_HANDOFF_2026-10-17.md)
+5. [触控排查与校准历史](doc/CODEX_TOUCH_DEBUG_HANDOFF_2026-10-16.md)
+
+## 双机与可逆部署
+
+主力机 `.235` 编码、ModelSim、Gowin；工程机 `.157` 持有板卡 JTAG、触摸屏和摄像头。SSH 绑定源 `10.136.125.235`；禁止在主力机调用 JTAG。部署脚本使用唯一目录、双机 SHA256、烧录返回码和摄像头回传，不自动重试烧录。
+
+```powershell
+# 仅在综合完成且检查报告后部署
+python tools/deploy_verified.py --label R15I_final
+
+# 用户要求退回时，直接使用已验收归档，不覆盖当前构建产物
+python tools/deploy_verified.py --label R15H_rollback --fs impl/R15H_final_build2_20261017_2251/2_ui_touch_hub.fs
+```
+
+R15H 归档比特流 SHA256：`911054F05264B88D565FBF4FC6A600751E93848057080B9A1D67C8F36BE1AC90`。只烧入 SRAM。
+
+## 不得扩大已有结论
+
+- 触控、UI 预览、生成比特流、摄像头正常均不能替代时序收敛。
+- R15I 像素域 Fmax 58.084 MHz，目标 62.5 MHz；负裕量端点 65 个，相比 R15H 的 57.813 MHz / 74 个略有改善，仍未收敛。下一轮升分辨率前先处理像素路径。
+- LFO 仍为本地 UI 预览；ENV2/3 为独立本地编辑。不能声称这些已驱动音频核。

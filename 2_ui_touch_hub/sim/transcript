@@ -1,0 +1,40 @@
+# vsim -do {run -all; quit} -c tb_touch_event_router 
+# Loading work.tb_touch_event_router
+# Loading work.touch_event_router
+# run -all 
+# [INFO] Starting Test 1: 16K Mode Default & OSC A Power button tap
+# [PASS] 16K OSC A Power button tap verified (mode=0, id=0a, act=0)
+# [INFO] Starting Test 2: 16K ILITEK live packet normalization
+# [PASS] 16K live packet normalization verified: norm=(  715,   639)
+# [INFO] Starting Test 3: 16K Boundary Clamping
+# [PASS] 16K Boundary Clamping verified: min=(0,0), max=(1279,719)
+# [INFO] Starting Test 3b: 16K Edge Overshoot Immunity
+# [PASS] 16K Edge Overshoot Immunity verified: mode=0, clamped to (1279, 719)
+# [INFO] Starting Test 4: Dynamic Promotion to 32K Mode & Filter Checkbox [A]
+# [PASS] Dynamic promotion to 32K and Filter Checkbox A verified (mode=1, id=36)
+# [INFO] Starting Test 5: OSC A Waveform Next button in 32K mode
+# [PASS] OSC A Waveform Next in 32K mode verified (id=0e, act=1)
+# [INFO] Starting Test 6: Envelope Tab 2
+# [PASS] Envelope Tab 2 verified (id=45, act=1)
+# [INFO] Starting Test 7: Matrix Slot 1 Bypass
+# [PASS] Matrix Slot 1 Bypass verified (id=54)
+# [INFO] Starting Test 8: Filter Cutoff Knob drag
+# [PASS] Knob Cutoff selected confirmed: id=30
+# [PASS] Knob drag delta produced: val=   1
+# [INFO] Starting Test 9: Envelope Tab 1
+# [PASS] Envelope Tab 1 verified (id=45, act=0)
+# [INFO] Starting Test 10: Envelope Tab 3
+# [PASS] Envelope Tab 3 verified (id=45, act=2)
+# [INFO] Starting Test 11: Sliding across Envelope Tabs
+# [PASS] Seamless slide across Tab 1 -> Tab 2 -> Tab 3 verified!
+# [INFO] Starting Test 12: 32K Boundary Clamping
+# [PASS] 32K Boundary Clamping verified: min=(0,0), max=(1279,719)
+# [INFO] Starting Test 13: 64K Mode Detection
+# [PASS] 64K Mode verified: mode=2, norm=(  640,   360)
+# [INFO] Starting Test 14: 64K Boundary Clamping
+# [PASS] 64K Boundary Clamping verified: max=(1279,719)
+# =================================================
+#    ALL TOUCH_EVENT_ROUTER TESTS PASSED (100%)   
+# =================================================
+# ** Note: $finish    : tb_touch_event_router.v(406)
+#    Time: 4440 ns  Iteration: 1  Instance: /tb_touch_event_router
