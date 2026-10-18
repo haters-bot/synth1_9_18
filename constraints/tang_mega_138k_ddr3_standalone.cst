@@ -148,5 +148,6 @@ IO_LOC "ddr_status_led_n" V13;
 IO_PORT "ddr_status_led_n" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=4 BANK_VCCIO=3.3;
 
 // DDR IP内部专用资源位置；生成IP后必须核对层次名。
+INS_LOC "u_ddr3_wrapper/u_ddr_pll/u_pll/PLL_inst" PLL_L[0];
 INS_LOC "u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/u_dll" DDRDLLM_BL;
 INS_LOC "u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/fclkdiv" LEFTSIDE[4];
