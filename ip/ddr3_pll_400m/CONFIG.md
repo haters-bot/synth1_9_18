@@ -32,6 +32,9 @@ enclk0, enclk1, enclk2
 clkout0, clkout1, clkout2
 ```
 
+建议把生成文件完整保存到 `src/gowin_ddr_pll/`，并将实际生成文件加入工程。
+`sim/ddr3_vendor_ip_stubs.v` 中的同名模块只供RTL检查，禁止加入综合文件列表。
+
 本地封装只使用 `clkout2` 作为 `memory_clk`，并将 DDR IP 的低有效
 `pll_stop` 直接接到 `enclk2`。这个连接方式来自 IPUG281-2.6 第 4.4.4 节
 针对138K器件的连接图。

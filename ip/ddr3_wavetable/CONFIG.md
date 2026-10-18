@@ -76,6 +76,10 @@ SD 卡装载器和波表缓存管理器。
 - `IO_ddr_dqs[3:0]`
 - `IO_ddr_dqs_n[3:0]`
 
+建议把生成文件完整保存到 `src/ddr3_wavetable_ip/`，并将厂商生成的实际
+Verilog文件加入工程。`sim/ddr3_vendor_ip_stubs.v` 只供RTL检查，禁止加入
+综合文件列表。
+
 ## 地址与数据粒度
 
 当前配置中，一次 BL8 事务传输 `8 × 32 bit = 256 bit = 32 Byte`。厂商
