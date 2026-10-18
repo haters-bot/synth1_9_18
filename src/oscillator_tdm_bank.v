@@ -132,6 +132,9 @@ module oscillator_tdm_bank #(
     reg signed [BANK_SUM_WIDTH-1:0] combined_sum;
     reg [16:0] mix_gain_q16;
     reg [6:0] active_task_count_batch;
+    reg signed [BANK_SUM_WIDTH-1:0] normalization_input_sum;
+    reg signed [17:0] normalization_input_gain;
+    reg normalization_input_valid;
     wire [16:0] target_gain_q16;
     wire [16:0] applied_gain_q16;
     wire signed [17:0] signed_mix_gain_q16;
@@ -237,8 +240,10 @@ module oscillator_tdm_bank #(
     assign applied_gain_q16 = (target_gain_q16 < mix_gain_q16)
                             ? target_gain_q16 : mix_gain_q16;
     assign signed_mix_gain_q16 = $signed({1'b0, applied_gain_q16});
-    assign normalized_product = $signed(combined_sum)
-                                * $signed(signed_mix_gain_q16);
+    // 先寄存部分和及其对应增益，再进入DSP乘法器。该边界切断了
+    // 波表/包络提交逻辑到归一化乘法器之间的跨模块长路径。
+    assign normalized_product = $signed(normalization_input_sum)
+                                * $signed(normalization_input_gain);
     assign normalized_rounded = normalized_product
                               + $signed({{(NORMALIZED_WIDTH-16){1'b0}},
                                          16'h8000});
@@ -270,16 +275,20 @@ module oscillator_tdm_bank #(
             sample_valid <= 1'b0;
             mix_gain_q16 <= UNITY_GAIN_Q16;
             active_task_count_batch <= 7'd0;
+            normalization_input_sum <= {BANK_SUM_WIDTH{1'b0}};
+            normalization_input_gain <= 18'sd0;
+            normalization_input_valid <= 1'b0;
         end else begin
-            sample_valid <= all_engines_valid;
+            sample_valid <= normalization_input_valid;
+            normalization_input_valid <= all_engines_valid;
             if (start_tick)
                 active_task_count_batch <= active_task_count;
 
             if (all_engines_valid) begin
-                sample_out <= saturate_to_s16(normalized_sum);
+                normalization_input_sum <= combined_sum;
+                normalization_input_gain <= signed_mix_gain_q16;
 
-                // 仅在完成一个内部音频采样时更新一次增益。声部数为0时
-                // 在静音期间立即恢复单位增益，为下一次单音做好准备。
+                // 仅在完成一个内部音频采样时更新一次增益。
                 if (active_task_count_batch == 7'd0) begin
                     mix_gain_q16 <= UNITY_GAIN_Q16;
                 end else if (mix_gain_q16 < target_gain_q16) begin
@@ -291,11 +300,12 @@ module oscillator_tdm_bank #(
                                       + ((target_gain_q16 - mix_gain_q16)
                                          >> GAIN_SMOOTH_SHIFT);
                 end else if (mix_gain_q16 > target_gain_q16) begin
-                    // A rising task count can make phase-coherent oscillators
-                    // add immediately. Apply attenuation on the first complete
-                    // sample; only gain recovery is smoothed.
                     mix_gain_q16 <= target_gain_q16;
                 end
+            end
+
+            if (normalization_input_valid) begin
+                sample_out <= saturate_to_s16(normalized_sum);
             end
         end
     end

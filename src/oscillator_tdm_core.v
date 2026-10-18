@@ -75,7 +75,25 @@ module oscillator_tdm_core #(
     reg [15:0] envelope_divider;
     reg        envelope_update_active;
 
-    // 发出阶段与提交阶段之间的槽位上下文寄存器。
+    // 地址请求级先截断槽位状态选择和相位变形形成的长组合路径。
+    // 下一拍再把该上下文送入原有提交级，并同时向同步波表发出读请求。
+    reg        request_valid;
+    reg        request_cancel;
+    reg [7:0]  request_slot;
+    reg [31:0] request_phase;
+    reg [7:0]  request_wave_address;
+    reg [31:0] request_phase_step;
+    reg        request_enable;
+    reg        request_gate;
+    reg [2:0]  request_envelope_stage;
+    reg [15:0] request_envelope_level;
+    reg [15:0] request_velocity_envelope_level;
+    reg [6:0]  request_velocity;
+    reg [2:0]  request_waveform_select;
+    reg [31:0] request_envelope_phase;
+    reg [15:0] request_release_start_level;
+
+    // 波表返回数据所对应的提交级槽位上下文。
     reg        pipe_valid;
     reg        pipe_cancel;
     reg [7:0]  pipe_slot;
@@ -92,7 +110,6 @@ module oscillator_tdm_core #(
     reg [31:0] pipe_envelope_phase;
     reg [15:0] pipe_release_start_level;
 
-    wire issue_request;
     wire [31:0] issue_phase;
     wire [7:0] issue_raw_wave_address;
     wire [7:0] issue_warped_wave_address;
@@ -131,7 +148,6 @@ module oscillator_tdm_core #(
 
     integer reset_index;
 
-    assign issue_request = busy && issue_active;
     assign issue_phase = phase_state[issue_slot];
     assign issue_raw_wave_address = issue_phase[31:24];
 
@@ -147,8 +163,8 @@ module oscillator_tdm_core #(
     acid_wavetable_reader u_acid_wavetable_reader (
         .clk          (clk),
         .rst_n        (rst_n),
-        .req_valid    (issue_request),
-        .phase_address(issue_warped_wave_address),
+        .req_valid    (request_valid),
+        .phase_address(request_wave_address),
         .wt_position  (wt_position_batch),
         .sample_valid (acid_sample_valid),
         .sample_data  (acid_wave_sample)
@@ -272,6 +288,21 @@ module oscillator_tdm_core #(
             task_idle_slot    <= 8'd0;
             envelope_divider  <= 16'd0;
             envelope_update_active <= 1'b0;
+            request_valid     <= 1'b0;
+            request_cancel    <= 1'b0;
+            request_slot      <= 8'd0;
+            request_phase     <= 32'd0;
+            request_wave_address <= 8'd0;
+            request_phase_step <= 32'd0;
+            request_enable    <= 1'b0;
+            request_gate      <= 1'b0;
+            request_envelope_stage <= ENV_IDLE;
+            request_envelope_level <= 16'd0;
+            request_velocity_envelope_level <= 16'd0;
+            request_velocity  <= 7'd0;
+            request_waveform_select <= 3'd2;
+            request_envelope_phase <= 32'd0;
+            request_release_start_level <= 16'd0;
             pipe_valid        <= 1'b0;
             pipe_cancel       <= 1'b0;
             pipe_slot         <= 8'd0;
@@ -318,6 +349,7 @@ module oscillator_tdm_core #(
                 schedule_overrun <= 1'b1;
 
             if (!busy) begin
+                request_valid <= 1'b0;
                 pipe_valid <= 1'b0;
                 if (start_tick) begin
                     busy             <= 1'b1;
@@ -346,6 +378,33 @@ module oscillator_tdm_core #(
                     end
                 end
             end else begin
+                // 请求级每拍向提交级推进一次。同步波表在同一拍读取请求级地址，
+                // 因而其返回数据会与这里复制的槽位上下文保持对齐。
+                pipe_valid <= request_valid;
+                if (request_valid) begin
+                    pipe_cancel <= request_cancel
+                                || (task_update_valid
+                                    && (task_update_slot == request_slot));
+                    pipe_slot <= request_slot;
+                    pipe_phase <= request_phase;
+                    pipe_wave_address <= request_wave_address;
+                    pipe_phase_step <= request_phase_step;
+                    pipe_enable <= request_enable;
+                    pipe_gate <= request_gate;
+                    pipe_envelope_stage <= request_envelope_stage;
+                    pipe_envelope_level <= request_envelope_level;
+                    pipe_velocity_envelope_level
+                        <= request_velocity_envelope_level;
+                    pipe_velocity <= request_velocity;
+                    pipe_waveform_select <= request_waveform_select;
+                    pipe_envelope_phase <= request_envelope_phase;
+                    pipe_release_start_level
+                        <= request_release_start_level;
+                end
+
+                // 没有新槽位发出时，请求有效信号自然排空流水线尾部。
+                request_valid <= 1'b0;
+
                 // 提交上一拍发出的槽位。
                 if (pipe_valid) begin
                     debug_slot        <= pipe_slot;
@@ -447,23 +506,23 @@ module oscillator_tdm_core #(
                 // 与提交并行，向ROM发出下一个槽位。最后一个槽位发出后，
                 // 再留一拍只用于提交流水线尾部。
                 if (issue_active) begin
-                    pipe_valid  <= 1'b1;
-                    pipe_cancel <= task_update_valid
-                                && (task_update_slot == issue_slot);
-                    pipe_slot   <= issue_slot;
-                    pipe_phase  <= phase_state[issue_slot];
-                    pipe_wave_address <= issue_warped_wave_address;
-                    pipe_phase_step <= phase_step_state[issue_slot];
-                    pipe_enable <= enable_state[issue_slot];
-                    pipe_gate   <= gate_state[issue_slot];
-                    pipe_envelope_stage <= envelope_stage[issue_slot];
-                    pipe_envelope_level <= envelope_level[issue_slot];
-                    pipe_velocity_envelope_level
+                    request_valid  <= 1'b1;
+                    request_cancel <= task_update_valid
+                                   && (task_update_slot == issue_slot);
+                    request_slot   <= issue_slot;
+                    request_phase  <= phase_state[issue_slot];
+                    request_wave_address <= issue_warped_wave_address;
+                    request_phase_step <= phase_step_state[issue_slot];
+                    request_enable <= enable_state[issue_slot];
+                    request_gate   <= gate_state[issue_slot];
+                    request_envelope_stage <= envelope_stage[issue_slot];
+                    request_envelope_level <= envelope_level[issue_slot];
+                    request_velocity_envelope_level
                         <= velocity_envelope_level[issue_slot];
-                    pipe_velocity <= velocity_state[issue_slot];
-                    pipe_waveform_select <= waveform_select_batch;
-                    pipe_envelope_phase <= envelope_phase[issue_slot];
-                    pipe_release_start_level
+                    request_velocity <= velocity_state[issue_slot];
+                    request_waveform_select <= waveform_select_batch;
+                    request_envelope_phase <= envelope_phase[issue_slot];
+                    request_release_start_level
                         <= release_start_level[issue_slot];
 
                     if (issue_slot == (SLOTS_PER_ENGINE-1)) begin
