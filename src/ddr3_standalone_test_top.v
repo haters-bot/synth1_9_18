@@ -1,9 +1,9 @@
-// 独立DDR3板级验证顶层，不接入现有音频顶层。
-// 上电校准完成后自动测试64个256位数据块，共2 KiB。
+// DDR3 板级独立验证顶层，不接入现有音频顶层。
+// DDR3 校准完成后自动测试 64 个 256 位数据块，共 2 KiB。
 module ddr3_standalone_test_top(
     input  wire        sys_clk,
     input  wire        rst_n,
-    output wire        ddr_status_led_n,
+    output wire        uart_tx,
 
     output wire [14:0] ddr_addr,
     output wire [2:0]  ddr_bank,
@@ -51,7 +51,6 @@ module ddr3_standalone_test_top(
 
     reg test_finished;
     reg test_passed;
-    reg [23:0] status_counter;
 
     ddr3_wavetable_wrapper u_ddr3_wrapper(
         .clk_ref         (sys_clk),
@@ -115,16 +114,15 @@ module ddr3_standalone_test_top(
         .first_error_actual  (first_error_actual)
     );
 
+    // BIST 运行在 DDR 用户时钟域。完成状态保持不变，供 50 MHz 域同步读取。
     always @(posedge user_clk or negedge user_rst_n) begin
         if (!user_rst_n) begin
             start_bist    <= 1'b0;
             bist_started  <= 1'b0;
             test_finished <= 1'b0;
             test_passed   <= 1'b0;
-            status_counter <= 24'd0;
         end else begin
-            start_bist     <= 1'b0;
-            status_counter <= status_counter + 24'd1;
+            start_bist <= 1'b0;
 
             if (init_done && !bist_started) begin
                 start_bist   <= 1'b1;
@@ -138,9 +136,18 @@ module ddr3_standalone_test_top(
         end
     end
 
-    // LED低有效：初始化时熄灭，测试时慢闪，通过后常亮，失败后快闪。
-    assign ddr_status_led_n = !init_done     ? 1'b1 :
-                              !test_finished ? status_counter[22] :
-                              test_passed    ? 1'b0 : status_counter[20];
+    // NEO Dock 的 V13 是 USR_CLK_IN，不是状态 LED。
+    // 使用板载 USB 串口 TX（U15）输出初始化和 BIST 结果。
+    ddr3_status_uart #(
+        .CLK_HZ   (50000000),
+        .BAUD_RATE(115200)
+    ) u_status_uart(
+        .clk                (sys_clk),
+        .rst_n              (rst_n),
+        .init_done_async    (init_done),
+        .test_finished_async(test_finished),
+        .test_passed_async  (test_passed),
+        .uart_tx            (uart_tx)
+    );
 
 endmodule

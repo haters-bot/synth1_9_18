@@ -144,8 +144,8 @@ IO_LOC "sys_clk" V22;
 IO_PORT "sys_clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
 IO_LOC "rst_n" AA13;
 IO_PORT "rst_n" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
-IO_LOC "ddr_status_led_n" V13;
-IO_PORT "ddr_status_led_n" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=4 BANK_VCCIO=3.3;
+IO_LOC "uart_tx" U15;
+IO_PORT "uart_tx" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 
 // DDR IP内部专用资源位置；生成IP后必须核对层次名。
 INS_LOC "u_ddr3_wrapper/u_ddr_pll/u_pll/PLL_inst" PLL_L[0];
