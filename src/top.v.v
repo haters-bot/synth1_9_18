@@ -110,6 +110,9 @@ module top #(
     wire        filter_lfo_enabled;
     wire        filter_lfo_active_segment;
     wire [23:0] filter_lfo_segment_phase;
+    wire signed [14:0] lfo_value_q13;
+    wire        lfo_value_valid;
+    wire        lfo_route_overrun;
     wire       routed_note_event_valid;
     wire       routed_note_event_on;
     wire [6:0] routed_note_event_note;
@@ -169,6 +172,16 @@ module top #(
     wire [6:0]  osc_b_warp_amount_target;
     reg  [6:0]  osc_b_warp_amount_current;
 
+    wire [6:0] lfo_osc_a_wt_target;
+    wire [6:0] lfo_osc_a_warp_target;
+    wire [6:0] lfo_osc_a_level_target;
+    wire [6:0] lfo_osc_b_wt_target;
+    wire [6:0] lfo_osc_b_warp_target;
+    wire [6:0] lfo_osc_b_level_target;
+    wire [6:0] lfo_pan_target;
+    wire [6:0] lfo_filter_resonance_target;
+    wire [6:0] lfo_filter_mix_target;
+
     wire fir_input_ready;
     wire fir_output_valid;
     wire fir_input_overrun;
@@ -207,14 +220,14 @@ module top #(
             filter_mode_active <= 3'd0;
             filter_mix_current <= 7'd127;
         end else if (sample_tick) begin
-            if (osc_a_wt_position_current < osc_a_wt_position_target)
+            if (osc_a_wt_position_current < lfo_osc_a_wt_target)
                 osc_a_wt_position_current <= osc_a_wt_position_current + 7'd1;
-            else if (osc_a_wt_position_current > osc_a_wt_position_target)
+            else if (osc_a_wt_position_current > lfo_osc_a_wt_target)
                 osc_a_wt_position_current <= osc_a_wt_position_current - 7'd1;
 
-            if (osc_b_wt_position_current < osc_b_wt_position_target)
+            if (osc_b_wt_position_current < lfo_osc_b_wt_target)
                 osc_b_wt_position_current <= osc_b_wt_position_current + 7'd1;
-            else if (osc_b_wt_position_current > osc_b_wt_position_target)
+            else if (osc_b_wt_position_current > lfo_osc_b_wt_target)
                 osc_b_wt_position_current <= osc_b_wt_position_current - 7'd1;
 
             // Warp模式只在深度为0时切换。切换过程中先平滑退回原始地址，
@@ -226,9 +239,9 @@ module top #(
                     osc_a_warp_mode_active <= osc_a_warp_mode;
             end else if (osc_a_warp_mode_active == 4'd0) begin
                 osc_a_warp_amount_current <= 7'd0;
-            end else if (osc_a_warp_amount_current < osc_a_warp_amount_target) begin
+            end else if (osc_a_warp_amount_current < lfo_osc_a_warp_target) begin
                 osc_a_warp_amount_current <= osc_a_warp_amount_current + 7'd1;
-            end else if (osc_a_warp_amount_current > osc_a_warp_amount_target) begin
+            end else if (osc_a_warp_amount_current > lfo_osc_a_warp_target) begin
                 osc_a_warp_amount_current <= osc_a_warp_amount_current - 7'd1;
             end
 
@@ -239,15 +252,15 @@ module top #(
                     osc_b_warp_mode_active <= osc_b_warp_mode;
             end else if (osc_b_warp_mode_active == 4'd0) begin
                 osc_b_warp_amount_current <= 7'd0;
-            end else if (osc_b_warp_amount_current < osc_b_warp_amount_target) begin
+            end else if (osc_b_warp_amount_current < lfo_osc_b_warp_target) begin
                 osc_b_warp_amount_current <= osc_b_warp_amount_current + 7'd1;
-            end else if (osc_b_warp_amount_current > osc_b_warp_amount_target) begin
+            end else if (osc_b_warp_amount_current > lfo_osc_b_warp_target) begin
                 osc_b_warp_amount_current <= osc_b_warp_amount_current - 7'd1;
             end
 
-            if (filter_resonance_current < filter_resonance_target)
+            if (filter_resonance_current < lfo_filter_resonance_target)
                 filter_resonance_current <= filter_resonance_current + 7'd1;
-            else if (filter_resonance_current > filter_resonance_target)
+            else if (filter_resonance_current > lfo_filter_resonance_target)
                 filter_resonance_current <= filter_resonance_current - 7'd1;
 
             // 模式切换时先退回全干声，再切换算法并恢复目标Mix，避免状态跳变。
@@ -256,9 +269,9 @@ module top #(
                     filter_mix_current <= filter_mix_current - 7'd1;
                 else
                     filter_mode_active <= filter_mode_target;
-            end else if (filter_mix_current < filter_mix_target) begin
+            end else if (filter_mix_current < lfo_filter_mix_target) begin
                 filter_mix_current <= filter_mix_current + 7'd1;
-            end else if (filter_mix_current > filter_mix_target) begin
+            end else if (filter_mix_current > lfo_filter_mix_target) begin
                 filter_mix_current <= filter_mix_current - 7'd1;
             end
         end
@@ -289,11 +302,11 @@ module top #(
     // 只开启一路时最大增益0.5；两路都开启时每路最大增益0.25。
     // OSC Level与开关共用该平滑增益，目标总增益始终不超过0.5。
     assign osc_a_mix_gain_target_q8 = !osc_a_enabled ? 9'd0
-        : osc_b_enabled ? (level_to_half_gain_q8(osc_a_level) >> 1)
-        : level_to_half_gain_q8(osc_a_level);
+        : osc_b_enabled ? (level_to_half_gain_q8(lfo_osc_a_level_target) >> 1)
+        : level_to_half_gain_q8(lfo_osc_a_level_target);
     assign osc_b_mix_gain_target_q8 = !osc_b_enabled ? 9'd0
-        : osc_a_enabled ? (level_to_half_gain_q8(osc_b_level) >> 1)
-        : level_to_half_gain_q8(osc_b_level);
+        : osc_a_enabled ? (level_to_half_gain_q8(lfo_osc_b_level_target) >> 1)
+        : level_to_half_gain_q8(lfo_osc_b_level_target);
     assign master_gain_target_q8 = level_to_unity_gain_q8(master_level_target);
 
     always @(posedge clk_sys or negedge rst_n_sys) begin
@@ -397,21 +410,52 @@ module top #(
         .busy         (filter_cutoff_interpolation_busy)
     );
 
-    // 三点两曲率LFO在FPGA内部以96 kHz运行。SysEx参数先写影子寄存器，
-    // 收到commit后同时生效，避免逐字段更新造成中间状态。
-    filter_curve_lfo u_filter_curve_lfo (
-        .clk            (clk_sys),
-        .rst_n          (rst_n_sys),
-        .sample_tick    (sample_tick),
-        .parameter_valid(highres_parameter_valid),
-        .parameter_id   (highres_parameter_id),
-        .parameter_value(highres_parameter_value),
-        .filter_mode    (filter_mode_active),
-        .base_cutoff_q8 (filter_cutoff_manual_q8),
-        .cutoff_q8      (filter_cutoff_current_q8),
-        .lfo_enabled    (filter_lfo_enabled),
-        .active_segment (filter_lfo_active_segment),
-        .segment_phase  (filter_lfo_segment_phase)
+    // 三点两曲率 LFO 在 FPGA 内以 96 kHz 运行，只产生归一化控制值。
+    // 8 槽调制矩阵随后把同一个 LFO 路由到可选的连续参数。
+    curve_lfo_core u_curve_lfo_core (
+        .clk             (clk_sys),
+        .rst_n           (rst_n_sys),
+        .sample_tick     (sample_tick),
+        .parameter_valid (highres_parameter_valid),
+        .parameter_id    (highres_parameter_id),
+        .parameter_value (highres_parameter_value),
+        .lfo_value_q13   (lfo_value_q13),
+        .lfo_value_valid (lfo_value_valid),
+        .lfo_enabled     (filter_lfo_enabled),
+        .active_segment  (filter_lfo_active_segment),
+        .segment_phase   (filter_lfo_segment_phase)
+    );
+
+    lfo_modulation_router u_lfo_modulation_router (
+        .clk                       (clk_sys),
+        .rst_n                     (rst_n_sys),
+        .lfo_value_valid           (lfo_value_valid),
+        .lfo_value_q13             (lfo_value_q13),
+        .parameter_valid           (highres_parameter_valid),
+        .parameter_id              (highres_parameter_id),
+        .parameter_value           (highres_parameter_value),
+        .filter_mode               (filter_mode_active),
+        .base_osc_a_wt             (osc_a_wt_position_target),
+        .base_osc_a_warp           (osc_a_warp_amount_target),
+        .base_osc_a_level          (osc_a_level),
+        .base_osc_b_wt             (osc_b_wt_position_target),
+        .base_osc_b_warp           (osc_b_warp_amount_target),
+        .base_osc_b_level          (osc_b_level),
+        .base_pan                  (pan_target),
+        .base_filter_cutoff_q8     (filter_cutoff_manual_q8),
+        .base_filter_resonance     (filter_resonance_target),
+        .base_filter_mix           (filter_mix_target),
+        .mod_osc_a_wt              (lfo_osc_a_wt_target),
+        .mod_osc_a_warp            (lfo_osc_a_warp_target),
+        .mod_osc_a_level           (lfo_osc_a_level_target),
+        .mod_osc_b_wt              (lfo_osc_b_wt_target),
+        .mod_osc_b_warp            (lfo_osc_b_warp_target),
+        .mod_osc_b_level           (lfo_osc_b_level_target),
+        .mod_pan                   (lfo_pan_target),
+        .mod_filter_cutoff_q8      (filter_cutoff_current_q8),
+        .mod_filter_resonance      (lfo_filter_resonance_target),
+        .mod_filter_mix            (lfo_filter_mix_target),
+        .route_overrun             (lfo_route_overrun)
     );
 
     synth_control_router #(

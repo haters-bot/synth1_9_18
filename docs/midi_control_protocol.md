@@ -307,7 +307,7 @@ Resonance映射为最大约0.981的反馈系数；正负
 会连续移动梳齿位置。该延迟线带BSRAM推断属性，实际资源映射需要通过综合报告确认。
 
 静态Cutoff在顶层使用Q7.8状态。每次收到CC43后，在512个96 kHz样本内线性插值到
-新目标，过渡时间约5.33 ms；FPGA三点LFO在该静态值上叠加调制；
+新目标，过渡时间约5.33 ms；通用FPGA LFO可通过调制矩阵在该静态值上叠加调制；
 Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0为全干声，Mix=127
 为全湿声。模式切换时先把Mix退到0，提交新模式后再恢复，避免不同滤波状态直接跳变。
 
@@ -331,18 +331,14 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 - OSC A/B及全局参数固定通过通道16发送；
 - 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
-- 全局滤波器面板带FPGA Cutoff LFO，以Cutoff滑块为中心，可调`0.1～10 Hz`速率和
-  `0～127`协议深度；曲线固定为三个控制点和两段独立曲率。Comb+和Comb-在FPGA
-  内部把该深度按`70/127`缩放，实际上限约70，其他滤波模式不缩放；
+- 上位机带一个FPGA通用LFO，可调`0.1～10 Hz`速率、三个控制点和两段独立曲率；
+  8条路由可分别选择OSC A/B的WT Position、Warp Amount、Level以及Pan、Filter
+  Cutoff、Resonance和Mix，每条路由具有独立的`-127～+127`深度；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
-OSC A和OSC B面板各带一个临时`Warp LFO`。它只存在于Python测试工具中，以当前
-`Warp Amount`滑块为中心，用正弦波按设定深度产生CC39或CC41。速率范围为
-`0.1～10 Hz`，更新周期为5 ms。即使设置为10 Hz，每个周期仍有20个控制时刻，
-比原来的20 ms刷新更适合听辨快速Warp调制。数值超过0～127时会钳位；关闭LFO后
-立即恢复到滑块所设的基础值。Cutoff LFO只在参数变化时发送一次完整配置，运行时不再
-占用串口带宽，也不受桌面定时器抖动影响。两个临时Warp LFO仍由Python周期性发送，
-正式版本可继续迁移到FPGA或外部控制单片机。
+原来由Python每5 ms发送CC39或CC41的临时Warp LFO已经删除。现在曲线与路由只在
+配置变化时发送一次，运行时不占用串口带宽，也不受桌面定时器抖动影响。Pan路由目前
+只生成控制值；由于音频链路仍为单声道复制，暂时没有可听的左右声像变化。
 
 外部控制单片机发送示例：
 
@@ -434,15 +430,15 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 
 本次只执行RTL编译与ModelSim功能仿真，没有运行Gowin综合和布局布线。
 
-## 13. FPGA三点LFO参数扩展
+## 13. FPGA三点LFO与调制矩阵参数
 
-Cutoff LFO配置使用以下非商业厂商SysEx消息：
+通用LFO配置使用以下非商业厂商SysEx消息：
 
 ```text
 F0 7D parameter_id value_msb value_lsb F7
 ```
 
-参数ID 16～24分别写入Enable、两段相位步进、Depth、三个点和两个曲率；ID 25执行
-原子提交。FPGA在96 kHz下运行相位累加器和曲率插值。CC43继续控制静态Cutoff，
-控制点结构、编码和定点计算见`docs/lfo_curve_control.md`。Depth继续按0～127编码；
-Comb模式在FPGA内部应用约`70/127`的缩放，不需要上位机发送另一套数值。
+参数ID 16～24配置Enable、两段相位步进、三个点和两个曲率；ID 26～29依次配置
+路由编号、使能、目标和双极性深度；ID 25把曲线和全部8条路由原子提交。FPGA在
+96 kHz下产生LFO值，并在50 MHz域用10拍完成路由。CC参数继续作为各目标的基础值。
+完整目标编号、编码和定点计算见`docs/lfo_curve_control.md`。

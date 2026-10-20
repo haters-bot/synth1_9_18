@@ -342,14 +342,20 @@ module tb_top_midi_input;
         send_cc(7'd47, 7'd127);
         send_cc(7'd48, 7'd127);
 
-        // 高精度SysEx现在只写FPGA LFO配置；字段在commit后同时生效。
+        // 高精度SysEx写入通用LFO和路由影子寄存器；commit后同时生效。
         send_highres_parameter(7'd16, 14'd1);
-        send_highres_parameter(7'd19, 14'd4096);
+        send_highres_parameter(7'd26, 14'd0);
+        send_highres_parameter(7'd27, 14'd1);
+        send_highres_parameter(7'd28, 14'd8);
+        send_highres_parameter(7'd29, 14'd12288);
         send_highres_parameter(7'd25, 14'd1);
         repeat (3) @(posedge sys_clk);
         if (!dut.filter_lfo_enabled
-            || dut.u_filter_curve_lfo.active_depth !== 14'd4096) begin
-            $display("ERROR: FPGA filter LFO configuration was not committed");
+            || !dut.u_lfo_modulation_router.active_enable[0]
+            || dut.u_lfo_modulation_router.active_destination[0] !== 4'd8
+            || dut.u_lfo_modulation_router.active_depth_q13[0]
+               !== 14'sd4096) begin
+            $display("ERROR: FPGA LFO route configuration was not committed");
             errors = errors + 1;
         end
 

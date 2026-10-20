@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import math
-import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -41,24 +39,38 @@ FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
 FILTER_MIX_CC = 45
 MASTER_LEVEL_CC = 48
-# FPGA三点Cutoff LFO的影子寄存器参数编号。
+# FPGA三点通用LFO与8槽调制矩阵的影子寄存器参数编号。
 FILTER_LFO_PARAMETER = {
     "enable": 16,
     "step_0": 17,
     "step_1": 18,
-    "depth": 19,
     "point_0": 20,
     "point_1": 21,
     "point_2": 22,
     "curve_0": 23,
     "curve_1": 24,
     "commit": 25,
+    "route_index": 26,
+    "route_enable": 27,
+    "route_destination": 28,
+    "route_depth": 29,
 }
-# 该定时器只服务于OSC A/B的临时Warp LFO；Cutoff LFO已移入FPGA。
-LFO_UPDATE_MS = 5
 FILTER_LFO_CONFIG_DEBOUNCE_MS = 75
 FILTER_LFO_PHASE_BITS = 24
 FILTER_LFO_SAMPLE_RATE = 96000.0
+LFO_DESTINATIONS = {
+    "无": 0,
+    "OSC A WT Position": 1,
+    "OSC A Warp Amount": 2,
+    "OSC A Level": 3,
+    "OSC B WT Position": 4,
+    "OSC B Warp Amount": 5,
+    "OSC B Level": 6,
+    "Pan（当前预留）": 7,
+    "Filter Cutoff": 8,
+    "Filter Resonance": 9,
+    "Filter Mix": 10,
+}
 OSC_A_CC = {
     "enable": 36,
     "warp_mode": 38,
@@ -133,13 +145,9 @@ class MidiUartSender:
         self.port_lookup: dict[str, str] = {}
         self.active_notes: set[int] = set()
         self.keyboard_notes: set[int] = set()
-        self.lfo_phase = {"A": 0.0, "B": 0.0}
-        self.lfo_last_value: dict[str, int | None] = {"A": None, "B": None}
         self.filter_lfo_curve = LfoCurve()
         self.filter_lfo_window: tk.Toplevel | None = None
         self.filter_lfo_config_after_id: str | None = None
-        self.lfo_last_time = time.monotonic()
-        self.lfo_after_id: str | None = None
 
         self.port_name = tk.StringVar()
         self.baud_rate = tk.StringVar(value="31250")
@@ -153,7 +161,25 @@ class MidiUartSender:
         self.master_level = tk.IntVar(value=127)
         self.filter_lfo_enabled = tk.BooleanVar(value=False)
         self.filter_lfo_rate = tk.DoubleVar(value=0.5)
-        self.filter_lfo_depth = tk.IntVar(value=32)
+        self.lfo_routes = []
+        default_routes = [
+            (True, "Filter Cutoff", 32),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+        ]
+        for enabled, destination, depth in default_routes:
+            self.lfo_routes.append(
+                {
+                    "enabled": tk.BooleanVar(value=enabled),
+                    "destination": tk.StringVar(value=destination),
+                    "depth": tk.IntVar(value=depth),
+                }
+            )
         self.osc_controls = {}
         for osc_name in ("A", "B"):
             # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
@@ -162,9 +188,6 @@ class MidiUartSender:
                 "waveform": tk.StringVar(value="方波"),
                 "warp_mode": tk.StringVar(value="关闭"),
                 "warp_amount": tk.IntVar(value=0),
-                "lfo_enabled": tk.BooleanVar(value=False),
-                "lfo_rate": tk.DoubleVar(value=0.5),
-                "lfo_depth": tk.IntVar(value=64),
                 "wt_position": tk.IntVar(value=0),
                 "detune": tk.IntVar(value=64),
                 "unison": tk.IntVar(value=1),
@@ -182,7 +205,6 @@ class MidiUartSender:
         self.root.bind_all("<KeyPress>", self._key_press)
         self.root.bind_all("<KeyRelease>", self._key_release)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 
     def _build_ui(self) -> None:
         connection = ttk.LabelFrame(self.root, text="串口连接", padding=10)
@@ -349,18 +371,25 @@ class MidiUartSender:
             ),
         )
 
-        ttk.Checkbutton(
-            filter_frame,
-            text="Cutoff LFO",
-            variable=self.filter_lfo_enabled,
-            command=self.toggle_filter_lfo,
-        ).grid(row=1, column=0, columnspan=2, padx=4, sticky="w")
+        lfo_frame = ttk.LabelFrame(
+            parameter_controls, text="FPGA通用LFO与调制路由", padding=6
+        )
+        lfo_frame.grid(
+            row=2, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
 
-        ttk.Label(filter_frame, text="LFO速率/Hz").grid(
-            row=2, column=0, padx=4, sticky="w"
+        ttk.Checkbutton(
+            lfo_frame,
+            text="开启LFO",
+            variable=self.filter_lfo_enabled,
+            command=self.send_filter_lfo_configuration,
+        ).grid(row=0, column=0, padx=4, sticky="w")
+
+        ttk.Label(lfo_frame, text="速率/Hz").grid(
+            row=0, column=1, padx=4, sticky="e"
         )
         lfo_rate_scale = tk.Scale(
-            filter_frame,
+            lfo_frame,
             from_=0.1,
             to=10.0,
             resolution=0.1,
@@ -368,40 +397,51 @@ class MidiUartSender:
             variable=self.filter_lfo_rate,
             length=210,
         )
-        lfo_rate_scale.grid(row=2, column=1, columnspan=2, padx=4)
+        lfo_rate_scale.grid(row=0, column=2, padx=4)
         lfo_rate_scale.bind(
             "<ButtonRelease-1>",
             lambda _event: self.send_filter_lfo_configuration(),
         )
 
-        ttk.Label(filter_frame, text="LFO深度（Comb按70/127缩放）").grid(
-            row=2, column=3, padx=(12, 4), sticky="w"
-        )
-        lfo_depth_scale = tk.Scale(
-            filter_frame,
-            from_=0,
-            to=127,
-            orient=tk.HORIZONTAL,
-            variable=self.filter_lfo_depth,
-            length=210,
-        )
-        lfo_depth_scale.grid(row=2, column=4, columnspan=2, padx=4)
-        lfo_depth_scale.bind(
-            "<ButtonRelease-1>",
-            lambda _event: self.send_filter_lfo_configuration(),
-        )
-
         ttk.Button(
-            filter_frame,
+            lfo_frame,
             text="编辑LFO曲线",
             command=self.open_filter_lfo_editor,
-        ).grid(row=3, column=0, columnspan=2, padx=4, pady=(6, 2), sticky="w")
+        ).grid(row=0, column=3, padx=4)
+        ttk.Button(
+            lfo_frame,
+            text="应用LFO与路由",
+            command=self.send_filter_lfo_configuration,
+        ).grid(row=0, column=4, padx=4)
+
+        for route_index, route in enumerate(self.lfo_routes):
+            route_row = 1 + (route_index % 4)
+            route_column = 0 if route_index < 4 else 3
+            ttk.Checkbutton(
+                lfo_frame,
+                text=f"路由{route_index + 1}",
+                variable=route["enabled"],
+            ).grid(row=route_row, column=route_column, padx=4, sticky="w")
+            ttk.Combobox(
+                lfo_frame,
+                textvariable=route["destination"],
+                values=tuple(LFO_DESTINATIONS),
+                width=20,
+                state="readonly",
+            ).grid(row=route_row, column=route_column + 1, padx=4)
+            tk.Spinbox(
+                lfo_frame,
+                from_=-127,
+                to=127,
+                textvariable=route["depth"],
+                width=6,
+            ).grid(row=route_row, column=route_column + 2, padx=4)
 
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
                 parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            osc_frame.grid(row=2, column=column, padx=6, pady=(6, 0))
+            osc_frame.grid(row=3, column=column, padx=6, pady=(6, 0))
             self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
@@ -509,46 +549,6 @@ class MidiUartSender:
                 ),
             )
 
-        lfo_row = 2 + len(parameter_specs)
-        ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
-            row=lfo_row,
-            column=0,
-            columnspan=3,
-            sticky="ew",
-            pady=(6, 4),
-        )
-        ttk.Checkbutton(
-            parent,
-            text="临时Warp LFO",
-            variable=controls["lfo_enabled"],
-            command=lambda name=osc_name: self.toggle_warp_lfo(name),
-        ).grid(row=lfo_row + 1, column=0, columnspan=2, padx=4, sticky="w")
-
-        ttk.Label(parent, text="LFO速率/Hz").grid(
-            row=lfo_row + 2, column=0, padx=4, sticky="w"
-        )
-        tk.Scale(
-            parent,
-            from_=0.1,
-            to=10.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=controls["lfo_rate"],
-            length=260,
-        ).grid(row=lfo_row + 2, column=1, padx=4)
-
-        ttk.Label(parent, text="LFO深度").grid(
-            row=lfo_row + 3, column=0, padx=4, sticky="w"
-        )
-        tk.Scale(
-            parent,
-            from_=0,
-            to=127,
-            orient=tk.HORIZONTAL,
-            variable=controls["lfo_depth"],
-            length=260,
-        ).grid(row=lfo_row + 3, column=1, padx=4)
-
     def refresh_ports(self) -> None:
         if list_ports is None:
             self.status.set("缺少 pyserial：请运行 pip install pyserial")
@@ -623,7 +623,6 @@ class MidiUartSender:
             port_to_close.close()
         self.connect_button.configure(text="连接")
         self.status.set("未连接")
-        self.lfo_last_value = {"A": None, "B": None}
 
     def _send(self, message: bytes, log_message: bool = True) -> bool:
         if self.port is None or not self.port.is_open:
@@ -638,7 +637,6 @@ class MidiUartSender:
                 failed_port.close()
             self.active_notes.clear()
             self.keyboard_notes.clear()
-            self.lfo_last_value = {"A": None, "B": None}
             self.connect_button.configure(text="连接")
             self.status.set("串口连接已断开")
             messagebox.showerror("发送失败", str(exc))
@@ -741,9 +739,6 @@ class MidiUartSender:
         base_value = max(0, min(127, int(self.filter_cutoff.get())))
         self.send_synth_control(FILTER_CUTOFF_CC, base_value)
 
-    def toggle_filter_lfo(self) -> None:
-        self.send_filter_lfo_configuration()
-
     def _filter_lfo_curve_changed(self) -> None:
         # 拖动节点会高频触发回调。等待75 ms后一次性发送完整配置，
         # 避免31250 bit/s串口积压。
@@ -759,8 +754,14 @@ class MidiUartSender:
         value = max(-1.0, min(1.0, float(value)))
         return max(0, min(0x3FFF, round((value + 1.0) * 8191.5)))
 
+    @staticmethod
+    def _encode_route_depth(value: int) -> int:
+        """把-127～+127转换为14位Offset Binary调制深度。"""
+        value = max(-127, min(127, int(value)))
+        return max(0, min(0x3FFF, round((value + 127) * 16383 / 254)))
+
     def send_filter_lfo_configuration(self) -> None:
-        """发送三点LFO配置；最后的commit使全部字段在FPGA中同时生效。"""
+        """发送曲线和8条路由，最后用commit在FPGA中同时生效。"""
         self.filter_lfo_config_after_id = None
         if self.port is None or not self.port.is_open:
             return
@@ -781,10 +782,6 @@ class MidiUartSender:
             (FILTER_LFO_PARAMETER["enable"], 1 if self.filter_lfo_enabled.get() else 0),
             (FILTER_LFO_PARAMETER["step_0"], max(1, min(0x3FFF, step_0))),
             (FILTER_LFO_PARAMETER["step_1"], max(1, min(0x3FFF, step_1))),
-            (
-                FILTER_LFO_PARAMETER["depth"],
-                max(0, min(127 << 7, int(self.filter_lfo_depth.get()) << 7)),
-            ),
             (FILTER_LFO_PARAMETER["point_0"], self._encode_bipolar_q13(points[0].level)),
             (FILTER_LFO_PARAMETER["point_1"], self._encode_bipolar_q13(points[1].level)),
             (FILTER_LFO_PARAMETER["point_2"], self._encode_bipolar_q13(points[2].level)),
@@ -795,20 +792,38 @@ class MidiUartSender:
         for parameter_id, value in values:
             if not self.send_highres_parameter(parameter_id, value, log_message=False):
                 return
+
+        enabled_route_count = 0
+        for route_index, route in enumerate(self.lfo_routes):
+            destination_name = route["destination"].get()
+            destination = LFO_DESTINATIONS.get(destination_name, 0)
+            enabled = bool(route["enabled"].get()) and destination != 0
+            if enabled:
+                enabled_route_count += 1
+            route_values = (
+                (FILTER_LFO_PARAMETER["route_index"], route_index),
+                (FILTER_LFO_PARAMETER["route_enable"], 1 if enabled else 0),
+                (FILTER_LFO_PARAMETER["route_destination"], destination),
+                (
+                    FILTER_LFO_PARAMETER["route_depth"],
+                    self._encode_route_depth(route["depth"].get()),
+                ),
+            )
+            for parameter_id, value in route_values:
+                if not self.send_highres_parameter(
+                    parameter_id, value, log_message=False
+                ):
+                    return
+
         if not self.send_highres_parameter(
             FILTER_LFO_PARAMETER["commit"], 1, log_message=False
         ):
             return
 
         state = "开启" if self.filter_lfo_enabled.get() else "关闭"
-        depth = int(self.filter_lfo_depth.get())
-        if self.filter_mode.get() in ("梳状 +", "梳状 -"):
-            depth_text = f"{depth}（Comb有效约{round(depth * 70 / 127)}）"
-        else:
-            depth_text = str(depth)
         self.status.set(
-            f"FPGA Cutoff LFO已{state}：{rate_hz:.1f} Hz，"
-            f"Depth={depth_text}"
+            f"FPGA通用LFO已{state}：{rate_hz:.1f} Hz，"
+            f"启用{enabled_route_count}条路由"
         )
 
     def open_filter_lfo_editor(self) -> None:
@@ -818,7 +833,7 @@ class MidiUartSender:
             return
 
         window = tk.Toplevel(self.root)
-        window.title("Cutoff LFO曲线编辑器")
+        window.title("通用LFO曲线编辑器")
         window.resizable(False, False)
         editor = LfoCurveEditor(
             window,
@@ -833,54 +848,6 @@ class MidiUartSender:
             self.filter_lfo_window = None
 
         window.protocol("WM_DELETE_WINDOW", close_editor)
-
-    def toggle_warp_lfo(self, osc_name: str) -> None:
-        controls = self.osc_controls[osc_name]
-        enabled = bool(controls["lfo_enabled"].get())
-        self.lfo_phase[osc_name] = 0.0
-        self.lfo_last_value[osc_name] = None
-
-        if enabled:
-            self.status.set(f"OSC {osc_name}临时Warp LFO已开启")
-        else:
-            cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
-            base_value = int(controls["warp_amount"].get())
-            self.send_control_change(
-                cc_map["warp_amount"], base_value, CONTROL_CHANNEL
-            )
-            self.status.set(f"OSC {osc_name}临时Warp LFO已关闭")
-
-    def _update_lfos(self) -> None:
-        now = time.monotonic()
-        elapsed = min(now - self.lfo_last_time, 0.25)
-        self.lfo_last_time = now
-
-        for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
-            controls = self.osc_controls[osc_name]
-            if not controls["lfo_enabled"].get():
-                continue
-
-            if self.port is None or not self.port.is_open:
-                continue
-
-            rate = max(0.1, min(10.0, float(controls["lfo_rate"].get())))
-            depth = max(0, min(127, int(controls["lfo_depth"].get())))
-            base_value = max(0, min(127, int(controls["warp_amount"].get())))
-            phase = self.lfo_phase[osc_name] + math.tau * rate * elapsed
-            self.lfo_phase[osc_name] = phase % math.tau
-            lfo_value = round(base_value + depth * math.sin(phase))
-            lfo_value = max(0, min(127, lfo_value))
-
-            if lfo_value != self.lfo_last_value[osc_name]:
-                if self.send_control_change(
-                    cc_map["warp_amount"],
-                    lfo_value,
-                    CONTROL_CHANNEL,
-                    log_message=False,
-                ):
-                    self.lfo_last_value[osc_name] = lfo_value
-
-        self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 
     def send_all_synth_controls(self) -> None:
         self.send_synth_control(PAN_CC, self.pan.get())
@@ -946,9 +913,6 @@ class MidiUartSender:
         if self.filter_lfo_config_after_id is not None:
             self.root.after_cancel(self.filter_lfo_config_after_id)
             self.filter_lfo_config_after_id = None
-        if self.lfo_after_id is not None:
-            self.root.after_cancel(self.lfo_after_id)
-            self.lfo_after_id = None
         self.disconnect()
         self.root.destroy()
 

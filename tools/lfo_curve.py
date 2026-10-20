@@ -84,7 +84,7 @@ class LfoCurveEditor(ttk.LabelFrame):
         curve: LfoCurve,
         on_change: Callable[[], None] | None = None,
     ) -> None:
-        super().__init__(parent, text="FPGA Cutoff LFO（三点、两段曲率）", padding=6)
+        super().__init__(parent, text="FPGA 通用 LFO（三点、两段曲率）", padding=6)
         self.curve = curve
         self.on_change = on_change
         self.selected_index = 0
