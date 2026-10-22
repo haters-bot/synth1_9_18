@@ -84,6 +84,7 @@ OSC_A_CC = {
     "sustain": 26,
     "release": 27,
     "level": 46,
+    "wavetable_index": 49,
 }
 OSC_B_CC = {
     "enable": 37,
@@ -98,13 +99,14 @@ OSC_B_CC = {
     "sustain": 34,
     "release": 35,
     "level": 47,
+    "wavetable_index": 50,
 }
 WAVEFORM_VALUES = {
     "正弦波": 0,
     "三角波": 32,
     "方波": 64,
     "锯齿波": 96,
-    "Acid波表": 127,
+    "SD/DDR波表": 127,
 }
 WARP_MODE_VALUES = {
     "关闭": 0,
@@ -189,6 +191,7 @@ class MidiUartSender:
                 "warp_mode": tk.StringVar(value="关闭"),
                 "warp_amount": tk.IntVar(value=0),
                 "wt_position": tk.IntVar(value=0),
+                "wavetable_index": tk.IntVar(value=0),
                 "detune": tk.IntVar(value=64),
                 "unison": tk.IntVar(value=1),
                 "attack": tk.IntVar(value=27),
@@ -516,6 +519,7 @@ class MidiUartSender:
 
         parameter_specs = (
             ("Warp Amount", "warp_amount", 0, 127),
+            ("DDR波表编号", "wavetable_index", 0, 15),
             ("WT Position", "wt_position", 0, 127),
             ("Detune", "detune", 0, 127),
             ("Unison", "unison", 1, 8),
@@ -866,6 +870,7 @@ class MidiUartSender:
             self.send_warp_mode_selection(osc_name)
             for key in (
                 "warp_amount",
+                "wavetable_index",
                 "wt_position",
                 "detune",
                 "unison",

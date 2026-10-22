@@ -48,6 +48,7 @@ module synth_control_router #(
     output reg [3:0]  osc_a_warp_mode,
     output reg [6:0]  osc_a_warp_amount,
     output reg [6:0]  osc_a_level,
+    output reg [3:0]  osc_a_wavetable_index,
 
     output reg [6:0]  osc_b_wt_position_target,
     output reg [2:0]  osc_b_waveform_select,
@@ -60,7 +61,8 @@ module synth_control_router #(
     output reg        osc_b_enabled,
     output reg [3:0]  osc_b_warp_mode,
     output reg [6:0]  osc_b_warp_amount,
-    output reg [6:0]  osc_b_level
+    output reg [6:0]  osc_b_level,
+    output reg [3:0]  osc_b_wavetable_index
 );
 
     localparam [6:0] CC_PAN = 7'd10;
@@ -95,6 +97,8 @@ module synth_control_router #(
     localparam [6:0] CC_A_LEVEL            = 7'd46;
     localparam [6:0] CC_B_LEVEL            = 7'd47;
     localparam [6:0] CC_MASTER_LEVEL       = 7'd48;
+    localparam [6:0] CC_A_WAVETABLE_INDEX = 7'd49;
+    localparam [6:0] CC_B_WAVETABLE_INDEX = 7'd50;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -152,6 +156,7 @@ module synth_control_router #(
             osc_a_warp_mode          <= 4'd0;
             osc_a_warp_amount        <= 7'd0;
             osc_a_level              <= 7'd127;
+            osc_a_wavetable_index    <= 4'd0;
 
             osc_b_wt_position_target <= 7'd0;
             osc_b_waveform_select    <= 3'd2;
@@ -165,6 +170,7 @@ module synth_control_router #(
             osc_b_warp_mode          <= 4'd0;
             osc_b_warp_amount        <= 7'd0;
             osc_b_level              <= 7'd127;
+            osc_b_wavetable_index    <= 4'd0;
         end else begin
             note_event_valid <= 1'b0;
 
@@ -248,6 +254,10 @@ module synth_control_router #(
                         osc_b_level <= raw_control_change_value;
                     CC_MASTER_LEVEL:
                         master_level <= raw_control_change_value;
+                    CC_A_WAVETABLE_INDEX:
+                        osc_a_wavetable_index <= raw_control_change_value[3:0];
+                    CC_B_WAVETABLE_INDEX:
+                        osc_b_wavetable_index <= raw_control_change_value[3:0];
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

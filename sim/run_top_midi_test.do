@@ -26,6 +26,7 @@ vlog -work work_top_midi \
     src/wavetable_phase_warp.v \
     src/acid_wavetable_rom.v \
     src/acid_wavetable_reader.v \
+    src/wavetable_frame_cache.v \
     src/oscillator_tdm_core.v \
     src/oscillator_tdm_bank.v \
     src/fir_decimator_8x_wrapper.v \

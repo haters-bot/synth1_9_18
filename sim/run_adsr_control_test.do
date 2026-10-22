@@ -14,6 +14,7 @@ vlog -work work_adsr_control \
     src/wavetable_phase_warp.v \
     src/acid_wavetable_rom.v \
     src/acid_wavetable_reader.v \
+    src/wavetable_frame_cache.v \
     src/oscillator_tdm_core.v \
     sim/tb_adsr_control.v
 

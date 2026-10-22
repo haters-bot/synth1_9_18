@@ -3,7 +3,8 @@ module top #(
     parameter integer UART_BAUD_RATE = 31250,
     parameter integer DEFAULT_UNISON_COUNT = 1,
     parameter integer OSC_ENGINE_COUNT = 1,
-    parameter integer SLOTS_PER_ENGINE = 32
+    parameter integer SLOTS_PER_ENGINE = 32,
+    parameter integer EXTERNAL_WAVETABLE_ENABLE = 1
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
@@ -13,7 +14,26 @@ module top #(
     output wire MAX_DIN,       // MAX98357A串行音频数据，引脚AB22
     output wire MAX_BCLK,      // MAX98357A位时钟，引脚Y22
     output wire MAX_LRC,       // MAX98357A左右声道时钟，引脚Y21
-    output wire PA_EN          // 板载NS4263使能，低电平有效，引脚AB16
+    output wire PA_EN,         // 板载NS4263使能，低电平有效，引脚AB16
+
+    output wire        sd_clk,
+    inout  wire        sd_cmd,
+    input  wire        sd_dat0,
+    output wire [14:0] ddr_addr,
+    output wire [2:0]  ddr_bank,
+    output wire        ddr_cs,
+    output wire        ddr_ras,
+    output wire        ddr_cas,
+    output wire        ddr_we,
+    output wire        ddr_ck,
+    output wire        ddr_ck_n,
+    output wire        ddr_cke,
+    output wire        ddr_odt,
+    output wire        ddr_reset_n,
+    output wire [3:0]  ddr_dm,
+    inout  wire [31:0] ddr_dq,
+    inout  wire [3:0]  ddr_dqs,
+    inout  wire [3:0]  ddr_dqs_n
 );
 
     // 验证阶段：OSC A和OSC B各使用1个实体引擎，每个引擎时分复用32个槽位。
@@ -146,6 +166,7 @@ module top #(
     wire [31:0] osc_a_release_phase_step;
     wire        osc_a_enabled;
     wire [6:0]  osc_a_level;
+    wire [3:0]  osc_a_wavetable_index;
     wire [3:0]  osc_a_warp_mode;
     reg  [3:0]  osc_a_warp_mode_active;
     wire [6:0]  osc_a_warp_amount_target;
@@ -167,6 +188,7 @@ module top #(
     wire [31:0] osc_b_release_phase_step;
     wire        osc_b_enabled;
     wire [6:0]  osc_b_level;
+    wire [3:0]  osc_b_wavetable_index;
     wire [3:0]  osc_b_warp_mode;
     reg  [3:0]  osc_b_warp_mode_active;
     wire [6:0]  osc_b_warp_amount_target;
@@ -189,6 +211,31 @@ module top #(
     wire global_filter_output_valid;
     wire global_filter_input_overrun;
 
+    wire cache_load_clk;
+    wire cache_load_rst_n;
+    wire cache_a_write_enable;
+    wire cache_a_write_bank;
+    wire cache_a_write_frame;
+    wire [7:0] cache_a_write_address;
+    wire [15:0] cache_a_write_data;
+    wire cache_a_commit_toggle;
+    wire cache_a_commit_bank;
+    wire [7:0] cache_a_commit_fraction;
+    wire cache_b_write_enable;
+    wire cache_b_write_bank;
+    wire cache_b_write_frame;
+    wire [7:0] cache_b_write_address;
+    wire [15:0] cache_b_write_data;
+    wire cache_b_commit_toggle;
+    wire cache_b_commit_bank;
+    wire [7:0] cache_b_commit_fraction;
+    wire ddr_init_done;
+    wire wavetable_storage_ready;
+    wire wavetable_storage_error;
+    wire [4:0] wavetable_table_count;
+    wire cache_a_ready;
+    wire cache_b_ready;
+
     // 使用外接MAX98357A，关闭板载NS4263。SD和GAIN保持高电平。
     assign PA_EN    = 1'b1;
     assign MAX_SD   = 1'b1;
@@ -201,6 +248,82 @@ module top #(
         .rst_n_sys  (rst_n_sys),
         .pll_locked (pll_locked)
     );
+
+    generate
+        if (EXTERNAL_WAVETABLE_ENABLE != 0) begin : GEN_WAVETABLE_STORAGE
+            wavetable_storage_system u_wavetable_storage_system (
+                .sys_clk(sys_clk), .rst_n(rst_n),
+                .osc_a_table(osc_a_wavetable_index),
+                .osc_a_position(osc_a_wt_position_current),
+                .osc_b_table(osc_b_wavetable_index),
+                .osc_b_position(osc_b_wt_position_current),
+                .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
+                .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),
+                .ddr_ras(ddr_ras), .ddr_cas(ddr_cas), .ddr_we(ddr_we),
+                .ddr_ck(ddr_ck), .ddr_ck_n(ddr_ck_n), .ddr_cke(ddr_cke),
+                .ddr_odt(ddr_odt), .ddr_reset_n(ddr_reset_n), .ddr_dm(ddr_dm),
+                .ddr_dq(ddr_dq), .ddr_dqs(ddr_dqs), .ddr_dqs_n(ddr_dqs_n),
+                .cache_load_clk(cache_load_clk),
+                .cache_load_rst_n(cache_load_rst_n),
+                .cache_a_write_enable(cache_a_write_enable),
+                .cache_a_write_bank(cache_a_write_bank),
+                .cache_a_write_frame(cache_a_write_frame),
+                .cache_a_write_address(cache_a_write_address),
+                .cache_a_write_data(cache_a_write_data),
+                .cache_a_commit_toggle(cache_a_commit_toggle),
+                .cache_a_commit_bank(cache_a_commit_bank),
+                .cache_a_commit_fraction(cache_a_commit_fraction),
+                .cache_b_write_enable(cache_b_write_enable),
+                .cache_b_write_bank(cache_b_write_bank),
+                .cache_b_write_frame(cache_b_write_frame),
+                .cache_b_write_address(cache_b_write_address),
+                .cache_b_write_data(cache_b_write_data),
+                .cache_b_commit_toggle(cache_b_commit_toggle),
+                .cache_b_commit_bank(cache_b_commit_bank),
+                .cache_b_commit_fraction(cache_b_commit_fraction),
+                .ddr_init_done(ddr_init_done),
+                .wavetable_storage_ready(wavetable_storage_ready),
+                .wavetable_storage_error(wavetable_storage_error),
+                .wavetable_table_count(wavetable_table_count),
+                .cache_a_ready(cache_a_ready), .cache_b_ready(cache_b_ready)
+            );
+        end else begin : GEN_NO_WAVETABLE_STORAGE
+            assign sd_clk = 1'b0;
+            assign sd_cmd = 1'bz;
+            assign ddr_addr = 15'd0; assign ddr_bank = 3'd0;
+            assign ddr_cs = 1'b1; assign ddr_ras = 1'b1;
+            assign ddr_cas = 1'b1; assign ddr_we = 1'b1;
+            assign ddr_ck = 1'b0; assign ddr_ck_n = 1'b1;
+            assign ddr_cke = 1'b0; assign ddr_odt = 1'b0;
+            assign ddr_reset_n = 1'b0; assign ddr_dm = 4'hF;
+            assign ddr_dq = 32'bz; assign ddr_dqs = 4'bz;
+            assign ddr_dqs_n = 4'bz;
+            assign cache_load_clk = clk_sys;
+            assign cache_load_rst_n = rst_n_sys;
+            assign cache_a_write_enable = 1'b0;
+            assign cache_a_write_bank = 1'b0;
+            assign cache_a_write_frame = 1'b0;
+            assign cache_a_write_address = 8'd0;
+            assign cache_a_write_data = 16'd0;
+            assign cache_a_commit_toggle = 1'b0;
+            assign cache_a_commit_bank = 1'b0;
+            assign cache_a_commit_fraction = 8'd0;
+            assign cache_b_write_enable = 1'b0;
+            assign cache_b_write_bank = 1'b0;
+            assign cache_b_write_frame = 1'b0;
+            assign cache_b_write_address = 8'd0;
+            assign cache_b_write_data = 16'd0;
+            assign cache_b_commit_toggle = 1'b0;
+            assign cache_b_commit_bank = 1'b0;
+            assign cache_b_commit_fraction = 8'd0;
+            assign ddr_init_done = 1'b0;
+            assign wavetable_storage_ready = 1'b0;
+            assign wavetable_storage_error = 1'b0;
+            assign wavetable_table_count = 5'd0;
+            assign cache_a_ready = 1'b0;
+            assign cache_b_ready = 1'b0;
+        end
+    endgenerate
 
     assign oscillator_start_tick = oversample_tick;
     assign filter_cutoff_cc_valid = midi_control_change_valid
@@ -496,6 +619,7 @@ module top #(
         .osc_a_warp_mode           (osc_a_warp_mode),
         .osc_a_warp_amount         (osc_a_warp_amount_target),
         .osc_a_level               (osc_a_level),
+        .osc_a_wavetable_index     (osc_a_wavetable_index),
         .osc_b_wt_position_target  (osc_b_wt_position_target),
         .osc_b_waveform_select     (osc_b_waveform_select),
         .osc_b_detune_amount       (osc_b_detune_amount),
@@ -507,7 +631,8 @@ module top #(
         .osc_b_enabled             (osc_b_enabled),
         .osc_b_warp_mode           (osc_b_warp_mode),
         .osc_b_warp_amount         (osc_b_warp_amount_target),
-        .osc_b_level               (osc_b_level)
+        .osc_b_level               (osc_b_level),
+        .osc_b_wavetable_index     (osc_b_wavetable_index)
     );
 
     adsr_parameter_mapper u_osc_a_adsr_parameter_mapper (
@@ -594,6 +719,17 @@ module top #(
         .decay_phase_step          (osc_a_decay_phase_step),
         .sustain_level             (osc_a_sustain_level),
         .release_phase_step        (osc_a_release_phase_step),
+        .external_wavetable_enable (EXTERNAL_WAVETABLE_ENABLE != 0),
+        .cache_load_clk            (cache_load_clk),
+        .cache_load_rst_n          (cache_load_rst_n),
+        .cache_write_enable        (cache_a_write_enable),
+        .cache_write_bank          (cache_a_write_bank),
+        .cache_write_frame         (cache_a_write_frame),
+        .cache_write_address       (cache_a_write_address),
+        .cache_write_data          (cache_a_write_data),
+        .cache_commit_toggle       (cache_a_commit_toggle),
+        .cache_commit_bank         (cache_a_commit_bank),
+        .cache_commit_fraction     (cache_a_commit_fraction),
         .task_update_valid         (osc_a_task_update_valid),
         .task_update_slot          (osc_a_task_update_slot),
         .task_update_phase_step    (osc_a_task_update_phase_step),
@@ -626,6 +762,17 @@ module top #(
         .decay_phase_step          (osc_b_decay_phase_step),
         .sustain_level             (osc_b_sustain_level),
         .release_phase_step        (osc_b_release_phase_step),
+        .external_wavetable_enable (EXTERNAL_WAVETABLE_ENABLE != 0),
+        .cache_load_clk            (cache_load_clk),
+        .cache_load_rst_n          (cache_load_rst_n),
+        .cache_write_enable        (cache_b_write_enable),
+        .cache_write_bank          (cache_b_write_bank),
+        .cache_write_frame         (cache_b_write_frame),
+        .cache_write_address       (cache_b_write_address),
+        .cache_write_data          (cache_b_write_data),
+        .cache_commit_toggle       (cache_b_commit_toggle),
+        .cache_commit_bank         (cache_b_commit_bank),
+        .cache_commit_fraction     (cache_b_commit_fraction),
         .task_update_valid         (osc_b_task_update_valid),
         .task_update_slot          (osc_b_task_update_slot),
         .task_update_phase_step    (osc_b_task_update_phase_step),

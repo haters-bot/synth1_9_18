@@ -129,6 +129,8 @@ BF 14 55    通道16，OSC A的CC20，WT Position=85
 | OSC A | Level | 16 | 46 | 0～127 | 127 |
 | OSC B | Level | 16 | 47 | 0～127 | 127 |
 | 全局 | Master Level | 16 | 48 | 0～127 | 127 |
+| OSC A | DDR波表编号 | 16 | 49 | 0～15 | 0 |
+| OSC B | DDR波表编号 | 16 | 50 | 0～15 | 0 |
 
 两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
 波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。

@@ -25,6 +25,19 @@ module oscillator_tdm_core #(
     input  wire [15:0] sustain_level,
     input  wire [31:0] release_phase_step,
 
+    // 从DDR预取的外部波表缓存。所有逻辑槽位共享同一对相邻帧。
+    input  wire        external_wavetable_enable,
+    input  wire        cache_load_clk,
+    input  wire        cache_load_rst_n,
+    input  wire        cache_write_enable,
+    input  wire        cache_write_bank,
+    input  wire        cache_write_frame,
+    input  wire [7:0]  cache_write_address,
+    input  wire [15:0] cache_write_data,
+    input  wire        cache_commit_toggle,
+    input  wire        cache_commit_bank,
+    input  wire [7:0]  cache_commit_fraction,
+
     input  wire                  task_update_valid,
     input  wire [7:0]            task_update_slot,
     input  wire [31:0]           task_update_phase_step,
@@ -115,6 +128,11 @@ module oscillator_tdm_core #(
     wire [7:0] issue_warped_wave_address;
     wire acid_sample_valid;
     wire signed [15:0] acid_wave_sample;
+    wire external_sample_valid;
+    wire signed [15:0] external_wave_sample;
+    wire external_cache_ready;
+    wire selected_wavetable_valid;
+    wire signed [15:0] selected_wavetable_sample;
     wire signed [15:0] sine_wave_sample;
     wire signed [15:0] triangle_wave_sample;
     wire signed [15:0] square_wave_sample;
@@ -170,6 +188,35 @@ module oscillator_tdm_core #(
         .sample_data  (acid_wave_sample)
     );
 
+    wavetable_frame_cache u_external_wavetable_cache (
+        .audio_clk              (clk),
+        .audio_rst_n            (rst_n),
+        .req_valid              (request_valid),
+        .phase_address          (request_wave_address),
+        .sample_valid           (external_sample_valid),
+        .sample_data            (external_wave_sample),
+        .load_clk               (cache_load_clk),
+        .load_rst_n             (cache_load_rst_n),
+        .load_write_enable      (cache_write_enable),
+        .load_write_bank        (cache_write_bank),
+        .load_write_frame       (cache_write_frame),
+        .load_write_address     (cache_write_address),
+        .load_write_data        (cache_write_data),
+        .load_commit_toggle     (cache_commit_toggle),
+        .load_commit_bank       (cache_commit_bank),
+        .load_commit_fraction   (cache_commit_fraction),
+        .ready                  (external_cache_ready)
+    );
+
+    assign selected_wavetable_valid = external_wavetable_enable
+                                    && external_cache_ready
+                                    ? external_sample_valid
+                                    : acid_sample_valid;
+    assign selected_wavetable_sample = external_wavetable_enable
+                                     && external_cache_ready
+                                     ? external_wave_sample
+                                     : acid_wave_sample;
+
     // 旧有四种波形保持组合读取，但地址改为流水线中的待提交相位，
     // 从而与同步Acid波表的数据在同一提交拍对齐。
     sine_lut u_shared_sine_lut (
@@ -198,7 +245,7 @@ module oscillator_tdm_core #(
             3'd1: current_wave_sample = triangle_wave_sample;
             3'd2: current_wave_sample = square_wave_sample;
             3'd3: current_wave_sample = sawtooth_wave_sample;
-            WAVE_ACID: current_wave_sample = acid_wave_sample;
+            WAVE_ACID: current_wave_sample = selected_wavetable_sample;
             default: current_wave_sample = square_wave_sample;
         endcase
     end
@@ -258,7 +305,7 @@ module oscillator_tdm_core #(
 
     assign commit_enabled = pipe_valid && pipe_enable && !pipe_cancel
                           && ((pipe_waveform_select != WAVE_ACID)
-                              || acid_sample_valid);
+                              || selected_wavetable_valid);
     assign extended_sample = commit_enabled
         ? {{(PARTIAL_SUM_WIDTH-16){enveloped_wave_sample[15]}},
            enveloped_wave_sample}
