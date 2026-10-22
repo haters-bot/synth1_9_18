@@ -1,18 +1,18 @@
-# FPGA 三点通用 LFO 与调制矩阵
+# FPGA 三路三点通用 LFO 与调制矩阵
 
 ## 1. 总体结构
 
 LFO 已经与滤波器 Cutoff 解耦。FPGA 内部结构为：
 
 ```text
-上位机：速率、三个点、两个曲率、8条路由
+上位机：3组速率/曲线、8条共享路由
                     │ SysEx，仅配置变化时发送
                     ▼
 highres_parameter_parser
                     ▼
 曲线与路由影子寄存器 ── Commit ──► 活动配置
                     ▼
-curve_lfo_core：三点曲线，输出双极性Q1.13
+3×curve_lfo_core：各自生成三点曲线，输出双极性Q1.13
                     ▼
 lfo_modulation_router：8槽时分复用调制矩阵
                     ▼
@@ -44,7 +44,7 @@ Python 编辑器和 FPGA 使用相同公式。启用和关闭时，LFO 总幅度
 
 ## 3. 相位与速率
 
-每一段有独立的 24 位局部相位累加器。上位机根据 LFO 速率和 P1 时间计算两个 14 位步进：
+三个 LFO 各有独立的 24 位局部相位累加器。上位机根据每个 LFO 的速率和 P1 时间计算两个 14 位步进：
 
 ```text
 step0 = round(rate_hz × 2^24 / (96000 × middle_time))
@@ -59,11 +59,12 @@ P1 时间限制为 0.125～0.875，当前速率范围为 0.1～10 Hz。
 
 ```text
 Enable
+Source：LFO 1、LFO 2 或 LFO 3
 Destination
 Depth：-127～+127
 ```
 
-同一个 LFO 可以同时控制多个目标；多个槽位也可以指向同一目标，此时偏移相加后统一限幅。
+每条路由独立选择三个 LFO 之一。同一个 LFO 可以同时控制多个目标；多个槽位也可以指向同一目标，此时偏移相加后统一限幅。路由槽总数仍为 8，因此增加 LFO 数量不会增加每个样本的路由处理拍数。
 
 | Destination | 编号 | 范围 | 说明 |
 |---|---:|---:|---|
@@ -95,7 +96,7 @@ result = saturate(base + lfo_q13 × depth_q13)
 F0 7D parameter_id value_msb value_lsb F7
 ```
 
-### 曲线字段
+### LFO 1 曲线字段
 
 | ID | 字段 | 编码 |
 |---:|---|---|
@@ -110,6 +111,15 @@ F0 7D parameter_id value_msb value_lsb F7
 | 24 | C1 | 双极性 Q1.13 Offset Binary |
 | 25 | Commit | 数值忽略 |
 
+### LFO 2 与 LFO 3 曲线字段
+
+| LFO | Enable | Step 0 | Step 1 | P0 | P1 | P2 | C0 | C1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| LFO 2 | 31 | 32 | 33 | 34 | 35 | 36 | 37 | 38 |
+| LFO 3 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 |
+
+三个 LFO 共用 ID 25 作为 Commit。发送一次 Commit 后，三组曲线和全部路由在同一系统时钟沿切换到新配置。
+
 ### 路由字段
 
 | ID | 字段 | 编码 |
@@ -118,8 +128,9 @@ F0 7D parameter_id value_msb value_lsb F7
 | 27 | Route Enable | 0 或 1 |
 | 28 | Destination | 0～10 |
 | 29 | Route Depth | 双极性 Q1.13 Offset Binary |
+| 30 | Route Source | 0=LFO 1，1=LFO 2，2=LFO 3 |
 
-配置一条路由时，先写 ID 26 选择槽位，再写 ID 27～29。全部曲线和路由写完后发送一次 ID 25；两个模块在同一时钟沿提交活动配置。
+配置一条路由时，先写 ID 26 选择槽位，再写 ID 27～30。全部三组曲线和路由写完后发送一次 ID 25；曲线核心和路由矩阵在同一时钟沿提交活动配置。
 
 双极性编码为：
 
@@ -142,4 +153,5 @@ encoded = round((normalized + 1) × 8191.5)
 - Detune/Pitch 尚未接入。当前 Detune 只在 Note On 分配任务时参与相位步进计算；实时颤音需要单独的 phase-step 调制通路。
 - Unison、Waveform、Warp Mode 和 Filter Mode 是离散或结构参数，不接受连续 LFO。
 - Pan 路由已经生成控制值，但当前 I2S 链路仍复制单声道样本，因此尚无可听效果。
-- 第一版只有一个 LFO 源。如果需要不同速率或不同相位的多组调制，需要增加 LFO 实例或调制源编号。
+- 第一版提供 3 个独立 LFO 源和 8 条共享路由；三个 LFO 可设置不同速率、控制点和曲率。
+- Detune 按本阶段约定暂不加入目标列表。

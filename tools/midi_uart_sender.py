@@ -39,21 +39,31 @@ FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
 FILTER_MIX_CC = 45
 MASTER_LEVEL_CC = 48
-# FPGA三点通用LFO与8槽调制矩阵的影子寄存器参数编号。
+# 三个独立三点LFO共享同一个8槽调制矩阵和一次原子提交。
+FILTER_LFO_PARAMETER_SETS = (
+    {
+        "enable": 16, "step_0": 17, "step_1": 18,
+        "point_0": 20, "point_1": 21, "point_2": 22,
+        "curve_0": 23, "curve_1": 24,
+    },
+    {
+        "enable": 31, "step_0": 32, "step_1": 33,
+        "point_0": 34, "point_1": 35, "point_2": 36,
+        "curve_0": 37, "curve_1": 38,
+    },
+    {
+        "enable": 39, "step_0": 40, "step_1": 41,
+        "point_0": 42, "point_1": 43, "point_2": 44,
+        "curve_0": 45, "curve_1": 46,
+    },
+)
 FILTER_LFO_PARAMETER = {
-    "enable": 16,
-    "step_0": 17,
-    "step_1": 18,
-    "point_0": 20,
-    "point_1": 21,
-    "point_2": 22,
-    "curve_0": 23,
-    "curve_1": 24,
     "commit": 25,
     "route_index": 26,
     "route_enable": 27,
     "route_destination": 28,
     "route_depth": 29,
+    "route_source": 30,
 }
 FILTER_LFO_CONFIG_DEBOUNCE_MS = 75
 FILTER_LFO_PHASE_BITS = 24
@@ -71,6 +81,7 @@ LFO_DESTINATIONS = {
     "Filter Resonance": 9,
     "Filter Mix": 10,
 }
+LFO_SOURCES = {"LFO 1": 0, "LFO 2": 1, "LFO 3": 2}
 OSC_A_CC = {
     "enable": 36,
     "warp_mode": 38,
@@ -147,8 +158,8 @@ class MidiUartSender:
         self.port_lookup: dict[str, str] = {}
         self.active_notes: set[int] = set()
         self.keyboard_notes: set[int] = set()
-        self.filter_lfo_curve = LfoCurve()
-        self.filter_lfo_window: tk.Toplevel | None = None
+        self.filter_lfo_curves = [LfoCurve() for _ in range(3)]
+        self.filter_lfo_windows: list[tk.Toplevel | None] = [None, None, None]
         self.filter_lfo_config_after_id: str | None = None
 
         self.port_name = tk.StringVar()
@@ -161,8 +172,12 @@ class MidiUartSender:
         self.filter_resonance = tk.IntVar(value=0)
         self.filter_mix = tk.IntVar(value=127)
         self.master_level = tk.IntVar(value=127)
-        self.filter_lfo_enabled = tk.BooleanVar(value=False)
-        self.filter_lfo_rate = tk.DoubleVar(value=0.5)
+        self.filter_lfo_enabled = [
+            tk.BooleanVar(value=False) for _ in range(3)
+        ]
+        self.filter_lfo_rate = [
+            tk.DoubleVar(value=0.5) for _ in range(3)
+        ]
         self.lfo_routes = []
         default_routes = [
             (True, "Filter Cutoff", 32),
@@ -178,6 +193,7 @@ class MidiUartSender:
             self.lfo_routes.append(
                 {
                     "enabled": tk.BooleanVar(value=enabled),
+                    "source": tk.StringVar(value="LFO 1"),
                     "destination": tk.StringVar(value=destination),
                     "depth": tk.IntVar(value=depth),
                 }
@@ -381,36 +397,36 @@ class MidiUartSender:
             row=2, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
         )
 
-        ttk.Checkbutton(
-            lfo_frame,
-            text="开启LFO",
-            variable=self.filter_lfo_enabled,
-            command=self.send_filter_lfo_configuration,
-        ).grid(row=0, column=0, padx=4, sticky="w")
+        for lfo_index in range(3):
+            ttk.Checkbutton(
+                lfo_frame,
+                text=f"开启 LFO {lfo_index + 1}",
+                variable=self.filter_lfo_enabled[lfo_index],
+                command=self.send_filter_lfo_configuration,
+            ).grid(row=lfo_index, column=0, padx=4, sticky="w")
+            ttk.Label(lfo_frame, text="速率/Hz").grid(
+                row=lfo_index, column=1, padx=4, sticky="e"
+            )
+            lfo_rate_scale = tk.Scale(
+                lfo_frame,
+                from_=0.1,
+                to=10.0,
+                resolution=0.1,
+                orient=tk.HORIZONTAL,
+                variable=self.filter_lfo_rate[lfo_index],
+                length=210,
+            )
+            lfo_rate_scale.grid(row=lfo_index, column=2, padx=4)
+            lfo_rate_scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event: self.send_filter_lfo_configuration(),
+            )
+            ttk.Button(
+                lfo_frame,
+                text=f"编辑 LFO {lfo_index + 1} 曲线",
+                command=lambda index=lfo_index: self.open_filter_lfo_editor(index),
+            ).grid(row=lfo_index, column=3, padx=4)
 
-        ttk.Label(lfo_frame, text="速率/Hz").grid(
-            row=0, column=1, padx=4, sticky="e"
-        )
-        lfo_rate_scale = tk.Scale(
-            lfo_frame,
-            from_=0.1,
-            to=10.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=self.filter_lfo_rate,
-            length=210,
-        )
-        lfo_rate_scale.grid(row=0, column=2, padx=4)
-        lfo_rate_scale.bind(
-            "<ButtonRelease-1>",
-            lambda _event: self.send_filter_lfo_configuration(),
-        )
-
-        ttk.Button(
-            lfo_frame,
-            text="编辑LFO曲线",
-            command=self.open_filter_lfo_editor,
-        ).grid(row=0, column=3, padx=4)
         ttk.Button(
             lfo_frame,
             text="应用LFO与路由",
@@ -418,8 +434,8 @@ class MidiUartSender:
         ).grid(row=0, column=4, padx=4)
 
         for route_index, route in enumerate(self.lfo_routes):
-            route_row = 1 + (route_index % 4)
-            route_column = 0 if route_index < 4 else 3
+            route_row = 3 + (route_index % 4)
+            route_column = 0 if route_index < 4 else 4
             ttk.Checkbutton(
                 lfo_frame,
                 text=f"路由{route_index + 1}",
@@ -427,18 +443,25 @@ class MidiUartSender:
             ).grid(row=route_row, column=route_column, padx=4, sticky="w")
             ttk.Combobox(
                 lfo_frame,
+                textvariable=route["source"],
+                values=tuple(LFO_SOURCES),
+                width=6,
+                state="readonly",
+            ).grid(row=route_row, column=route_column + 1, padx=4)
+            ttk.Combobox(
+                lfo_frame,
                 textvariable=route["destination"],
                 values=tuple(LFO_DESTINATIONS),
                 width=20,
                 state="readonly",
-            ).grid(row=route_row, column=route_column + 1, padx=4)
+            ).grid(row=route_row, column=route_column + 2, padx=4)
             tk.Spinbox(
                 lfo_frame,
                 from_=-127,
                 to=127,
                 textvariable=route["depth"],
                 width=6,
-            ).grid(row=route_row, column=route_column + 2, padx=4)
+            ).grid(row=route_row, column=route_column + 3, padx=4)
 
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
@@ -765,42 +788,66 @@ class MidiUartSender:
         return max(0, min(0x3FFF, round((value + 127) * 16383 / 254)))
 
     def send_filter_lfo_configuration(self) -> None:
-        """发送曲线和8条路由，最后用commit在FPGA中同时生效。"""
+        """发送三条曲线和8条共享路由，最后在FPGA中原子提交。"""
         self.filter_lfo_config_after_id = None
         if self.port is None or not self.port.is_open:
             return
 
-        points = self.filter_lfo_curve.points
-        middle_time = max(0.125, min(0.875, float(points[1].time)))
-        rate_hz = max(0.1, min(10.0, float(self.filter_lfo_rate.get())))
+        active_rates = []
         phase_scale = float(1 << FILTER_LFO_PHASE_BITS)
-        step_0 = round(
-            rate_hz * phase_scale / (FILTER_LFO_SAMPLE_RATE * middle_time)
-        )
-        step_1 = round(
-            rate_hz * phase_scale
-            / (FILTER_LFO_SAMPLE_RATE * (1.0 - middle_time))
-        )
-
-        values = (
-            (FILTER_LFO_PARAMETER["enable"], 1 if self.filter_lfo_enabled.get() else 0),
-            (FILTER_LFO_PARAMETER["step_0"], max(1, min(0x3FFF, step_0))),
-            (FILTER_LFO_PARAMETER["step_1"], max(1, min(0x3FFF, step_1))),
-            (FILTER_LFO_PARAMETER["point_0"], self._encode_bipolar_q13(points[0].level)),
-            (FILTER_LFO_PARAMETER["point_1"], self._encode_bipolar_q13(points[1].level)),
-            (FILTER_LFO_PARAMETER["point_2"], self._encode_bipolar_q13(points[2].level)),
-            (FILTER_LFO_PARAMETER["curve_0"], self._encode_bipolar_q13(points[0].curve)),
-            (FILTER_LFO_PARAMETER["curve_1"], self._encode_bipolar_q13(points[1].curve)),
-        )
-
-        for parameter_id, value in values:
-            if not self.send_highres_parameter(parameter_id, value, log_message=False):
-                return
+        for lfo_index, parameter_map in enumerate(FILTER_LFO_PARAMETER_SETS):
+            points = self.filter_lfo_curves[lfo_index].points
+            middle_time = max(0.125, min(0.875, float(points[1].time)))
+            rate_hz = max(
+                0.1, min(10.0, float(self.filter_lfo_rate[lfo_index].get()))
+            )
+            active_rates.append(rate_hz)
+            step_0 = round(
+                rate_hz * phase_scale / (FILTER_LFO_SAMPLE_RATE * middle_time)
+            )
+            step_1 = round(
+                rate_hz * phase_scale
+                / (FILTER_LFO_SAMPLE_RATE * (1.0 - middle_time))
+            )
+            values = (
+                (
+                    parameter_map["enable"],
+                    1 if self.filter_lfo_enabled[lfo_index].get() else 0,
+                ),
+                (parameter_map["step_0"], max(1, min(0x3FFF, step_0))),
+                (parameter_map["step_1"], max(1, min(0x3FFF, step_1))),
+                (
+                    parameter_map["point_0"],
+                    self._encode_bipolar_q13(points[0].level),
+                ),
+                (
+                    parameter_map["point_1"],
+                    self._encode_bipolar_q13(points[1].level),
+                ),
+                (
+                    parameter_map["point_2"],
+                    self._encode_bipolar_q13(points[2].level),
+                ),
+                (
+                    parameter_map["curve_0"],
+                    self._encode_bipolar_q13(points[0].curve),
+                ),
+                (
+                    parameter_map["curve_1"],
+                    self._encode_bipolar_q13(points[1].curve),
+                ),
+            )
+            for parameter_id, value in values:
+                if not self.send_highres_parameter(
+                    parameter_id, value, log_message=False
+                ):
+                    return
 
         enabled_route_count = 0
         for route_index, route in enumerate(self.lfo_routes):
             destination_name = route["destination"].get()
             destination = LFO_DESTINATIONS.get(destination_name, 0)
+            source = LFO_SOURCES.get(route["source"].get(), 0)
             enabled = bool(route["enabled"].get()) and destination != 0
             if enabled:
                 enabled_route_count += 1
@@ -812,6 +859,7 @@ class MidiUartSender:
                     FILTER_LFO_PARAMETER["route_depth"],
                     self._encode_route_depth(route["depth"].get()),
                 ),
+                (FILTER_LFO_PARAMETER["route_source"], source),
             )
             for parameter_id, value in route_values:
                 if not self.send_highres_parameter(
@@ -824,32 +872,38 @@ class MidiUartSender:
         ):
             return
 
-        state = "开启" if self.filter_lfo_enabled.get() else "关闭"
+        enabled_names = [
+            f"LFO{index + 1}"
+            for index, enabled in enumerate(self.filter_lfo_enabled)
+            if enabled.get()
+        ]
+        state = "/".join(enabled_names) if enabled_names else "全部关闭"
         self.status.set(
-            f"FPGA通用LFO已{state}：{rate_hz:.1f} Hz，"
+            f"FPGA通用LFO：{state}，速率 "
+            f"{active_rates[0]:.1f}/{active_rates[1]:.1f}/{active_rates[2]:.1f} Hz，"
             f"启用{enabled_route_count}条路由"
         )
 
-    def open_filter_lfo_editor(self) -> None:
-        if self.filter_lfo_window is not None:
-            self.filter_lfo_window.lift()
-            self.filter_lfo_window.focus_force()
+    def open_filter_lfo_editor(self, lfo_index: int) -> None:
+        if self.filter_lfo_windows[lfo_index] is not None:
+            self.filter_lfo_windows[lfo_index].lift()
+            self.filter_lfo_windows[lfo_index].focus_force()
             return
 
         window = tk.Toplevel(self.root)
-        window.title("通用LFO曲线编辑器")
+        window.title(f"通用 LFO {lfo_index + 1} 曲线编辑器")
         window.resizable(False, False)
         editor = LfoCurveEditor(
             window,
-            self.filter_lfo_curve,
+            self.filter_lfo_curves[lfo_index],
             on_change=self._filter_lfo_curve_changed,
         )
         editor.pack(padx=10, pady=10)
-        self.filter_lfo_window = window
+        self.filter_lfo_windows[lfo_index] = window
 
         def close_editor() -> None:
             window.destroy()
-            self.filter_lfo_window = None
+            self.filter_lfo_windows[lfo_index] = None
 
         window.protocol("WM_DELETE_WINDOW", close_editor)
 

@@ -17,6 +17,8 @@ module tb_filter_curve_lfo;
 
     reg direct_lfo_valid;
     reg signed [14:0] direct_lfo_q13;
+    reg signed [14:0] direct_lfo_1_q13;
+    reg signed [14:0] direct_lfo_2_q13;
     reg [2:0] filter_mode;
     reg [6:0] base_osc_a_wt;
     reg [6:0] base_osc_a_warp;
@@ -66,6 +68,8 @@ module tb_filter_curve_lfo;
         .rst_n                    (rst_n),
         .lfo_value_valid          (direct_lfo_valid),
         .lfo_value_q13            (direct_lfo_q13),
+        .lfo_1_value_q13          (direct_lfo_1_q13),
+        .lfo_2_value_q13          (direct_lfo_2_q13),
         .parameter_valid          (parameter_valid),
         .parameter_id             (parameter_id),
         .parameter_value          (parameter_value),
@@ -116,11 +120,13 @@ module tb_filter_curve_lfo;
         input enable;
         input [3:0] destination;
         input [13:0] depth_offset_binary;
+        input [1:0] source;
         begin
             write_parameter(7'd26, {11'd0, index});
             write_parameter(7'd27, enable ? 14'd1 : 14'd0);
             write_parameter(7'd28, {10'd0, destination});
             write_parameter(7'd29, depth_offset_binary);
+            write_parameter(7'd30, {12'd0, source});
         end
     endtask
 
@@ -135,10 +141,14 @@ module tb_filter_curve_lfo;
     endtask
 
     task route_sample;
-        input signed [14:0] value;
+        input signed [14:0] value_0;
+        input signed [14:0] value_1;
+        input signed [14:0] value_2;
         begin
             @(negedge clk);
-            direct_lfo_q13 = value;
+            direct_lfo_q13 = value_0;
+            direct_lfo_1_q13 = value_1;
+            direct_lfo_2_q13 = value_2;
             direct_lfo_valid = 1'b1;
             @(negedge clk);
             direct_lfo_valid = 1'b0;
@@ -155,6 +165,8 @@ module tb_filter_curve_lfo;
         parameter_value = 14'd0;
         direct_lfo_valid = 1'b0;
         direct_lfo_q13 = 15'sd0;
+        direct_lfo_1_q13 = 15'sd0;
+        direct_lfo_2_q13 = 15'sd0;
         filter_mode = 3'd0;
         base_osc_a_wt = 7'd64;
         base_osc_a_warp = 7'd64;
@@ -184,13 +196,15 @@ module tb_filter_curve_lfo;
         write_parameter(7'd24, 14'd8192);
 
         // 三条路由：A WT 正向、A Warp 反向、Cutoff 正向。
-        configure_route(3'd0, 1'b1, 4'd1, 14'd16383);
-        configure_route(3'd1, 1'b1, 4'd2, 14'd0);
-        configure_route(3'd2, 1'b1, 4'd8, 14'd16383);
+        configure_route(3'd0, 1'b1, 4'd1, 14'd16383, 2'd0);
+        configure_route(3'd1, 1'b1, 4'd2, 14'd0, 2'd0);
+        configure_route(3'd2, 1'b1, 4'd8, 14'd16383, 2'd0);
+        configure_route(3'd3, 1'b1, 4'd4, 14'd16383, 2'd1);
+        configure_route(3'd4, 1'b1, 4'd6, 14'd16383, 2'd2);
         write_parameter(7'd25, 14'd1);
 
         // 直接给路由器半幅正值，验证方向、Q7.8 Cutoff 和限幅。
-        route_sample(15'sd4096);
+        route_sample(15'sd4096, -15'sd2048, 15'sd1024);
         if (mod_osc_a_wt !== 7'd127 || mod_osc_a_warp !== 7'd0) begin
             $display("ERROR: route polarity or saturation is wrong: wt=%0d warp=%0d",
                      mod_osc_a_wt, mod_osc_a_warp);
@@ -201,8 +215,12 @@ module tb_filter_curve_lfo;
                      mod_filter_cutoff_q8);
             errors = errors + 1;
         end
-        if (mod_osc_b_wt !== base_osc_b_wt
-            || mod_filter_resonance !== base_filter_resonance
+        if (mod_osc_b_wt !== 7'd0 || mod_osc_b_level !== 7'd95) begin
+            $display("ERROR: per-route LFO source selection is wrong: b_wt=%0d b_level=%0d",
+                     mod_osc_b_wt, mod_osc_b_level);
+            errors = errors + 1;
+        end
+        if (mod_filter_resonance !== base_filter_resonance
             || mod_filter_mix !== base_filter_mix) begin
             $display("ERROR: unassigned destinations did not preserve base values");
             errors = errors + 1;
@@ -210,7 +228,7 @@ module tb_filter_curve_lfo;
 
         // Comb 模式保持原有约 70/127 的 Cutoff LFO 深度限制。
         filter_mode = 3'd5;
-        route_sample(15'sd4096);
+        route_sample(15'sd4096, -15'sd2048, 15'sd1024);
         if (mod_filter_cutoff_q8 !== 15'd17212) begin
             $display("ERROR: comb depth scaling got %0d expected 17212",
                      mod_filter_cutoff_q8);

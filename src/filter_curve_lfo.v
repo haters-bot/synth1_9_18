@@ -265,8 +265,8 @@ module curve_lfo_core #(
 endmodule
 
 
-// 单个通用 LFO 的 8 槽调制矩阵。
-// 每个槽位保存 Enable、Destination 和双极性 Depth，允许多个槽位叠加到同一目标。
+// 三个通用 LFO 共享的 8 槽调制矩阵。
+// 每个槽位保存 Enable、Source、Destination 和双极性 Depth，允许多个槽位叠加到同一目标。
 // 路由运算在 50 MHz 域时分复用，收到一个 LFO 样本后用 10 拍完成全部目标更新。
 module lfo_modulation_router #(
     parameter integer ROUTE_COUNT = 8,
@@ -274,12 +274,15 @@ module lfo_modulation_router #(
     parameter [6:0] PARAM_ROUTE_INDEX  = 7'd26,
     parameter [6:0] PARAM_ROUTE_ENABLE = 7'd27,
     parameter [6:0] PARAM_ROUTE_DEST   = 7'd28,
-    parameter [6:0] PARAM_ROUTE_DEPTH  = 7'd29
+    parameter [6:0] PARAM_ROUTE_DEPTH  = 7'd29,
+    parameter [6:0] PARAM_ROUTE_SOURCE = 7'd30
 )(
     input  wire               clk,
     input  wire               rst_n,
     input  wire               lfo_value_valid,
     input  wire signed [14:0] lfo_value_q13,
+    input  wire signed [14:0] lfo_1_value_q13,
+    input  wire signed [14:0] lfo_2_value_q13,
     input  wire               parameter_valid,
     input  wire [6:0]         parameter_id,
     input  wire [13:0]        parameter_value,
@@ -331,13 +334,17 @@ module lfo_modulation_router #(
     reg shadow_enable [0:ROUTE_COUNT-1];
     reg [3:0] shadow_destination [0:ROUTE_COUNT-1];
     reg signed [13:0] shadow_depth_q13 [0:ROUTE_COUNT-1];
+    reg [1:0] shadow_source [0:ROUTE_COUNT-1];
     reg active_enable [0:ROUTE_COUNT-1];
     reg [3:0] active_destination [0:ROUTE_COUNT-1];
     reg signed [13:0] active_depth_q13 [0:ROUTE_COUNT-1];
+    reg [1:0] active_source [0:ROUTE_COUNT-1];
 
     reg [1:0] state;
     reg [2:0] route_index;
     reg signed [14:0] lfo_value_latched;
+    reg signed [14:0] lfo_1_value_latched;
+    reg signed [14:0] lfo_2_value_latched;
 
     reg signed [17:0] acc_osc_a_wt;
     reg signed [17:0] acc_osc_a_warp;
@@ -353,8 +360,16 @@ module lfo_modulation_router #(
     integer reset_index;
     integer commit_index;
 
+    reg signed [14:0] selected_lfo_value;
+    always @(*) begin
+        case (active_source[route_index])
+            2'd1: selected_lfo_value = lfo_1_value_latched;
+            2'd2: selected_lfo_value = lfo_2_value_latched;
+            default: selected_lfo_value = lfo_value_latched;
+        endcase
+    end
     wire signed [28:0] route_product =
-        lfo_value_latched * active_depth_q13[route_index];
+        selected_lfo_value * active_depth_q13[route_index];
     wire signed [17:0] route_delta_u7 = route_product >>> 19;
     wire signed [23:0] route_delta_q8 = route_product >>> 11;
     wire comb_filter_mode = (filter_mode == 3'd5)
@@ -399,6 +414,8 @@ module lfo_modulation_router #(
             state <= STATE_IDLE;
             route_index <= 3'd0;
             lfo_value_latched <= 15'sd0;
+            lfo_1_value_latched <= 15'sd0;
+            lfo_2_value_latched <= 15'sd0;
             route_overrun <= 1'b0;
 
             mod_osc_a_wt <= 7'd0;
@@ -429,9 +446,11 @@ module lfo_modulation_router #(
                 shadow_enable[reset_index] <= 1'b0;
                 shadow_destination[reset_index] <= DEST_NONE;
                 shadow_depth_q13[reset_index] <= 14'sd0;
+                shadow_source[reset_index] <= 2'd0;
                 active_enable[reset_index] <= 1'b0;
                 active_destination[reset_index] <= DEST_NONE;
                 active_depth_q13[reset_index] <= 14'sd0;
+                active_source[reset_index] <= 2'd0;
             end
         end else begin
             if (parameter_valid) begin
@@ -449,6 +468,10 @@ module lfo_modulation_router #(
                         // 协议采用 Offset Binary：0=-1，8192=0，16383≈+1。
                         shadow_depth_q13[shadow_route_index]
                             <= $signed(parameter_value ^ 14'h2000);
+                    PARAM_ROUTE_SOURCE:
+                        shadow_source[shadow_route_index]
+                            <= parameter_value[1:0] <= 2'd2
+                               ? parameter_value[1:0] : 2'd0;
                     PARAM_COMMIT: begin
                         for (commit_index = 0;
                              commit_index < ROUTE_COUNT;
@@ -459,6 +482,8 @@ module lfo_modulation_router #(
                                 <= shadow_destination[commit_index];
                             active_depth_q13[commit_index]
                                 <= shadow_depth_q13[commit_index];
+                            active_source[commit_index]
+                                <= shadow_source[commit_index];
                         end
                     end
                     default: begin
@@ -473,6 +498,8 @@ module lfo_modulation_router #(
                 STATE_IDLE: begin
                     if (lfo_value_valid) begin
                         lfo_value_latched <= lfo_value_q13;
+                        lfo_1_value_latched <= lfo_1_value_q13;
+                        lfo_2_value_latched <= lfo_2_value_q13;
                         route_index <= 3'd0;
                         acc_osc_a_wt <= $signed({1'b0, base_osc_a_wt});
                         acc_osc_a_warp <= $signed({1'b0, base_osc_a_warp});

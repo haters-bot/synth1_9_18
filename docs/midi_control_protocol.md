@@ -333,8 +333,8 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 - OSC A/B及全局参数固定通过通道16发送；
 - 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
-- 上位机带一个FPGA通用LFO，可调`0.1～10 Hz`速率、三个控制点和两段独立曲率；
-  8条路由可分别选择OSC A/B的WT Position、Warp Amount、Level以及Pan、Filter
+- 上位机带三个独立FPGA通用LFO，每个都可调`0.1～10 Hz`速率、三个控制点和两段独立曲率；
+  8条共享路由可独立选择LFO 1/2/3，并分别指向OSC A/B的WT Position、Warp Amount、Level以及Pan、Filter
   Cutoff、Resonance和Mix，每条路由具有独立的`-127～+127`深度；
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
@@ -440,7 +440,8 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 F0 7D parameter_id value_msb value_lsb F7
 ```
 
-参数ID 16～24配置Enable、两段相位步进、三个点和两个曲率；ID 26～29依次配置
-路由编号、使能、目标和双极性深度；ID 25把曲线和全部8条路由原子提交。FPGA在
-96 kHz下产生LFO值，并在50 MHz域用10拍完成路由。CC参数继续作为各目标的基础值。
+参数ID 16～24配置LFO 1；ID 31～38配置LFO 2；ID 39～46配置LFO 3。ID 26～30
+依次配置路由编号、使能、目标、双极性深度和调制源；ID 25把三组曲线和全部8条路由
+原子提交。FPGA在96 kHz下并行产生三个LFO值，并在50 MHz域用10拍完成共享路由。
+CC参数继续作为各目标的基础值。
 完整目标编号、编码和定点计算见`docs/lfo_curve_control.md`。

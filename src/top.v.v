@@ -132,6 +132,12 @@ module top #(
     wire [23:0] filter_lfo_segment_phase;
     wire signed [14:0] lfo_value_q13;
     wire        lfo_value_valid;
+    wire signed [14:0] lfo_1_value_q13;
+    wire signed [14:0] lfo_2_value_q13;
+    wire lfo_1_value_valid;
+    wire lfo_2_value_valid;
+    wire lfo_1_enabled;
+    wire lfo_2_enabled;
     wire        lfo_route_overrun;
     wire       routed_note_event_valid;
     wire       routed_note_event_on;
@@ -533,8 +539,8 @@ module top #(
         .busy         (filter_cutoff_interpolation_busy)
     );
 
-    // 三点两曲率 LFO 在 FPGA 内以 96 kHz 运行，只产生归一化控制值。
-    // 8 槽调制矩阵随后把同一个 LFO 路由到可选的连续参数。
+    // 三个三点两曲率 LFO 在 FPGA 内以 96 kHz 并行运行，只产生归一化控制值。
+    // 8 槽调制矩阵为每条路由选择一个 LFO，再叠加到可选的连续参数。
     curve_lfo_core u_curve_lfo_core (
         .clk             (clk_sys),
         .rst_n           (rst_n_sys),
@@ -549,11 +555,45 @@ module top #(
         .segment_phase   (filter_lfo_segment_phase)
     );
 
+    curve_lfo_core #(
+        .PARAM_ENABLE (7'd31), .PARAM_STEP_0 (7'd32),
+        .PARAM_STEP_1 (7'd33), .PARAM_POINT_0(7'd34),
+        .PARAM_POINT_1(7'd35), .PARAM_POINT_2(7'd36),
+        .PARAM_CURVE_0(7'd37), .PARAM_CURVE_1(7'd38),
+        .PARAM_COMMIT (7'd25)
+    ) u_curve_lfo_core_1 (
+        .clk(clk_sys), .rst_n(rst_n_sys), .sample_tick(sample_tick),
+        .parameter_valid(highres_parameter_valid),
+        .parameter_id(highres_parameter_id),
+        .parameter_value(highres_parameter_value),
+        .lfo_value_q13(lfo_1_value_q13),
+        .lfo_value_valid(lfo_1_value_valid),
+        .lfo_enabled(lfo_1_enabled), .active_segment(), .segment_phase()
+    );
+
+    curve_lfo_core #(
+        .PARAM_ENABLE (7'd39), .PARAM_STEP_0 (7'd40),
+        .PARAM_STEP_1 (7'd41), .PARAM_POINT_0(7'd42),
+        .PARAM_POINT_1(7'd43), .PARAM_POINT_2(7'd44),
+        .PARAM_CURVE_0(7'd45), .PARAM_CURVE_1(7'd46),
+        .PARAM_COMMIT (7'd25)
+    ) u_curve_lfo_core_2 (
+        .clk(clk_sys), .rst_n(rst_n_sys), .sample_tick(sample_tick),
+        .parameter_valid(highres_parameter_valid),
+        .parameter_id(highres_parameter_id),
+        .parameter_value(highres_parameter_value),
+        .lfo_value_q13(lfo_2_value_q13),
+        .lfo_value_valid(lfo_2_value_valid),
+        .lfo_enabled(lfo_2_enabled), .active_segment(), .segment_phase()
+    );
+
     lfo_modulation_router u_lfo_modulation_router (
         .clk                       (clk_sys),
         .rst_n                     (rst_n_sys),
         .lfo_value_valid           (lfo_value_valid),
         .lfo_value_q13             (lfo_value_q13),
+        .lfo_1_value_q13           (lfo_1_value_q13),
+        .lfo_2_value_q13           (lfo_2_value_q13),
         .parameter_valid           (highres_parameter_valid),
         .parameter_id              (highres_parameter_id),
         .parameter_value           (highres_parameter_value),
