@@ -35,6 +35,13 @@ module synth_control_router #(
     output reg [6:0]  filter_resonance,
     output reg [6:0]  filter_mix,
     output reg [6:0]  master_level,
+    output reg [1:0]  effect_mode,
+    output reg [6:0]  delay_time,
+    output reg [6:0]  delay_feedback,
+    output reg [6:0]  delay_mix,
+    output reg [6:0]  reverb_size,
+    output reg [6:0]  reverb_decay,
+    output reg [6:0]  reverb_mix,
 
     output reg [6:0]  osc_a_wt_position_target,
     output reg [2:0]  osc_a_waveform_select,
@@ -99,6 +106,13 @@ module synth_control_router #(
     localparam [6:0] CC_MASTER_LEVEL       = 7'd48;
     localparam [6:0] CC_A_WAVETABLE_INDEX = 7'd49;
     localparam [6:0] CC_B_WAVETABLE_INDEX = 7'd50;
+    localparam [6:0] CC_EFFECT_MODE        = 7'd51;
+    localparam [6:0] CC_DELAY_TIME         = 7'd52;
+    localparam [6:0] CC_DELAY_FEEDBACK     = 7'd53;
+    localparam [6:0] CC_DELAY_MIX          = 7'd54;
+    localparam [6:0] CC_REVERB_SIZE        = 7'd55;
+    localparam [6:0] CC_REVERB_DECAY       = 7'd56;
+    localparam [6:0] CC_REVERB_MIX         = 7'd57;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -143,6 +157,13 @@ module synth_control_router #(
             filter_resonance    <= 7'd0;
             filter_mix          <= 7'd127;
             master_level        <= 7'd127;
+            effect_mode         <= 2'd0;
+            delay_time          <= 7'd64;
+            delay_feedback      <= 7'd48;
+            delay_mix           <= 7'd64;
+            reverb_size         <= 7'd64;
+            reverb_decay        <= 7'd72;
+            reverb_mix          <= 7'd48;
 
             osc_a_wt_position_target <= 7'd0;
             osc_a_waveform_select    <= 3'd2;
@@ -258,6 +279,21 @@ module synth_control_router #(
                         osc_a_wavetable_index <= raw_control_change_value[3:0];
                     CC_B_WAVETABLE_INDEX:
                         osc_b_wavetable_index <= raw_control_change_value[3:0];
+                    CC_EFFECT_MODE:
+                        effect_mode <= (raw_control_change_value <= 7'd3)
+                                     ? raw_control_change_value[1:0] : 2'd0;
+                    CC_DELAY_TIME:
+                        delay_time <= raw_control_change_value;
+                    CC_DELAY_FEEDBACK:
+                        delay_feedback <= raw_control_change_value;
+                    CC_DELAY_MIX:
+                        delay_mix <= raw_control_change_value;
+                    CC_REVERB_SIZE:
+                        reverb_size <= raw_control_change_value;
+                    CC_REVERB_DECAY:
+                        reverb_decay <= raw_control_change_value;
+                    CC_REVERB_MIX:
+                        reverb_mix <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

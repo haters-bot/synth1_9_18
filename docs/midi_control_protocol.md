@@ -131,6 +131,13 @@ BF 14 55    通道16，OSC A的CC20，WT Position=85
 | 全局 | Master Level | 16 | 48 | 0～127 | 127 |
 | OSC A | DDR波表编号 | 16 | 49 | 0～15 | 0 |
 | OSC B | DDR波表编号 | 16 | 50 | 0～15 | 0 |
+| 全局效果 | Mode | 16 | 51 | 0～3 | 0，旁路 |
+| Delay | Time | 16 | 52 | 0～127 | 64 |
+| Delay | Feedback | 16 | 53 | 0～127 | 48 |
+| Delay | Mix | 16 | 54 | 0～127 | 64 |
+| Reverb | Size | 16 | 55 | 0～127 | 64 |
+| Reverb | Decay | 16 | 56 | 0～127 | 72 |
+| Reverb | Mix | 16 | 57 | 0～127 | 48 |
 
 两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
 波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。
@@ -316,7 +323,14 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 旁路模式保持输入样本数值不变，但SVF状态仍在后台更新。因此重新开启基础滤波器时，
 不会从全零状态重新充电。
 
-## 10. Pan的当前边界
+## 10. 全局效果器
+
+效果器位于全局滤波器之后、Master Level之前，以96 kHz处理整机混音。CC51选择旁路、
+Delay、Reverb或两者并联；CC52～57控制时间、反馈、空间尺寸、衰减和Dry/Wet。
+Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通反馈梳状线和
+2条全通线构成。具体定点结构、延迟长度和RAM预算见`docs/global_effects.md`。
+
+## 11. Pan的当前边界
 
 协议层已经保存`pan_target[6:0]`，默认值64表示中央。当前`i2s_tx`仍把同一份单声道
 样本复制到左右声道，因此CC10暂时不会改变音频。
@@ -325,7 +339,7 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 不能直接跳变，否则乘法增益的突变可能产生咔哒声。MAX98357A是单声道功放，实际听到
 左声道、右声道或混合结果还取决于模块的声道选择配置。
 
-## 11. 上位机应用方法
+## 12. 上位机应用方法
 
 `tools/midi_uart_sender.py`已经按本协议更新：
 
@@ -333,6 +347,7 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 - OSC A/B及全局参数固定通过通道16发送；
 - 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
+- 全局效果器面板通过CC51～57控制Delay和Reverb；
 - 上位机带三个独立FPGA通用LFO，每个都可调`0.1～10 Hz`速率、三个控制点和两段独立曲率；
   8条共享路由可独立选择LFO 1/2/3，并分别指向OSC A/B的WT Position、Warp Amount、Level以及Pan、Filter
   Cutoff、Resonance和Mix，每条路由具有独立的`-127～+127`深度；
@@ -383,7 +398,7 @@ BF 30 7F    Master Level=127
 如果连续发送多个CC，可以只发送一次`BF`，随后按“CC编号、数值”成对发送。只要中间
 没有出现其他非实时状态字节，Running Status就持续有效。
 
-## 12. 未来双输入迁移
+## 13. 未来双输入迁移
 
 正式版本建议保留两条独立物理链路：
 
@@ -398,7 +413,7 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 双输入可能在同一个系统时钟周期产生事件，因此不能直接把两个`valid`信号相或。仲裁器
 需要逐条取出事件并保留未处理事件。参数更新可以后写覆盖，Note On/Off则不能丢失。
 
-## 11. 当前限制
+## 14. 当前限制
 
 - `CC123 All Notes Off`尚未转换为调度器的全局释放命令；当前上位机会先逐个发送
   Note Off，因此测试流程不受影响。
@@ -408,12 +423,12 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 - 当前只有Acid多帧波表响应WT Position，四个基本波形没有帧轴。
 - 当前CC值为7位。大量波表帧或精细自动化可在后续升级为14位CC或NRPN。
 
-## 12. 验证结果
+## 15. 验证结果
 
 顶层仿真覆盖以下行为：
 
 1. 通道1的CC不能修改合成参数；
-2. 通道16的CC10、20～48正确进入对应的全局、OSC A和OSC B寄存器；
+2. 通道16的CC10、20～57正确进入对应的全局、OSC A和OSC B寄存器；
 3. 通道16的Note On不能进入声部调度器；
 4. 通道1的Note On/Off、力度和Running Status保持原有行为；
 5. MIDI实时字节穿插不会破坏解析状态；
@@ -429,10 +444,12 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 15. CC36/CC37能独立关闭两路音频，CC46/CC47独立控制两路Level；单路最大增益0.5，
     双路最大增益各0.25，为FIR和滤波器保留6 dB余量。
 16. CC48控制滤波器后的Master Level，0～127映射为0～1.0，并在96 kHz边界平滑。
+17. CC51～57能独立配置效果模式、Delay和Reverb参数；旁路逐位保持输入。
+18. 最短Delay在第480个96 kHz历史样本返回冲激；Reverb冲激响应产生非零尾音。
 
 本次只执行RTL编译与ModelSim功能仿真，没有运行Gowin综合和布局布线。
 
-## 13. FPGA三点LFO与调制矩阵参数
+## 16. FPGA三点LFO与调制矩阵参数
 
 通用LFO配置使用以下非商业厂商SysEx消息：
 

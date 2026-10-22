@@ -70,6 +70,7 @@ module top #(
     wire signed [15:0]  fir_input_sample;
     wire signed [15:0]  fir_filtered_sample;
     wire signed [15:0]  global_filtered_sample;
+    wire signed [15:0]  effect_processed_sample;
     reg  signed [15:0]  master_output_sample;
     wire signed [25:0]  master_scaled_product;
     wire signed [26:0]  master_scaled_product_extended;
@@ -153,6 +154,13 @@ module top #(
     wire [6:0] filter_mix_target;
     reg  [6:0] filter_mix_current;
     wire [6:0] master_level_target;
+    wire [1:0] effect_mode_target;
+    wire [6:0] delay_time_target;
+    wire [6:0] delay_feedback_target;
+    wire [6:0] delay_mix_target;
+    wire [6:0] reverb_size_target;
+    wire [6:0] reverb_decay_target;
+    wire [6:0] reverb_mix_target;
     reg  [8:0] master_gain_q8;
     wire [8:0] master_gain_target_q8;
 
@@ -216,6 +224,9 @@ module top #(
     wire global_filter_input_ready;
     wire global_filter_output_valid;
     wire global_filter_input_overrun;
+    wire global_effects_input_ready;
+    wire global_effects_output_valid;
+    wire global_effects_input_overrun;
 
     wire cache_load_clk;
     wire cache_load_rst_n;
@@ -647,6 +658,13 @@ module top #(
         .filter_resonance          (filter_resonance_target),
         .filter_mix                (filter_mix_target),
         .master_level              (master_level_target),
+        .effect_mode               (effect_mode_target),
+        .delay_time                (delay_time_target),
+        .delay_feedback            (delay_feedback_target),
+        .delay_mix                 (delay_mix_target),
+        .reverb_size               (reverb_size_target),
+        .reverb_decay              (reverb_decay_target),
+        .reverb_mix                (reverb_mix_target),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
         .osc_a_detune_amount       (osc_a_detune_amount),
@@ -903,10 +921,28 @@ module top #(
         .input_overrun    (global_filter_input_overrun)
     );
 
-    // Master Level位于全局滤波器之后。Q1.8乘法结果先保持宽位，再在一个
+    global_effects u_global_effects (
+        .clk             (clk_sys),
+        .rst_n           (rst_n_sys),
+        .in_valid        (global_filter_output_valid),
+        .sample_in       (global_filtered_sample),
+        .in_ready        (global_effects_input_ready),
+        .effect_mode     (effect_mode_target),
+        .delay_time      (delay_time_target),
+        .delay_feedback  (delay_feedback_target),
+        .delay_mix       (delay_mix_target),
+        .reverb_size     (reverb_size_target),
+        .reverb_decay    (reverb_decay_target),
+        .reverb_mix      (reverb_mix_target),
+        .out_valid       (global_effects_output_valid),
+        .sample_out      (effect_processed_sample),
+        .input_overrun   (global_effects_input_overrun)
+    );
+
+    // Master Level位于全局滤波器和效果器之后。Q1.8乘法结果先保持宽位，再在一个
     // 50 MHz周期内完成饱和和寄存；该延迟远小于一个96 kHz采样周期。
     assign master_scaled_product =
-        $signed(global_filtered_sample) * $signed({1'b0, master_gain_q8});
+        $signed(effect_processed_sample) * $signed({1'b0, master_gain_q8});
     assign master_scaled_product_extended = {master_scaled_product[25],
                                               master_scaled_product};
     assign master_scaled_shifted = master_scaled_product_extended >>> 8;
@@ -925,7 +961,7 @@ module top #(
             master_output_clip   <= 1'b0;
             audio_clip_count     <= 32'd0;
         end else begin
-            if (global_filter_output_valid) begin
+            if (global_effects_output_valid) begin
                 master_output_sample
                     <= saturate_mix_q8(master_scaled_product_extended);
                 if (filter_output_limit_now)
@@ -938,7 +974,7 @@ module top #(
                 oscillator_mix_clip <= 1'b1;
 
             if ((oscillator_mix_valid && oscillator_mix_clip_now)
-                || (global_filter_output_valid
+                || (global_effects_output_valid
                     && (filter_output_limit_now || master_output_clip_now)))
                 audio_clip_count <= audio_clip_count + 32'd1;
         end

@@ -33,6 +33,9 @@ vlog -work work_top_midi \
     src/global_svf_filter.v \
     src/global_comb_filter.v \
     src/global_filter.v \
+    src/global_delay.v \
+    src/global_reverb.v \
+    src/global_effects.v \
     src/i2s_tx.v \
     src/top.v.v \
     sim/tb_top_midi_input.v

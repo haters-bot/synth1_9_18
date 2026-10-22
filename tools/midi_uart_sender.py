@@ -39,6 +39,13 @@ FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
 FILTER_MIX_CC = 45
 MASTER_LEVEL_CC = 48
+EFFECT_MODE_CC = 51
+DELAY_TIME_CC = 52
+DELAY_FEEDBACK_CC = 53
+DELAY_MIX_CC = 54
+REVERB_SIZE_CC = 55
+REVERB_DECAY_CC = 56
+REVERB_MIX_CC = 57
 # 三个独立三点LFO共享同一个8槽调制矩阵和一次原子提交。
 FILTER_LFO_PARAMETER_SETS = (
     {
@@ -142,6 +149,12 @@ FILTER_MODE_VALUES = {
     "梳状 +": 5,
     "梳状 -": 6,
 }
+EFFECT_MODE_VALUES = {
+    "旁路": 0,
+    "Delay": 1,
+    "Reverb": 2,
+    "Delay + Reverb": 3,
+}
 
 
 def note_name(note: int) -> str:
@@ -172,6 +185,13 @@ class MidiUartSender:
         self.filter_resonance = tk.IntVar(value=0)
         self.filter_mix = tk.IntVar(value=127)
         self.master_level = tk.IntVar(value=127)
+        self.effect_mode = tk.StringVar(value="旁路")
+        self.delay_time = tk.IntVar(value=64)
+        self.delay_feedback = tk.IntVar(value=48)
+        self.delay_mix = tk.IntVar(value=64)
+        self.reverb_size = tk.IntVar(value=64)
+        self.reverb_decay = tk.IntVar(value=72)
+        self.reverb_mix = tk.IntVar(value=48)
         self.filter_lfo_enabled = [
             tk.BooleanVar(value=False) for _ in range(3)
         ]
@@ -463,11 +483,61 @@ class MidiUartSender:
                 width=6,
             ).grid(row=route_row, column=route_column + 3, padx=4)
 
+        effects_frame = ttk.LabelFrame(
+            parameter_controls, text="全局效果器", padding=6
+        )
+        effects_frame.grid(
+            row=3, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+        ttk.Label(effects_frame, text="模式").grid(row=0, column=0, padx=4)
+        effect_mode_box = ttk.Combobox(
+            effects_frame,
+            textvariable=self.effect_mode,
+            values=tuple(EFFECT_MODE_VALUES),
+            width=16,
+            state="readonly",
+        )
+        effect_mode_box.grid(row=0, column=1, padx=4)
+        effect_mode_box.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self.send_effect_mode_selection(),
+        )
+
+        effect_specs = (
+            ("Delay Time", self.delay_time, DELAY_TIME_CC),
+            ("Delay Feedback", self.delay_feedback, DELAY_FEEDBACK_CC),
+            ("Delay Mix", self.delay_mix, DELAY_MIX_CC),
+            ("Reverb Size", self.reverb_size, REVERB_SIZE_CC),
+            ("Reverb Decay", self.reverb_decay, REVERB_DECAY_CC),
+            ("Reverb Mix", self.reverb_mix, REVERB_MIX_CC),
+        )
+        for index, (label, variable, controller) in enumerate(effect_specs):
+            row = index // 3
+            column = 2 + (index % 3) * 2
+            ttk.Label(effects_frame, text=label).grid(
+                row=row, column=column, padx=(10, 2), sticky="e"
+            )
+            scale = tk.Scale(
+                effects_frame,
+                from_=0,
+                to=127,
+                orient=tk.HORIZONTAL,
+                variable=variable,
+                length=150,
+            )
+            scale.grid(row=row, column=column + 1, padx=2)
+            scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event, cc=controller, var=variable: (
+                    self.send_synth_control(cc, var.get())
+                ),
+            )
+
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
                 parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            osc_frame.grid(row=3, column=column, padx=6, pady=(6, 0))
+            osc_frame.grid(row=4, column=column, padx=6, pady=(6, 0))
             self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
@@ -762,6 +832,12 @@ class MidiUartSender:
         if self.send_control_change(FILTER_MODE_CC, value, CONTROL_CHANNEL):
             self.status.set(f"全局滤波器模式：{mode_name}")
 
+    def send_effect_mode_selection(self) -> None:
+        mode_name = self.effect_mode.get()
+        value = EFFECT_MODE_VALUES.get(mode_name, EFFECT_MODE_VALUES["旁路"])
+        if self.send_control_change(EFFECT_MODE_CC, value, CONTROL_CHANNEL):
+            self.status.set(f"全局效果器模式：{mode_name}")
+
     def send_filter_cutoff(self) -> None:
         base_value = max(0, min(127, int(self.filter_cutoff.get())))
         self.send_synth_control(FILTER_CUTOFF_CC, base_value)
@@ -916,6 +992,13 @@ class MidiUartSender:
         )
         self.send_synth_control(FILTER_MIX_CC, self.filter_mix.get())
         self.send_synth_control(MASTER_LEVEL_CC, self.master_level.get())
+        self.send_effect_mode_selection()
+        self.send_synth_control(DELAY_TIME_CC, self.delay_time.get())
+        self.send_synth_control(DELAY_FEEDBACK_CC, self.delay_feedback.get())
+        self.send_synth_control(DELAY_MIX_CC, self.delay_mix.get())
+        self.send_synth_control(REVERB_SIZE_CC, self.reverb_size.get())
+        self.send_synth_control(REVERB_DECAY_CC, self.reverb_decay.get())
+        self.send_synth_control(REVERB_MIX_CC, self.reverb_mix.get())
         self.send_filter_lfo_configuration()
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]

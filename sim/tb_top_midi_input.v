@@ -207,8 +207,9 @@ module tb_top_midi_input;
         input [8:0] gain_q8;
         input signed [15:0] expected_output;
         begin
+            force dut.effect_processed_sample = filter_sample;
+            force dut.global_effects_output_valid = 1'b1;
             force dut.global_filtered_sample = filter_sample;
-            force dut.global_filter_output_valid = 1'b1;
             force dut.master_gain_q8 = gain_q8;
             @(posedge sys_clk);
             #1;
@@ -217,8 +218,9 @@ module tb_top_midi_input;
                          dut.master_output_sample, expected_output);
                 errors = errors + 1;
             end
+            release dut.effect_processed_sample;
+            release dut.global_effects_output_valid;
             release dut.global_filtered_sample;
-            release dut.global_filter_output_valid;
             release dut.master_gain_q8;
             @(posedge sys_clk);
         end
@@ -359,6 +361,9 @@ module tb_top_midi_input;
         // Master乘法保持宽位并在最后压回16位；0.5增益应精确减半。
         expect_master_output(16'sd16000, 9'd128, 16'sd8000);
 
+        // 后续音符调度回归保持效果器旁路，避免Delay/Reverb尾音干扰静音判定。
+        send_cc(7'd51, 7'd0);
+
         // 后续开关交叉渐变测试使用最大Level和Master。
         send_cc(7'd46, 7'd127);
         send_cc(7'd47, 7'd127);
@@ -396,6 +401,27 @@ module tb_top_midi_input;
             $display("ERROR: independent parameter smoothing failed");
             errors = errors + 1;
         end
+
+        // 效果器参数使用CC51～57；验证后回到旁路，保持后续音频回归的原条件。
+        send_cc(7'd51, 7'd3);
+        send_cc(7'd52, 7'd80);
+        send_cc(7'd53, 7'd70);
+        send_cc(7'd54, 7'd60);
+        send_cc(7'd55, 7'd90);
+        send_cc(7'd56, 7'd75);
+        send_cc(7'd57, 7'd55);
+        repeat (3) @(posedge sys_clk);
+        if (dut.effect_mode_target !== 2'd3
+            || dut.delay_time_target !== 7'd80
+            || dut.delay_feedback_target !== 7'd70
+            || dut.delay_mix_target !== 7'd60
+            || dut.reverb_size_target !== 7'd90
+            || dut.reverb_decay_target !== 7'd75
+            || dut.reverb_mix_target !== 7'd55) begin
+            $display("ERROR: global effect controls were not routed");
+            errors = errors + 1;
+        end
+        send_cc(7'd51, 7'd0);
 
         // 非零深度下切换Warp模式时，必须先退回深度0，再提交新模式。
         if (dut.osc_a_warp_mode_active !== 4'd5) begin
