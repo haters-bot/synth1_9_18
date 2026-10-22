@@ -10,8 +10,13 @@
         <File path="src/adsr_parameter_mapper.v" type="file.verilog" enable="1"/>
         <File path="src/advanced_fir_filter/fir_decimator_8x_ip.v" type="file.verilog" enable="1"/>
         <File path="src/basic_osc_v1.v" type="file.verilog" enable="1"/>
-        <File path="src/fir_decimator_8x_wrapper.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_bist.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_standalone_test_top.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_status_uart.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_user_port_adapter.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_wavetable_wrapper.v" type="file.verilog" enable="1"/>
         <File path="src/filter_curve_lfo.v" type="file.verilog" enable="1"/>
+        <File path="src/fir_decimator_8x_wrapper.v" type="file.verilog" enable="1"/>
         <File path="src/freq_lut.v" type="file.verilog" enable="1"/>
         <File path="src/global_comb_filter.v" type="file.verilog" enable="1"/>
         <File path="src/global_filter.v" type="file.verilog" enable="1"/>
@@ -37,8 +42,10 @@
         <File path="src/triangle_lut.v" type="file.verilog" enable="1"/>
         <File path="src/uart_rx.v" type="file.verilog" enable="1"/>
         <File path="src/wavetable_phase_warp.v" type="file.verilog" enable="1"/>
-        <File path="constraints/tang_mega_138k_audio_test.cst" type="file.cst" enable="1"/>
-        <File path="src/timing.sdc" type="file.sdc" enable="1"/>
+        <File path="constraints/tang_mega_138k_audio_test.cst" type="file.cst" enable="0"/>
+        <File path="constraints/tang_mega_138k_ddr3_standalone.cst" type="file.cst" enable="1"/>
+        <File path="constraints/ddr3_standalone.sdc" type="file.sdc" enable="1"/>
+        <File path="src/timing.sdc" type="file.sdc" enable="0"/>
         <File path="src/synth1_9_18.rao" type="file.gao" enable="0"/>
         <File path="src/wavecheck.rao" type="file.gao" enable="0"/>
     </FileList>
