@@ -4,12 +4,12 @@ Purpose: durable handoff record for AI-assisted changes made on the shared UI/au
 
 ## 2026-10-23 — Phase 1 UART integration baseline
 
-Status: RTL implementation and simulation passed. UI source snapshot: `0dfae7c995bc7029f1253c8c4843a10eb3d4376f`; source archive SHA256: `A5D30CBDA828C9B19CEAE0D8E26802D0E3999D3B71EC211F8038D57F421FA9B1`. Shared branch commit/push reference will be filled after commit.
+Status: RTL implementation and simulation passed. UI source snapshot: `0dfae7c995bc7029f1253c8c4843a10eb3d4376f`; source archive SHA256: `A5D30CBDA828C9B19CEAE0D8E26802D0E3999D3B71EC211F8038D57F421FA9B1`. Shared implementation commit: `db851cd` on `integration/dual-138k-uart-phase1`; GitHub push is pending.
 
 ### Branch synchronization
 
 - Fast-forwarded local `ui-touch-hub-v1.0` to the existing remote collaboration head `5bf0f8f`.
-- Merged current `origin/main` (`3f2bed2`, effects / DDR wavetable / three-LFO updates) into the collaboration branch. Kept UI sources under `2_ui_touch_hub/`; no audio source directory was replaced.
+- Created `integration/dual-138k-uart-phase1` from the synchronized `ui-touch-hub-v1.0` collaboration branch and merged current `origin/main` (`3f2bed2`, effects / DDR wavetable / three-LFO updates). Kept UI sources under `2_ui_touch_hub/`; no audio source directory was replaced.
 - The independent UI source checkout remains `D:\github\gaoyun\2_ui_touch_hub`; it has no Git remote. The shared `2_ui_touch_hub/` snapshot is being synchronized to committed UI source `0dfae7c`; uncommitted navigation-font experiments and local session archives are excluded.
 
 ### Intended changes
