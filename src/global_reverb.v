@@ -51,7 +51,10 @@ module global_reverb (
     reg signed [15:0] comb_damp_1;
     reg signed [15:0] comb_damp_2;
     reg signed [15:0] comb_damp_3;
-    reg signed [15:0] memory_read_data;
+    reg signed [15:0] comb_read_data_0;
+    reg signed [15:0] comb_read_data_1;
+    reg signed [15:0] comb_read_data_2;
+    reg signed [15:0] comb_read_data_3;
     reg memory_read_valid;
     reg signed [18:0] comb_sum;
 
@@ -74,6 +77,7 @@ module global_reverb (
     wire [11:0] requested_length_3 = 12'd1999 + size_product_3[18:7];
 
     reg signed [15:0] selected_damp_state;
+    reg signed [15:0] selected_memory_read_data;
     reg [11:0] selected_length;
     reg [11:0] selected_pointer;
     reg [12:0] selected_fill;
@@ -81,24 +85,28 @@ module global_reverb (
         case (comb_index)
             2'd0: begin
                 selected_damp_state = comb_damp_0;
+                selected_memory_read_data = comb_read_data_0;
                 selected_length = comb_length_0;
                 selected_pointer = comb_pointer_0;
                 selected_fill = comb_fill_0;
             end
             2'd1: begin
                 selected_damp_state = comb_damp_1;
+                selected_memory_read_data = comb_read_data_1;
                 selected_length = comb_length_1;
                 selected_pointer = comb_pointer_1;
                 selected_fill = comb_fill_1;
             end
             2'd2: begin
                 selected_damp_state = comb_damp_2;
+                selected_memory_read_data = comb_read_data_2;
                 selected_length = comb_length_2;
                 selected_pointer = comb_pointer_2;
                 selected_fill = comb_fill_2;
             end
             default: begin
                 selected_damp_state = comb_damp_3;
+                selected_memory_read_data = comb_read_data_3;
                 selected_length = comb_length_3;
                 selected_pointer = comb_pointer_3;
                 selected_fill = comb_fill_3;
@@ -107,7 +115,7 @@ module global_reverb (
     end
 
     wire signed [15:0] selected_delayed_sample = memory_read_valid
-                                                       ? memory_read_data
+                                                       ? selected_memory_read_data
                                                        : 16'sd0;
     wire signed [16:0] damping_difference =
         $signed({selected_delayed_sample[15], selected_delayed_sample})
@@ -202,6 +210,62 @@ module global_reverb (
         end
     endfunction
 
+    // 138K 器件的单口 BSRAM 不支持 Read-before-Write。这里将同步读写
+    // 明确拆开且保持周期互斥，使综合器映射到器件支持的独立读写端口结构。
+    wire comb_access_phase = (state == STATE_COMB_READ)
+                             || (state == STATE_COMB_PROCESS);
+    wire comb_write_phase = state == STATE_COMB_PROCESS;
+    wire comb_ce_0 = comb_access_phase && (comb_index == 2'd0);
+    wire comb_ce_1 = comb_access_phase && (comb_index == 2'd1);
+    wire comb_ce_2 = comb_access_phase && (comb_index == 2'd2);
+    wire comb_ce_3 = comb_access_phase && (comb_index == 2'd3);
+    wire comb_wre_0 = comb_write_phase && (comb_index == 2'd0);
+    wire comb_wre_1 = comb_write_phase && (comb_index == 2'd1);
+    wire comb_wre_2 = comb_write_phase && (comb_index == 2'd2);
+    wire comb_wre_3 = comb_write_phase && (comb_index == 2'd3);
+    wire signed [15:0] comb_write_data =
+        saturate_s25_to_s16(comb_write_wide);
+
+    always @(posedge clk) begin
+        if (comb_ce_0 && !comb_wre_0)
+            comb_read_data_0 <= comb_memory_0[comb_pointer_0];
+    end
+
+    always @(posedge clk) begin
+        if (comb_ce_0 && comb_wre_0)
+            comb_memory_0[comb_pointer_0] <= comb_write_data;
+    end
+
+    always @(posedge clk) begin
+        if (comb_ce_1 && !comb_wre_1)
+            comb_read_data_1 <= comb_memory_1[comb_pointer_1];
+    end
+
+    always @(posedge clk) begin
+        if (comb_ce_1 && comb_wre_1)
+            comb_memory_1[comb_pointer_1] <= comb_write_data;
+    end
+
+    always @(posedge clk) begin
+        if (comb_ce_2 && !comb_wre_2)
+            comb_read_data_2 <= comb_memory_2[comb_pointer_2];
+    end
+
+    always @(posedge clk) begin
+        if (comb_ce_2 && comb_wre_2)
+            comb_memory_2[comb_pointer_2] <= comb_write_data;
+    end
+
+    always @(posedge clk) begin
+        if (comb_ce_3 && !comb_wre_3)
+            comb_read_data_3 <= comb_memory_3[comb_pointer_3];
+    end
+
+    always @(posedge clk) begin
+        if (comb_ce_3 && comb_wre_3)
+            comb_memory_3[comb_pointer_3] <= comb_write_data;
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= STATE_IDLE;
@@ -225,7 +289,6 @@ module global_reverb (
             comb_damp_1 <= 16'sd0;
             comb_damp_2 <= 16'sd0;
             comb_damp_3 <= 16'sd0;
-            memory_read_data <= 16'sd0;
             memory_read_valid <= 1'b0;
             comb_sum <= 19'sd0;
             allpass_pointer_1 <= 9'd0;
@@ -261,12 +324,6 @@ module global_reverb (
                 end
 
                 STATE_COMB_READ: begin
-                    case (comb_index)
-                        2'd0: memory_read_data <= comb_memory_0[comb_pointer_0];
-                        2'd1: memory_read_data <= comb_memory_1[comb_pointer_1];
-                        2'd2: memory_read_data <= comb_memory_2[comb_pointer_2];
-                        default: memory_read_data <= comb_memory_3[comb_pointer_3];
-                    endcase
                     memory_read_valid <= selected_fill >= {1'b0, selected_length};
                     state <= STATE_COMB_PROCESS;
                 end
@@ -277,8 +334,6 @@ module global_reverb (
                                            selected_delayed_sample});
                     case (comb_index)
                         2'd0: begin
-                            comb_memory_0[comb_pointer_0]
-                                <= saturate_s25_to_s16(comb_write_wide);
                             comb_damp_0 <= damped_next;
                             comb_pointer_0 <= (comb_pointer_0 + 12'd1
                                                >= comb_length_0)
@@ -288,8 +343,6 @@ module global_reverb (
                                 comb_fill_0 <= comb_fill_0 + 13'd1;
                         end
                         2'd1: begin
-                            comb_memory_1[comb_pointer_1]
-                                <= saturate_s25_to_s16(comb_write_wide);
                             comb_damp_1 <= damped_next;
                             comb_pointer_1 <= (comb_pointer_1 + 12'd1
                                                >= comb_length_1)
@@ -299,8 +352,6 @@ module global_reverb (
                                 comb_fill_1 <= comb_fill_1 + 13'd1;
                         end
                         2'd2: begin
-                            comb_memory_2[comb_pointer_2]
-                                <= saturate_s25_to_s16(comb_write_wide);
                             comb_damp_2 <= damped_next;
                             comb_pointer_2 <= (comb_pointer_2 + 12'd1
                                                >= comb_length_2)
@@ -310,8 +361,6 @@ module global_reverb (
                                 comb_fill_2 <= comb_fill_2 + 13'd1;
                         end
                         default: begin
-                            comb_memory_3[comb_pointer_3]
-                                <= saturate_s25_to_s16(comb_write_wide);
                             comb_damp_3 <= damped_next;
                             comb_pointer_3 <= (comb_pointer_3 + 12'd1
                                                >= comb_length_3)
