@@ -8,6 +8,11 @@ vmap work_global_effects sim/work_global_effects
 vlog -work work_global_effects \
     src/global_delay.v \
     src/global_reverb.v \
+    src/global_delay_reverb.v \
+    src/global_distortion.v \
+    src/global_phaser.v \
+    src/global_chorus.v \
+    src/global_compressor.v \
     src/global_effects.v \
     sim/tb_global_effects.v
 

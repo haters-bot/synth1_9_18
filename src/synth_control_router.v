@@ -42,6 +42,30 @@ module synth_control_router #(
     output reg [6:0]  reverb_size,
     output reg [6:0]  reverb_decay,
     output reg [6:0]  reverb_mix,
+    output reg        distortion_enable,
+    output reg [1:0]  distortion_type,
+    output reg [6:0]  distortion_drive,
+    output reg [6:0]  distortion_tone,
+    output reg [6:0]  distortion_mix,
+    output reg        chorus_enable,
+    output reg [6:0]  chorus_rate,
+    output reg [6:0]  chorus_depth,
+    output reg [6:0]  chorus_delay,
+    output reg [6:0]  chorus_feedback,
+    output reg [6:0]  chorus_mix,
+    output reg        phaser_enable,
+    output reg [6:0]  phaser_rate,
+    output reg [6:0]  phaser_depth,
+    output reg [6:0]  phaser_center,
+    output reg [6:0]  phaser_feedback,
+    output reg [6:0]  phaser_mix,
+    output reg        compressor_enable,
+    output reg [6:0]  compressor_threshold,
+    output reg [6:0]  compressor_ratio,
+    output reg [6:0]  compressor_attack,
+    output reg [6:0]  compressor_release,
+    output reg [6:0]  compressor_makeup,
+    output reg [6:0]  compressor_mix,
 
     output reg [6:0]  osc_a_wt_position_target,
     output reg [2:0]  osc_a_waveform_select,
@@ -113,6 +137,30 @@ module synth_control_router #(
     localparam [6:0] CC_REVERB_SIZE        = 7'd55;
     localparam [6:0] CC_REVERB_DECAY       = 7'd56;
     localparam [6:0] CC_REVERB_MIX         = 7'd57;
+    localparam [6:0] CC_DISTORTION_ENABLE  = 7'd58;
+    localparam [6:0] CC_DISTORTION_TYPE    = 7'd59;
+    localparam [6:0] CC_DISTORTION_DRIVE   = 7'd60;
+    localparam [6:0] CC_DISTORTION_TONE    = 7'd61;
+    localparam [6:0] CC_DISTORTION_MIX     = 7'd62;
+    localparam [6:0] CC_CHORUS_ENABLE      = 7'd63;
+    localparam [6:0] CC_CHORUS_RATE        = 7'd64;
+    localparam [6:0] CC_CHORUS_DEPTH       = 7'd65;
+    localparam [6:0] CC_CHORUS_DELAY       = 7'd66;
+    localparam [6:0] CC_CHORUS_FEEDBACK    = 7'd67;
+    localparam [6:0] CC_CHORUS_MIX         = 7'd68;
+    localparam [6:0] CC_PHASER_ENABLE      = 7'd69;
+    localparam [6:0] CC_PHASER_RATE        = 7'd70;
+    localparam [6:0] CC_PHASER_DEPTH       = 7'd71;
+    localparam [6:0] CC_PHASER_CENTER      = 7'd72;
+    localparam [6:0] CC_PHASER_FEEDBACK    = 7'd73;
+    localparam [6:0] CC_PHASER_MIX         = 7'd74;
+    localparam [6:0] CC_COMPRESSOR_ENABLE  = 7'd75;
+    localparam [6:0] CC_COMPRESSOR_THRESH  = 7'd76;
+    localparam [6:0] CC_COMPRESSOR_RATIO   = 7'd77;
+    localparam [6:0] CC_COMPRESSOR_ATTACK  = 7'd78;
+    localparam [6:0] CC_COMPRESSOR_RELEASE = 7'd79;
+    localparam [6:0] CC_COMPRESSOR_MAKEUP  = 7'd80;
+    localparam [6:0] CC_COMPRESSOR_MIX     = 7'd81;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -164,6 +212,30 @@ module synth_control_router #(
             reverb_size         <= 7'd64;
             reverb_decay        <= 7'd72;
             reverb_mix          <= 7'd48;
+            distortion_enable   <= 1'b0;
+            distortion_type     <= 2'd0;
+            distortion_drive    <= 7'd32;
+            distortion_tone     <= 7'd127;
+            distortion_mix      <= 7'd64;
+            chorus_enable       <= 1'b0;
+            chorus_rate         <= 7'd20;
+            chorus_depth        <= 7'd32;
+            chorus_delay        <= 7'd48;
+            chorus_feedback     <= 7'd20;
+            chorus_mix          <= 7'd64;
+            phaser_enable       <= 1'b0;
+            phaser_rate         <= 7'd20;
+            phaser_depth        <= 7'd48;
+            phaser_center       <= 7'd64;
+            phaser_feedback     <= 7'd20;
+            phaser_mix          <= 7'd64;
+            compressor_enable   <= 1'b0;
+            compressor_threshold <= 7'd96;
+            compressor_ratio    <= 7'd64;
+            compressor_attack   <= 7'd20;
+            compressor_release  <= 7'd80;
+            compressor_makeup   <= 7'd0;
+            compressor_mix      <= 7'd127;
 
             osc_a_wt_position_target <= 7'd0;
             osc_a_waveform_select    <= 3'd2;
@@ -294,6 +366,55 @@ module synth_control_router #(
                         reverb_decay <= raw_control_change_value;
                     CC_REVERB_MIX:
                         reverb_mix <= raw_control_change_value;
+                    CC_DISTORTION_ENABLE:
+                        distortion_enable <= (raw_control_change_value != 7'd0);
+                    CC_DISTORTION_TYPE:
+                        distortion_type <= (raw_control_change_value <= 7'd2)
+                                         ? raw_control_change_value[1:0] : 2'd0;
+                    CC_DISTORTION_DRIVE:
+                        distortion_drive <= raw_control_change_value;
+                    CC_DISTORTION_TONE:
+                        distortion_tone <= raw_control_change_value;
+                    CC_DISTORTION_MIX:
+                        distortion_mix <= raw_control_change_value;
+                    CC_CHORUS_ENABLE:
+                        chorus_enable <= (raw_control_change_value != 7'd0);
+                    CC_CHORUS_RATE:
+                        chorus_rate <= raw_control_change_value;
+                    CC_CHORUS_DEPTH:
+                        chorus_depth <= raw_control_change_value;
+                    CC_CHORUS_DELAY:
+                        chorus_delay <= raw_control_change_value;
+                    CC_CHORUS_FEEDBACK:
+                        chorus_feedback <= raw_control_change_value;
+                    CC_CHORUS_MIX:
+                        chorus_mix <= raw_control_change_value;
+                    CC_PHASER_ENABLE:
+                        phaser_enable <= (raw_control_change_value != 7'd0);
+                    CC_PHASER_RATE:
+                        phaser_rate <= raw_control_change_value;
+                    CC_PHASER_DEPTH:
+                        phaser_depth <= raw_control_change_value;
+                    CC_PHASER_CENTER:
+                        phaser_center <= raw_control_change_value;
+                    CC_PHASER_FEEDBACK:
+                        phaser_feedback <= raw_control_change_value;
+                    CC_PHASER_MIX:
+                        phaser_mix <= raw_control_change_value;
+                    CC_COMPRESSOR_ENABLE:
+                        compressor_enable <= (raw_control_change_value != 7'd0);
+                    CC_COMPRESSOR_THRESH:
+                        compressor_threshold <= raw_control_change_value;
+                    CC_COMPRESSOR_RATIO:
+                        compressor_ratio <= raw_control_change_value;
+                    CC_COMPRESSOR_ATTACK:
+                        compressor_attack <= raw_control_change_value;
+                    CC_COMPRESSOR_RELEASE:
+                        compressor_release <= raw_control_change_value;
+                    CC_COMPRESSOR_MAKEUP:
+                        compressor_makeup <= raw_control_change_value;
+                    CC_COMPRESSOR_MIX:
+                        compressor_mix <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

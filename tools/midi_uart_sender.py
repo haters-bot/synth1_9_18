@@ -46,6 +46,30 @@ DELAY_MIX_CC = 54
 REVERB_SIZE_CC = 55
 REVERB_DECAY_CC = 56
 REVERB_MIX_CC = 57
+DISTORTION_ENABLE_CC = 58
+DISTORTION_TYPE_CC = 59
+DISTORTION_DRIVE_CC = 60
+DISTORTION_TONE_CC = 61
+DISTORTION_MIX_CC = 62
+CHORUS_ENABLE_CC = 63
+CHORUS_RATE_CC = 64
+CHORUS_DEPTH_CC = 65
+CHORUS_DELAY_CC = 66
+CHORUS_FEEDBACK_CC = 67
+CHORUS_MIX_CC = 68
+PHASER_ENABLE_CC = 69
+PHASER_RATE_CC = 70
+PHASER_DEPTH_CC = 71
+PHASER_CENTER_CC = 72
+PHASER_FEEDBACK_CC = 73
+PHASER_MIX_CC = 74
+COMPRESSOR_ENABLE_CC = 75
+COMPRESSOR_THRESHOLD_CC = 76
+COMPRESSOR_RATIO_CC = 77
+COMPRESSOR_ATTACK_CC = 78
+COMPRESSOR_RELEASE_CC = 79
+COMPRESSOR_MAKEUP_CC = 80
+COMPRESSOR_MIX_CC = 81
 # 三个独立三点LFO共享同一个8槽调制矩阵和一次原子提交。
 FILTER_LFO_PARAMETER_SETS = (
     {
@@ -155,6 +179,11 @@ EFFECT_MODE_VALUES = {
     "Reverb": 2,
     "Delay + Reverb": 3,
 }
+DISTORTION_TYPE_VALUES = {
+    "Soft Clip": 0,
+    "Hard Clip": 1,
+    "Foldback": 2,
+}
 
 
 def note_name(note: int) -> str:
@@ -165,7 +194,13 @@ class MidiUartSender:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("FPGA MIDI UART 测试器")
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = max(640, min(1280, screen_width - 80))
+        window_height = max(480, min(860, screen_height - 120))
+        self.root.geometry(f"{window_width}x{window_height}")
+        self.root.minsize(640, 480)
 
         self.port = None
         self.port_lookup: dict[str, str] = {}
@@ -192,6 +227,30 @@ class MidiUartSender:
         self.reverb_size = tk.IntVar(value=64)
         self.reverb_decay = tk.IntVar(value=72)
         self.reverb_mix = tk.IntVar(value=48)
+        self.distortion_enabled = tk.BooleanVar(value=False)
+        self.distortion_type = tk.StringVar(value="Soft Clip")
+        self.distortion_drive = tk.IntVar(value=32)
+        self.distortion_tone = tk.IntVar(value=127)
+        self.distortion_mix = tk.IntVar(value=64)
+        self.chorus_enabled = tk.BooleanVar(value=False)
+        self.chorus_rate = tk.IntVar(value=20)
+        self.chorus_depth = tk.IntVar(value=32)
+        self.chorus_delay = tk.IntVar(value=48)
+        self.chorus_feedback = tk.IntVar(value=20)
+        self.chorus_mix = tk.IntVar(value=64)
+        self.phaser_enabled = tk.BooleanVar(value=False)
+        self.phaser_rate = tk.IntVar(value=20)
+        self.phaser_depth = tk.IntVar(value=48)
+        self.phaser_center = tk.IntVar(value=64)
+        self.phaser_feedback = tk.IntVar(value=20)
+        self.phaser_mix = tk.IntVar(value=64)
+        self.compressor_enabled = tk.BooleanVar(value=False)
+        self.compressor_threshold = tk.IntVar(value=96)
+        self.compressor_ratio = tk.IntVar(value=64)
+        self.compressor_attack = tk.IntVar(value=20)
+        self.compressor_release = tk.IntVar(value=80)
+        self.compressor_makeup = tk.IntVar(value=0)
+        self.compressor_mix = tk.IntVar(value=127)
         self.filter_lfo_enabled = [
             tk.BooleanVar(value=False) for _ in range(3)
         ]
@@ -246,7 +305,36 @@ class MidiUartSender:
         self.root.protocol("WM_DELETE_WINDOW", self.close)
 
     def _build_ui(self) -> None:
-        connection = ttk.LabelFrame(self.root, text="串口连接", padding=10)
+        self.root.rowconfigure(0, weight=1)
+        self.root.columnconfigure(0, weight=1)
+        viewport = ttk.Frame(self.root)
+        viewport.grid(row=0, column=0, sticky="nsew")
+        viewport.rowconfigure(0, weight=1)
+        viewport.columnconfigure(0, weight=1)
+        self.main_canvas = tk.Canvas(viewport, highlightthickness=0)
+        vertical_scrollbar = ttk.Scrollbar(
+            viewport, orient=tk.VERTICAL, command=self.main_canvas.yview
+        )
+        horizontal_scrollbar = ttk.Scrollbar(
+            viewport, orient=tk.HORIZONTAL, command=self.main_canvas.xview
+        )
+        self.main_canvas.configure(
+            yscrollcommand=vertical_scrollbar.set,
+            xscrollcommand=horizontal_scrollbar.set,
+        )
+        self.main_canvas.grid(row=0, column=0, sticky="nsew")
+        vertical_scrollbar.grid(row=0, column=1, sticky="ns")
+        horizontal_scrollbar.grid(row=1, column=0, sticky="ew")
+        self.main_content = ttk.Frame(self.main_canvas)
+        self.main_content.columnconfigure(0, weight=1)
+        self.main_content_window = self.main_canvas.create_window(
+            (0, 0), window=self.main_content, anchor="nw"
+        )
+        self.main_content.bind("<Configure>", self._update_scroll_region)
+        self.main_canvas.bind("<Configure>", self._resize_scroll_content)
+        self.root.bind_all("<MouseWheel>", self._scroll_main_view, add="+")
+
+        connection = ttk.LabelFrame(self.main_content, text="串口连接", padding=10)
         connection.grid(row=0, column=0, padx=10, pady=8, sticky="ew")
 
         ttk.Label(connection, text="端口").grid(row=0, column=0, padx=4)
@@ -272,7 +360,7 @@ class MidiUartSender:
         )
         self.connect_button.grid(row=0, column=5, padx=(12, 4))
 
-        controls = ttk.LabelFrame(self.root, text="MIDI参数", padding=10)
+        controls = ttk.LabelFrame(self.main_content, text="MIDI参数", padding=10)
         controls.grid(row=1, column=0, padx=10, pady=4, sticky="ew")
 
         ttk.Label(controls, text="演奏通道固定为1").grid(
@@ -298,7 +386,7 @@ class MidiUartSender:
         )
 
         parameter_controls = ttk.LabelFrame(
-            self.root, text="双振荡器参数（松开滑块时发送）", padding=10
+            self.main_content, text="双振荡器参数（松开滑块时发送）", padding=10
         )
         parameter_controls.grid(row=2, column=0, padx=10, pady=4, sticky="ew")
 
@@ -454,8 +542,8 @@ class MidiUartSender:
         ).grid(row=0, column=4, padx=4)
 
         for route_index, route in enumerate(self.lfo_routes):
-            route_row = 3 + (route_index % 4)
-            route_column = 0 if route_index < 4 else 4
+            route_row = 3 + route_index
+            route_column = 0
             ttk.Checkbutton(
                 lfo_frame,
                 text=f"路由{route_index + 1}",
@@ -512,8 +600,8 @@ class MidiUartSender:
             ("Reverb Mix", self.reverb_mix, REVERB_MIX_CC),
         )
         for index, (label, variable, controller) in enumerate(effect_specs):
-            row = index // 3
-            column = 2 + (index % 3) * 2
+            row = index // 2
+            column = 2 + (index % 2) * 2
             ttk.Label(effects_frame, text=label).grid(
                 row=row, column=column, padx=(10, 2), sticky="e"
             )
@@ -533,15 +621,116 @@ class MidiUartSender:
                 ),
             )
 
+        advanced_effects_frame = ttk.LabelFrame(
+            parameter_controls,
+            text="Distortion / Chorus / Phaser / Compressor",
+            padding=6,
+        )
+        advanced_effects_frame.grid(
+            row=4, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+        effect_blocks = (
+            (
+                "Distortion", self.distortion_enabled, DISTORTION_ENABLE_CC,
+                (
+                    ("Drive", self.distortion_drive, DISTORTION_DRIVE_CC),
+                    ("Tone", self.distortion_tone, DISTORTION_TONE_CC),
+                    ("Mix", self.distortion_mix, DISTORTION_MIX_CC),
+                ),
+            ),
+            (
+                "Chorus", self.chorus_enabled, CHORUS_ENABLE_CC,
+                (
+                    ("Rate", self.chorus_rate, CHORUS_RATE_CC),
+                    ("Depth", self.chorus_depth, CHORUS_DEPTH_CC),
+                    ("Delay", self.chorus_delay, CHORUS_DELAY_CC),
+                    ("Feedback", self.chorus_feedback, CHORUS_FEEDBACK_CC),
+                    ("Mix", self.chorus_mix, CHORUS_MIX_CC),
+                ),
+            ),
+            (
+                "Phaser", self.phaser_enabled, PHASER_ENABLE_CC,
+                (
+                    ("Rate", self.phaser_rate, PHASER_RATE_CC),
+                    ("Depth", self.phaser_depth, PHASER_DEPTH_CC),
+                    ("Center", self.phaser_center, PHASER_CENTER_CC),
+                    ("Feedback", self.phaser_feedback, PHASER_FEEDBACK_CC),
+                    ("Mix", self.phaser_mix, PHASER_MIX_CC),
+                ),
+            ),
+            (
+                "Compressor", self.compressor_enabled, COMPRESSOR_ENABLE_CC,
+                (
+                    ("Threshold", self.compressor_threshold,
+                     COMPRESSOR_THRESHOLD_CC),
+                    ("Ratio", self.compressor_ratio, COMPRESSOR_RATIO_CC),
+                    ("Attack", self.compressor_attack, COMPRESSOR_ATTACK_CC),
+                    ("Release", self.compressor_release, COMPRESSOR_RELEASE_CC),
+                    ("Makeup", self.compressor_makeup, COMPRESSOR_MAKEUP_CC),
+                    ("Mix", self.compressor_mix, COMPRESSOR_MIX_CC),
+                ),
+            ),
+        )
+        for block_index, (title, enabled, enable_cc, specs) in enumerate(
+            effect_blocks
+        ):
+            block = ttk.LabelFrame(advanced_effects_frame, text=title, padding=4)
+            block.grid(
+                row=block_index // 2,
+                column=block_index % 2,
+                padx=4,
+                pady=4,
+                sticky="nsew",
+            )
+            ttk.Checkbutton(
+                block,
+                text="开启",
+                variable=enabled,
+                command=lambda var=enabled, cc=enable_cc: self.send_synth_control(
+                    cc, 127 if var.get() else 0
+                ),
+            ).grid(row=0, column=0, padx=4, sticky="w")
+            start_row = 1
+            if title == "Distortion":
+                type_box = ttk.Combobox(
+                    block,
+                    textvariable=self.distortion_type,
+                    values=tuple(DISTORTION_TYPE_VALUES),
+                    width=12,
+                    state="readonly",
+                )
+                type_box.grid(row=0, column=1, padx=4)
+                type_box.bind(
+                    "<<ComboboxSelected>>",
+                    lambda _event: self.send_distortion_type_selection(),
+                )
+            for spec_index, (label, variable, controller) in enumerate(specs):
+                row = start_row + spec_index // 2
+                column = (spec_index % 2) * 2
+                ttk.Label(block, text=label).grid(
+                    row=row, column=column, padx=2, sticky="e"
+                )
+                scale = tk.Scale(
+                    block, from_=0, to=127, orient=tk.HORIZONTAL,
+                    variable=variable, length=130,
+                )
+                scale.grid(row=row, column=column + 1, padx=2)
+                scale.bind(
+                    "<ButtonRelease-1>",
+                    lambda _event, cc=controller, var=variable: (
+                        self.send_synth_control(cc, var.get())
+                    ),
+                )
+
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
                 parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            osc_frame.grid(row=4, column=column, padx=6, pady=(6, 0))
+            osc_frame.grid(row=5, column=column, padx=6, pady=(6, 0))
             self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
-            self.root,
+            self.main_content,
             text="虚拟键盘（鼠标按住发声；电脑键盘 A W S E D F T G Y H U J K）",
             padding=10,
         )
@@ -562,11 +751,29 @@ class MidiUartSender:
             button.bind("<ButtonPress-1>", lambda _event, n=note: self.note_on(n))
             button.bind("<ButtonRelease-1>", lambda _event, n=note: self.note_off(n))
 
-        bottom = ttk.Frame(self.root, padding=(10, 0, 10, 10))
+        bottom = ttk.Frame(self.main_content, padding=(10, 0, 10, 10))
         bottom.grid(row=4, column=0, sticky="ew")
         ttk.Label(bottom, textvariable=self.status).pack(side=tk.LEFT)
         self.log = tk.Text(bottom, width=54, height=5, state=tk.DISABLED)
         self.log.pack(side=tk.RIGHT)
+
+    def _update_scroll_region(self, _event=None) -> None:
+        self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+
+    def _resize_scroll_content(self, event) -> None:
+        content_width = max(event.width, self.main_content.winfo_reqwidth())
+        self.main_canvas.itemconfigure(
+            self.main_content_window, width=content_width
+        )
+
+    def _scroll_main_view(self, event) -> None:
+        if event.delta == 0:
+            return
+        direction = -1 if event.delta > 0 else 1
+        if event.state & 0x0001:
+            self.main_canvas.xview_scroll(direction, "units")
+        else:
+            self.main_canvas.yview_scroll(direction, "units")
 
     def _build_oscillator_controls(
         self, parent: ttk.LabelFrame, osc_name: str
@@ -838,6 +1045,14 @@ class MidiUartSender:
         if self.send_control_change(EFFECT_MODE_CC, value, CONTROL_CHANNEL):
             self.status.set(f"全局效果器模式：{mode_name}")
 
+    def send_distortion_type_selection(self) -> None:
+        type_name = self.distortion_type.get()
+        value = DISTORTION_TYPE_VALUES.get(type_name, 0)
+        if self.send_control_change(
+            DISTORTION_TYPE_CC, value, CONTROL_CHANNEL
+        ):
+            self.status.set(f"Distortion类型：{type_name}")
+
     def send_filter_cutoff(self) -> None:
         base_value = max(0, min(127, int(self.filter_cutoff.get())))
         self.send_synth_control(FILTER_CUTOFF_CC, base_value)
@@ -999,6 +1214,50 @@ class MidiUartSender:
         self.send_synth_control(REVERB_SIZE_CC, self.reverb_size.get())
         self.send_synth_control(REVERB_DECAY_CC, self.reverb_decay.get())
         self.send_synth_control(REVERB_MIX_CC, self.reverb_mix.get())
+        self.send_synth_control(
+            DISTORTION_ENABLE_CC, 127 if self.distortion_enabled.get() else 0
+        )
+        self.send_distortion_type_selection()
+        self.send_synth_control(DISTORTION_DRIVE_CC, self.distortion_drive.get())
+        self.send_synth_control(DISTORTION_TONE_CC, self.distortion_tone.get())
+        self.send_synth_control(DISTORTION_MIX_CC, self.distortion_mix.get())
+        effect_parameter_groups = (
+            (
+                self.chorus_enabled, CHORUS_ENABLE_CC,
+                (
+                    (CHORUS_RATE_CC, self.chorus_rate),
+                    (CHORUS_DEPTH_CC, self.chorus_depth),
+                    (CHORUS_DELAY_CC, self.chorus_delay),
+                    (CHORUS_FEEDBACK_CC, self.chorus_feedback),
+                    (CHORUS_MIX_CC, self.chorus_mix),
+                ),
+            ),
+            (
+                self.phaser_enabled, PHASER_ENABLE_CC,
+                (
+                    (PHASER_RATE_CC, self.phaser_rate),
+                    (PHASER_DEPTH_CC, self.phaser_depth),
+                    (PHASER_CENTER_CC, self.phaser_center),
+                    (PHASER_FEEDBACK_CC, self.phaser_feedback),
+                    (PHASER_MIX_CC, self.phaser_mix),
+                ),
+            ),
+            (
+                self.compressor_enabled, COMPRESSOR_ENABLE_CC,
+                (
+                    (COMPRESSOR_THRESHOLD_CC, self.compressor_threshold),
+                    (COMPRESSOR_RATIO_CC, self.compressor_ratio),
+                    (COMPRESSOR_ATTACK_CC, self.compressor_attack),
+                    (COMPRESSOR_RELEASE_CC, self.compressor_release),
+                    (COMPRESSOR_MAKEUP_CC, self.compressor_makeup),
+                    (COMPRESSOR_MIX_CC, self.compressor_mix),
+                ),
+            ),
+        )
+        for enabled, enable_cc, parameters in effect_parameter_groups:
+            self.send_synth_control(enable_cc, 127 if enabled.get() else 0)
+            for controller, variable in parameters:
+                self.send_synth_control(controller, variable.get())
         self.send_filter_lfo_configuration()
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]

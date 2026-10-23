@@ -35,6 +35,11 @@ vlog -work work_top_dual_unison8 \
     src/global_filter.v \
     src/global_delay.v \
     src/global_reverb.v \
+    src/global_delay_reverb.v \
+    src/global_distortion.v \
+    src/global_phaser.v \
+    src/global_chorus.v \
+    src/global_compressor.v \
     src/global_effects.v \
     src/i2s_tx.v \
     src/top.v.v \

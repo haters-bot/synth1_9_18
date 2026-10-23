@@ -410,6 +410,30 @@ module tb_top_midi_input;
         send_cc(7'd55, 7'd90);
         send_cc(7'd56, 7'd75);
         send_cc(7'd57, 7'd55);
+        send_cc(7'd58, 7'd127);
+        send_cc(7'd59, 7'd2);
+        send_cc(7'd60, 7'd91);
+        send_cc(7'd61, 7'd92);
+        send_cc(7'd62, 7'd93);
+        send_cc(7'd63, 7'd127);
+        send_cc(7'd64, 7'd41);
+        send_cc(7'd65, 7'd42);
+        send_cc(7'd66, 7'd43);
+        send_cc(7'd67, 7'd44);
+        send_cc(7'd68, 7'd45);
+        send_cc(7'd69, 7'd127);
+        send_cc(7'd70, 7'd51);
+        send_cc(7'd71, 7'd52);
+        send_cc(7'd72, 7'd53);
+        send_cc(7'd73, 7'd54);
+        send_cc(7'd74, 7'd55);
+        send_cc(7'd75, 7'd127);
+        send_cc(7'd76, 7'd61);
+        send_cc(7'd77, 7'd62);
+        send_cc(7'd78, 7'd63);
+        send_cc(7'd79, 7'd64);
+        send_cc(7'd80, 7'd65);
+        send_cc(7'd81, 7'd66);
         repeat (3) @(posedge sys_clk);
         if (dut.effect_mode_target !== 2'd3
             || dut.delay_time_target !== 7'd80
@@ -417,11 +441,39 @@ module tb_top_midi_input;
             || dut.delay_mix_target !== 7'd60
             || dut.reverb_size_target !== 7'd90
             || dut.reverb_decay_target !== 7'd75
-            || dut.reverb_mix_target !== 7'd55) begin
+            || dut.reverb_mix_target !== 7'd55
+            || !dut.distortion_enable_target
+            || dut.distortion_type_target !== 2'd2
+            || dut.distortion_drive_target !== 7'd91
+            || dut.distortion_tone_target !== 7'd92
+            || dut.distortion_mix_target !== 7'd93
+            || !dut.chorus_enable_target
+            || dut.chorus_rate_target !== 7'd41
+            || dut.chorus_depth_target !== 7'd42
+            || dut.chorus_delay_target !== 7'd43
+            || dut.chorus_feedback_target !== 7'd44
+            || dut.chorus_mix_target !== 7'd45
+            || !dut.phaser_enable_target
+            || dut.phaser_rate_target !== 7'd51
+            || dut.phaser_depth_target !== 7'd52
+            || dut.phaser_center_target !== 7'd53
+            || dut.phaser_feedback_target !== 7'd54
+            || dut.phaser_mix_target !== 7'd55
+            || !dut.compressor_enable_target
+            || dut.compressor_threshold_target !== 7'd61
+            || dut.compressor_ratio_target !== 7'd62
+            || dut.compressor_attack_target !== 7'd63
+            || dut.compressor_release_target !== 7'd64
+            || dut.compressor_makeup_target !== 7'd65
+            || dut.compressor_mix_target !== 7'd66) begin
             $display("ERROR: global effect controls were not routed");
             errors = errors + 1;
         end
         send_cc(7'd51, 7'd0);
+        send_cc(7'd58, 7'd0);
+        send_cc(7'd63, 7'd0);
+        send_cc(7'd69, 7'd0);
+        send_cc(7'd75, 7'd0);
 
         // 非零深度下切换Warp模式时，必须先退回深度0，再提交新模式。
         if (dut.osc_a_warp_mode_active !== 4'd5) begin

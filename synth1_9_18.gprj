@@ -25,6 +25,11 @@
         <File path="src/global_filter.v" type="file.verilog" enable="1"/>
         <File path="src/global_delay.v" type="file.verilog" enable="1"/>
         <File path="src/global_reverb.v" type="file.verilog" enable="1"/>
+        <File path="src/global_delay_reverb.v" type="file.verilog" enable="1"/>
+        <File path="src/global_distortion.v" type="file.verilog" enable="1"/>
+        <File path="src/global_phaser.v" type="file.verilog" enable="1"/>
+        <File path="src/global_chorus.v" type="file.verilog" enable="1"/>
+        <File path="src/global_compressor.v" type="file.verilog" enable="1"/>
         <File path="src/global_effects.v" type="file.verilog" enable="1"/>
         <File path="src/global_svf_filter.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll/sys_pll_50m_ip.v" type="file.verilog" enable="1"/>

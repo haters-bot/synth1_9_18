@@ -12,6 +12,30 @@ module tb_global_effects;
     reg [6:0] reverb_size;
     reg [6:0] reverb_decay;
     reg [6:0] reverb_mix;
+    reg distortion_enable;
+    reg [1:0] distortion_type;
+    reg [6:0] distortion_drive;
+    reg [6:0] distortion_tone;
+    reg [6:0] distortion_mix;
+    reg chorus_enable;
+    reg [6:0] chorus_rate;
+    reg [6:0] chorus_depth;
+    reg [6:0] chorus_delay;
+    reg [6:0] chorus_feedback;
+    reg [6:0] chorus_mix;
+    reg phaser_enable;
+    reg [6:0] phaser_rate;
+    reg [6:0] phaser_depth;
+    reg [6:0] phaser_center;
+    reg [6:0] phaser_feedback;
+    reg [6:0] phaser_mix;
+    reg compressor_enable;
+    reg [6:0] compressor_threshold;
+    reg [6:0] compressor_ratio;
+    reg [6:0] compressor_attack;
+    reg [6:0] compressor_release;
+    reg [6:0] compressor_makeup;
+    reg [6:0] compressor_mix;
     wire in_ready;
     wire out_valid;
     wire signed [15:0] sample_out;
@@ -31,6 +55,24 @@ module tb_global_effects;
         .delay_time(delay_time), .delay_feedback(delay_feedback),
         .delay_mix(delay_mix), .reverb_size(reverb_size),
         .reverb_decay(reverb_decay), .reverb_mix(reverb_mix),
+        .distortion_enable(distortion_enable),
+        .distortion_type(distortion_type),
+        .distortion_drive(distortion_drive),
+        .distortion_tone(distortion_tone),
+        .distortion_mix(distortion_mix),
+        .chorus_enable(chorus_enable), .chorus_rate(chorus_rate),
+        .chorus_depth(chorus_depth), .chorus_delay(chorus_delay),
+        .chorus_feedback(chorus_feedback), .chorus_mix(chorus_mix),
+        .phaser_enable(phaser_enable), .phaser_rate(phaser_rate),
+        .phaser_depth(phaser_depth), .phaser_center(phaser_center),
+        .phaser_feedback(phaser_feedback), .phaser_mix(phaser_mix),
+        .compressor_enable(compressor_enable),
+        .compressor_threshold(compressor_threshold),
+        .compressor_ratio(compressor_ratio),
+        .compressor_attack(compressor_attack),
+        .compressor_release(compressor_release),
+        .compressor_makeup(compressor_makeup),
+        .compressor_mix(compressor_mix),
         .out_valid(out_valid), .sample_out(sample_out),
         .input_overrun(input_overrun)
     );
@@ -64,6 +106,30 @@ module tb_global_effects;
         reverb_size = 7'd0;
         reverb_decay = 7'd0;
         reverb_mix = 7'd127;
+        distortion_enable = 1'b0;
+        distortion_type = 2'd0;
+        distortion_drive = 7'd32;
+        distortion_tone = 7'd127;
+        distortion_mix = 7'd127;
+        chorus_enable = 1'b0;
+        chorus_rate = 7'd0;
+        chorus_depth = 7'd0;
+        chorus_delay = 7'd0;
+        chorus_feedback = 7'd0;
+        chorus_mix = 7'd127;
+        phaser_enable = 1'b0;
+        phaser_rate = 7'd0;
+        phaser_depth = 7'd0;
+        phaser_center = 7'd64;
+        phaser_feedback = 7'd0;
+        phaser_mix = 7'd127;
+        compressor_enable = 1'b0;
+        compressor_threshold = 7'd0;
+        compressor_ratio = 7'd127;
+        compressor_attack = 7'd0;
+        compressor_release = 7'd64;
+        compressor_makeup = 7'd0;
+        compressor_mix = 7'd127;
         errors = 0;
         reverb_nonzero_count = 0;
 
@@ -131,13 +197,65 @@ module tb_global_effects;
             errors = errors + 1;
         end
 
+        // 失真在高Drive下应改变中等幅度输入，同时保持16位饱和。
+        effect_mode = 2'd0;
+        distortion_enable = 1'b1;
+        distortion_drive = 7'd96;
+        process_sample(16'sd12000, captured_sample);
+        if (captured_sample === 16'sd12000) begin
+            $display("ERROR: distortion did not change the input");
+            errors = errors + 1;
+        end
+        distortion_enable = 1'b0;
+
+        // Phaser先用零输入完成Mix平滑，再验证全湿路径改变冲激。
+        phaser_enable = 1'b1;
+        for (sample_index = 0; sample_index < 128;
+             sample_index = sample_index + 1)
+            process_sample(16'sd0, captured_sample);
+        process_sample(16'sd12000, captured_sample);
+        if (captured_sample === 16'sd12000) begin
+            $display("ERROR: phaser wet path did not change the impulse");
+            errors = errors + 1;
+        end
+        phaser_enable = 1'b0;
+
+        // Chorus最短基础延迟为192点。全湿时冲激应在延迟线返回。
+        @(negedge clk);
+        rst_n = 1'b0;
+        repeat (3) @(posedge clk);
+        @(negedge clk);
+        rst_n = 1'b1;
+        chorus_enable = 1'b1;
+        process_sample(16'sd10000, captured_sample);
+        for (sample_index = 1; sample_index <= 192;
+             sample_index = sample_index + 1)
+            process_sample(16'sd0, captured_sample);
+        if (captured_sample !== 16'sd10000) begin
+            $display("ERROR: chorus delay tap got %0d expected 10000",
+                     captured_sample);
+            errors = errors + 1;
+        end
+        chorus_enable = 1'b0;
+
+        // 压缩器连续接收大信号后，稳态输出幅度应明显降低。
+        compressor_enable = 1'b1;
+        for (sample_index = 0; sample_index < 400;
+             sample_index = sample_index + 1)
+            process_sample(16'sd25000, captured_sample);
+        if (captured_sample >= 16'sd20000) begin
+            $display("ERROR: compressor steady output too high: %0d",
+                     captured_sample);
+            errors = errors + 1;
+        end
+
         if (input_overrun) begin
             $display("ERROR: effects wrapper reported an unexpected overrun");
             errors = errors + 1;
         end
 
         if (errors == 0)
-            $display("PASS: global delay, Schroeder reverb, and bypass");
+            $display("PASS: complete global effects chain");
         else
             $display("FAIL: %0d error(s)", errors);
         $finish;

@@ -325,10 +325,25 @@ Resonance和Mix仍以每个样本一级平滑，完整行程约1.32 ms。Mix=0�
 
 ## 10. 全局效果器
 
-效果器位于全局滤波器之后、Master Level之前，以96 kHz处理整机混音。CC51选择旁路、
-Delay、Reverb或两者并联；CC52～57控制时间、反馈、空间尺寸、衰减和Dry/Wet。
+效果器位于全局滤波器之后、Master Level之前，以96 kHz处理整机混音。处理顺序为
+Distortion、Phaser、Chorus、Delay/Reverb、Compressor。CC51继续选择旁路、Delay、
+Reverb或两者并联；CC52～57控制时间、反馈、空间尺寸、衰减和Dry/Wet。
 Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通反馈梳状线和
 2条全通线构成。具体定点结构、延迟长度和RAM预算见`docs/global_effects.md`。
+
+新增效果器使用以下独立CC，因此可以同时开启：
+
+| CC | 参数 | 默认值 |
+|---:|---|---:|
+| 58 | Distortion Enable | 0 |
+| 59 | Distortion Type：0 Soft、1 Hard、2 Foldback | 0 |
+| 60～62 | Distortion Drive、Tone、Mix | 32、127、64 |
+| 63 | Chorus Enable | 0 |
+| 64～68 | Chorus Rate、Depth、Delay、Feedback、Mix | 20、32、48、20、64 |
+| 69 | Phaser Enable | 0 |
+| 70～74 | Phaser Rate、Depth、Center、Feedback、Mix | 20、48、64、20、64 |
+| 75 | Compressor Enable | 0 |
+| 76～81 | Threshold、Ratio、Attack、Release、Makeup、Mix | 96、64、20、80、0、127 |
 
 ## 11. Pan的当前边界
 
@@ -347,7 +362,8 @@ Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通�
 - OSC A/B及全局参数固定通过通道16发送；
 - 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
-- 全局效果器面板通过CC51～57控制Delay和Reverb；
+- 全局效果器面板通过CC51～57控制Delay和Reverb，通过CC58～81独立控制Distortion、
+  Chorus、Phaser和Compressor；
 - 上位机带三个独立FPGA通用LFO，每个都可调`0.1～10 Hz`速率、三个控制点和两段独立曲率；
   8条共享路由可独立选择LFO 1/2/3，并分别指向OSC A/B的WT Position、Warp Amount、Level以及Pan、Filter
   Cutoff、Resonance和Mix，每条路由具有独立的`-127～+127`深度；

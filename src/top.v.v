@@ -161,6 +161,30 @@ module top #(
     wire [6:0] reverb_size_target;
     wire [6:0] reverb_decay_target;
     wire [6:0] reverb_mix_target;
+    wire       distortion_enable_target;
+    wire [1:0] distortion_type_target;
+    wire [6:0] distortion_drive_target;
+    wire [6:0] distortion_tone_target;
+    wire [6:0] distortion_mix_target;
+    wire       chorus_enable_target;
+    wire [6:0] chorus_rate_target;
+    wire [6:0] chorus_depth_target;
+    wire [6:0] chorus_delay_target;
+    wire [6:0] chorus_feedback_target;
+    wire [6:0] chorus_mix_target;
+    wire       phaser_enable_target;
+    wire [6:0] phaser_rate_target;
+    wire [6:0] phaser_depth_target;
+    wire [6:0] phaser_center_target;
+    wire [6:0] phaser_feedback_target;
+    wire [6:0] phaser_mix_target;
+    wire       compressor_enable_target;
+    wire [6:0] compressor_threshold_target;
+    wire [6:0] compressor_ratio_target;
+    wire [6:0] compressor_attack_target;
+    wire [6:0] compressor_release_target;
+    wire [6:0] compressor_makeup_target;
+    wire [6:0] compressor_mix_target;
     reg  [8:0] master_gain_q8;
     wire [8:0] master_gain_target_q8;
 
@@ -665,6 +689,30 @@ module top #(
         .reverb_size               (reverb_size_target),
         .reverb_decay              (reverb_decay_target),
         .reverb_mix                (reverb_mix_target),
+        .distortion_enable         (distortion_enable_target),
+        .distortion_type           (distortion_type_target),
+        .distortion_drive          (distortion_drive_target),
+        .distortion_tone           (distortion_tone_target),
+        .distortion_mix            (distortion_mix_target),
+        .chorus_enable             (chorus_enable_target),
+        .chorus_rate               (chorus_rate_target),
+        .chorus_depth              (chorus_depth_target),
+        .chorus_delay              (chorus_delay_target),
+        .chorus_feedback           (chorus_feedback_target),
+        .chorus_mix                (chorus_mix_target),
+        .phaser_enable             (phaser_enable_target),
+        .phaser_rate               (phaser_rate_target),
+        .phaser_depth              (phaser_depth_target),
+        .phaser_center             (phaser_center_target),
+        .phaser_feedback           (phaser_feedback_target),
+        .phaser_mix                (phaser_mix_target),
+        .compressor_enable         (compressor_enable_target),
+        .compressor_threshold      (compressor_threshold_target),
+        .compressor_ratio          (compressor_ratio_target),
+        .compressor_attack         (compressor_attack_target),
+        .compressor_release        (compressor_release_target),
+        .compressor_makeup         (compressor_makeup_target),
+        .compressor_mix            (compressor_mix_target),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
         .osc_a_detune_amount       (osc_a_detune_amount),
@@ -927,6 +975,23 @@ module top #(
         .in_valid        (global_filter_output_valid),
         .sample_in       (global_filtered_sample),
         .in_ready        (global_effects_input_ready),
+        .distortion_enable(distortion_enable_target),
+        .distortion_type  (distortion_type_target),
+        .distortion_drive (distortion_drive_target),
+        .distortion_tone  (distortion_tone_target),
+        .distortion_mix   (distortion_mix_target),
+        .phaser_enable    (phaser_enable_target),
+        .phaser_rate      (phaser_rate_target),
+        .phaser_depth     (phaser_depth_target),
+        .phaser_center    (phaser_center_target),
+        .phaser_feedback  (phaser_feedback_target),
+        .phaser_mix       (phaser_mix_target),
+        .chorus_enable    (chorus_enable_target),
+        .chorus_rate      (chorus_rate_target),
+        .chorus_depth     (chorus_depth_target),
+        .chorus_delay     (chorus_delay_target),
+        .chorus_feedback  (chorus_feedback_target),
+        .chorus_mix       (chorus_mix_target),
         .effect_mode     (effect_mode_target),
         .delay_time      (delay_time_target),
         .delay_feedback  (delay_feedback_target),
@@ -934,6 +999,13 @@ module top #(
         .reverb_size     (reverb_size_target),
         .reverb_decay    (reverb_decay_target),
         .reverb_mix      (reverb_mix_target),
+        .compressor_enable   (compressor_enable_target),
+        .compressor_threshold(compressor_threshold_target),
+        .compressor_ratio    (compressor_ratio_target),
+        .compressor_attack   (compressor_attack_target),
+        .compressor_release  (compressor_release_target),
+        .compressor_makeup   (compressor_makeup_target),
+        .compressor_mix      (compressor_mix_target),
         .out_valid       (global_effects_output_valid),
         .sample_out      (effect_processed_sample),
         .input_overrun   (global_effects_input_overrun)
