@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import math
-import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -40,24 +38,81 @@ FILTER_MODE_CC = 42
 FILTER_CUTOFF_CC = 43
 FILTER_RESONANCE_CC = 44
 FILTER_MIX_CC = 45
-# FPGA三点Cutoff LFO的影子寄存器参数编号。
+MASTER_LEVEL_CC = 48
+EFFECT_MODE_CC = 51
+DELAY_TIME_CC = 52
+DELAY_FEEDBACK_CC = 53
+DELAY_MIX_CC = 54
+REVERB_SIZE_CC = 55
+REVERB_DECAY_CC = 56
+REVERB_MIX_CC = 57
+DISTORTION_ENABLE_CC = 58
+DISTORTION_TYPE_CC = 59
+DISTORTION_DRIVE_CC = 60
+DISTORTION_TONE_CC = 61
+DISTORTION_MIX_CC = 62
+CHORUS_ENABLE_CC = 63
+CHORUS_RATE_CC = 64
+CHORUS_DEPTH_CC = 65
+CHORUS_DELAY_CC = 66
+CHORUS_FEEDBACK_CC = 67
+CHORUS_MIX_CC = 68
+PHASER_ENABLE_CC = 69
+PHASER_RATE_CC = 70
+PHASER_DEPTH_CC = 71
+PHASER_CENTER_CC = 72
+PHASER_FEEDBACK_CC = 73
+PHASER_MIX_CC = 74
+COMPRESSOR_ENABLE_CC = 75
+COMPRESSOR_THRESHOLD_CC = 76
+COMPRESSOR_RATIO_CC = 77
+COMPRESSOR_ATTACK_CC = 78
+COMPRESSOR_RELEASE_CC = 79
+COMPRESSOR_MAKEUP_CC = 80
+COMPRESSOR_MIX_CC = 81
+# 三个独立三点LFO共享同一个8槽调制矩阵和一次原子提交。
+FILTER_LFO_PARAMETER_SETS = (
+    {
+        "enable": 16, "step_0": 17, "step_1": 18,
+        "point_0": 20, "point_1": 21, "point_2": 22,
+        "curve_0": 23, "curve_1": 24,
+    },
+    {
+        "enable": 31, "step_0": 32, "step_1": 33,
+        "point_0": 34, "point_1": 35, "point_2": 36,
+        "curve_0": 37, "curve_1": 38,
+    },
+    {
+        "enable": 39, "step_0": 40, "step_1": 41,
+        "point_0": 42, "point_1": 43, "point_2": 44,
+        "curve_0": 45, "curve_1": 46,
+    },
+)
 FILTER_LFO_PARAMETER = {
-    "enable": 16,
-    "step_0": 17,
-    "step_1": 18,
-    "depth": 19,
-    "point_0": 20,
-    "point_1": 21,
-    "point_2": 22,
-    "curve_0": 23,
-    "curve_1": 24,
     "commit": 25,
+    "route_index": 26,
+    "route_enable": 27,
+    "route_destination": 28,
+    "route_depth": 29,
+    "route_source": 30,
 }
-# 该定时器只服务于OSC A/B的临时Warp LFO；Cutoff LFO已移入FPGA。
-LFO_UPDATE_MS = 5
 FILTER_LFO_CONFIG_DEBOUNCE_MS = 75
 FILTER_LFO_PHASE_BITS = 24
 FILTER_LFO_SAMPLE_RATE = 96000.0
+LFO_DESTINATIONS = {
+    "无": 0,
+    "OSC A WT Position": 1,
+    "OSC A Warp Amount": 2,
+    "OSC A Level": 3,
+    "OSC B WT Position": 4,
+    "OSC B Warp Amount": 5,
+    "OSC B Level": 6,
+    "Pan（当前预留）": 7,
+    "Filter Cutoff": 8,
+    "Filter Resonance": 9,
+    "Filter Mix": 10,
+}
+LFO_SOURCES = {"LFO 1": 0, "LFO 2": 1, "LFO 3": 2}
 OSC_A_CC = {
     "enable": 36,
     "warp_mode": 38,
@@ -70,6 +125,8 @@ OSC_A_CC = {
     "decay": 25,
     "sustain": 26,
     "release": 27,
+    "level": 46,
+    "wavetable_index": 49,
 }
 OSC_B_CC = {
     "enable": 37,
@@ -83,13 +140,15 @@ OSC_B_CC = {
     "decay": 33,
     "sustain": 34,
     "release": 35,
+    "level": 47,
+    "wavetable_index": 50,
 }
 WAVEFORM_VALUES = {
     "正弦波": 0,
     "三角波": 32,
     "方波": 64,
     "锯齿波": 96,
-    "Acid波表": 127,
+    "SD/DDR波表": 127,
 }
 WARP_MODE_VALUES = {
     "关闭": 0,
@@ -114,6 +173,17 @@ FILTER_MODE_VALUES = {
     "梳状 +": 5,
     "梳状 -": 6,
 }
+EFFECT_MODE_VALUES = {
+    "旁路": 0,
+    "Delay": 1,
+    "Reverb": 2,
+    "Delay + Reverb": 3,
+}
+DISTORTION_TYPE_VALUES = {
+    "Soft Clip": 0,
+    "Hard Clip": 1,
+    "Foldback": 2,
+}
 
 
 def note_name(note: int) -> str:
@@ -124,19 +194,21 @@ class MidiUartSender:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("FPGA MIDI UART 测试器")
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = max(640, min(1280, screen_width - 80))
+        window_height = max(480, min(860, screen_height - 120))
+        self.root.geometry(f"{window_width}x{window_height}")
+        self.root.minsize(640, 480)
 
         self.port = None
         self.port_lookup: dict[str, str] = {}
         self.active_notes: set[int] = set()
         self.keyboard_notes: set[int] = set()
-        self.lfo_phase = {"A": 0.0, "B": 0.0}
-        self.lfo_last_value: dict[str, int | None] = {"A": None, "B": None}
-        self.filter_lfo_curve = LfoCurve()
-        self.filter_lfo_window: tk.Toplevel | None = None
+        self.filter_lfo_curves = [LfoCurve() for _ in range(3)]
+        self.filter_lfo_windows: list[tk.Toplevel | None] = [None, None, None]
         self.filter_lfo_config_after_id: str | None = None
-        self.lfo_last_time = time.monotonic()
-        self.lfo_after_id: str | None = None
 
         self.port_name = tk.StringVar()
         self.baud_rate = tk.StringVar(value="31250")
@@ -147,9 +219,64 @@ class MidiUartSender:
         self.filter_cutoff = tk.IntVar(value=127)
         self.filter_resonance = tk.IntVar(value=0)
         self.filter_mix = tk.IntVar(value=127)
-        self.filter_lfo_enabled = tk.BooleanVar(value=False)
-        self.filter_lfo_rate = tk.DoubleVar(value=0.5)
-        self.filter_lfo_depth = tk.IntVar(value=32)
+        self.master_level = tk.IntVar(value=127)
+        self.effect_mode = tk.StringVar(value="旁路")
+        self.delay_time = tk.IntVar(value=64)
+        self.delay_feedback = tk.IntVar(value=48)
+        self.delay_mix = tk.IntVar(value=64)
+        self.reverb_size = tk.IntVar(value=64)
+        self.reverb_decay = tk.IntVar(value=72)
+        self.reverb_mix = tk.IntVar(value=48)
+        self.distortion_enabled = tk.BooleanVar(value=False)
+        self.distortion_type = tk.StringVar(value="Soft Clip")
+        self.distortion_drive = tk.IntVar(value=32)
+        self.distortion_tone = tk.IntVar(value=127)
+        self.distortion_mix = tk.IntVar(value=64)
+        self.chorus_enabled = tk.BooleanVar(value=False)
+        self.chorus_rate = tk.IntVar(value=20)
+        self.chorus_depth = tk.IntVar(value=32)
+        self.chorus_delay = tk.IntVar(value=48)
+        self.chorus_feedback = tk.IntVar(value=20)
+        self.chorus_mix = tk.IntVar(value=64)
+        self.phaser_enabled = tk.BooleanVar(value=False)
+        self.phaser_rate = tk.IntVar(value=20)
+        self.phaser_depth = tk.IntVar(value=48)
+        self.phaser_center = tk.IntVar(value=64)
+        self.phaser_feedback = tk.IntVar(value=20)
+        self.phaser_mix = tk.IntVar(value=64)
+        self.compressor_enabled = tk.BooleanVar(value=False)
+        self.compressor_threshold = tk.IntVar(value=96)
+        self.compressor_ratio = tk.IntVar(value=64)
+        self.compressor_attack = tk.IntVar(value=20)
+        self.compressor_release = tk.IntVar(value=80)
+        self.compressor_makeup = tk.IntVar(value=0)
+        self.compressor_mix = tk.IntVar(value=127)
+        self.filter_lfo_enabled = [
+            tk.BooleanVar(value=False) for _ in range(3)
+        ]
+        self.filter_lfo_rate = [
+            tk.DoubleVar(value=0.5) for _ in range(3)
+        ]
+        self.lfo_routes = []
+        default_routes = [
+            (True, "Filter Cutoff", 32),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+            (False, "无", 0),
+        ]
+        for enabled, destination, depth in default_routes:
+            self.lfo_routes.append(
+                {
+                    "enabled": tk.BooleanVar(value=enabled),
+                    "source": tk.StringVar(value="LFO 1"),
+                    "destination": tk.StringVar(value=destination),
+                    "depth": tk.IntVar(value=depth),
+                }
+            )
         self.osc_controls = {}
         for osc_name in ("A", "B"):
             # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
@@ -158,16 +285,15 @@ class MidiUartSender:
                 "waveform": tk.StringVar(value="方波"),
                 "warp_mode": tk.StringVar(value="关闭"),
                 "warp_amount": tk.IntVar(value=0),
-                "lfo_enabled": tk.BooleanVar(value=False),
-                "lfo_rate": tk.DoubleVar(value=0.5),
-                "lfo_depth": tk.IntVar(value=64),
                 "wt_position": tk.IntVar(value=0),
+                "wavetable_index": tk.IntVar(value=0),
                 "detune": tk.IntVar(value=64),
                 "unison": tk.IntVar(value=1),
                 "attack": tk.IntVar(value=27),
                 "decay": tk.IntVar(value=54),
                 "sustain": tk.IntVar(value=89),
                 "release": tk.IntVar(value=67),
+                "level": tk.IntVar(value=127),
             }
         self.status = tk.StringVar(value="未连接")
 
@@ -177,10 +303,38 @@ class MidiUartSender:
         self.root.bind_all("<KeyPress>", self._key_press)
         self.root.bind_all("<KeyRelease>", self._key_release)
         self.root.protocol("WM_DELETE_WINDOW", self.close)
-        self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 
     def _build_ui(self) -> None:
-        connection = ttk.LabelFrame(self.root, text="串口连接", padding=10)
+        self.root.rowconfigure(0, weight=1)
+        self.root.columnconfigure(0, weight=1)
+        viewport = ttk.Frame(self.root)
+        viewport.grid(row=0, column=0, sticky="nsew")
+        viewport.rowconfigure(0, weight=1)
+        viewport.columnconfigure(0, weight=1)
+        self.main_canvas = tk.Canvas(viewport, highlightthickness=0)
+        vertical_scrollbar = ttk.Scrollbar(
+            viewport, orient=tk.VERTICAL, command=self.main_canvas.yview
+        )
+        horizontal_scrollbar = ttk.Scrollbar(
+            viewport, orient=tk.HORIZONTAL, command=self.main_canvas.xview
+        )
+        self.main_canvas.configure(
+            yscrollcommand=vertical_scrollbar.set,
+            xscrollcommand=horizontal_scrollbar.set,
+        )
+        self.main_canvas.grid(row=0, column=0, sticky="nsew")
+        vertical_scrollbar.grid(row=0, column=1, sticky="ns")
+        horizontal_scrollbar.grid(row=1, column=0, sticky="ew")
+        self.main_content = ttk.Frame(self.main_canvas)
+        self.main_content.columnconfigure(0, weight=1)
+        self.main_content_window = self.main_canvas.create_window(
+            (0, 0), window=self.main_content, anchor="nw"
+        )
+        self.main_content.bind("<Configure>", self._update_scroll_region)
+        self.main_canvas.bind("<Configure>", self._resize_scroll_content)
+        self.root.bind_all("<MouseWheel>", self._scroll_main_view, add="+")
+
+        connection = ttk.LabelFrame(self.main_content, text="串口连接", padding=10)
         connection.grid(row=0, column=0, padx=10, pady=8, sticky="ew")
 
         ttk.Label(connection, text="端口").grid(row=0, column=0, padx=4)
@@ -206,7 +360,7 @@ class MidiUartSender:
         )
         self.connect_button.grid(row=0, column=5, padx=(12, 4))
 
-        controls = ttk.LabelFrame(self.root, text="MIDI参数", padding=10)
+        controls = ttk.LabelFrame(self.main_content, text="MIDI参数", padding=10)
         controls.grid(row=1, column=0, padx=10, pady=4, sticky="ew")
 
         ttk.Label(controls, text="演奏通道固定为1").grid(
@@ -232,7 +386,7 @@ class MidiUartSender:
         )
 
         parameter_controls = ttk.LabelFrame(
-            self.root, text="双振荡器参数（松开滑块时发送）", padding=10
+            self.main_content, text="双振荡器参数（松开滑块时发送）", padding=10
         )
         parameter_controls.grid(row=2, column=0, padx=10, pady=4, sticky="ew")
 
@@ -325,63 +479,258 @@ class MidiUartSender:
             ),
         )
 
-        ttk.Checkbutton(
-            filter_frame,
-            text="Cutoff LFO",
-            variable=self.filter_lfo_enabled,
-            command=self.toggle_filter_lfo,
-        ).grid(row=1, column=0, columnspan=2, padx=4, sticky="w")
-
-        ttk.Label(filter_frame, text="LFO速率/Hz").grid(
-            row=2, column=0, padx=4, sticky="w"
+        ttk.Label(filter_frame, text="Master Level").grid(
+            row=1, column=4, padx=(12, 4)
         )
-        lfo_rate_scale = tk.Scale(
-            filter_frame,
-            from_=0.1,
-            to=10.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=self.filter_lfo_rate,
-            length=210,
-        )
-        lfo_rate_scale.grid(row=2, column=1, columnspan=2, padx=4)
-        lfo_rate_scale.bind(
-            "<ButtonRelease-1>",
-            lambda _event: self.send_filter_lfo_configuration(),
-        )
-
-        ttk.Label(filter_frame, text="LFO深度（Comb按70/127缩放）").grid(
-            row=2, column=3, padx=(12, 4), sticky="w"
-        )
-        lfo_depth_scale = tk.Scale(
+        master_scale = tk.Scale(
             filter_frame,
             from_=0,
             to=127,
             orient=tk.HORIZONTAL,
-            variable=self.filter_lfo_depth,
+            variable=self.master_level,
             length=210,
         )
-        lfo_depth_scale.grid(row=2, column=4, columnspan=2, padx=4)
-        lfo_depth_scale.bind(
+        master_scale.grid(row=1, column=5, padx=4)
+        master_scale.bind(
             "<ButtonRelease-1>",
-            lambda _event: self.send_filter_lfo_configuration(),
+            lambda _event: self.send_synth_control(
+                MASTER_LEVEL_CC, self.master_level.get()
+            ),
         )
 
+        lfo_frame = ttk.LabelFrame(
+            parameter_controls, text="FPGA通用LFO与调制路由", padding=6
+        )
+        lfo_frame.grid(
+            row=2, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+
+        for lfo_index in range(3):
+            ttk.Checkbutton(
+                lfo_frame,
+                text=f"开启 LFO {lfo_index + 1}",
+                variable=self.filter_lfo_enabled[lfo_index],
+                command=self.send_filter_lfo_configuration,
+            ).grid(row=lfo_index, column=0, padx=4, sticky="w")
+            ttk.Label(lfo_frame, text="速率/Hz").grid(
+                row=lfo_index, column=1, padx=4, sticky="e"
+            )
+            lfo_rate_scale = tk.Scale(
+                lfo_frame,
+                from_=0.1,
+                to=10.0,
+                resolution=0.1,
+                orient=tk.HORIZONTAL,
+                variable=self.filter_lfo_rate[lfo_index],
+                length=210,
+            )
+            lfo_rate_scale.grid(row=lfo_index, column=2, padx=4)
+            lfo_rate_scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event: self.send_filter_lfo_configuration(),
+            )
+            ttk.Button(
+                lfo_frame,
+                text=f"编辑 LFO {lfo_index + 1} 曲线",
+                command=lambda index=lfo_index: self.open_filter_lfo_editor(index),
+            ).grid(row=lfo_index, column=3, padx=4)
+
         ttk.Button(
-            filter_frame,
-            text="编辑LFO曲线",
-            command=self.open_filter_lfo_editor,
-        ).grid(row=3, column=0, columnspan=2, padx=4, pady=(6, 2), sticky="w")
+            lfo_frame,
+            text="应用LFO与路由",
+            command=self.send_filter_lfo_configuration,
+        ).grid(row=0, column=4, padx=4)
+
+        for route_index, route in enumerate(self.lfo_routes):
+            route_row = 3 + route_index
+            route_column = 0
+            ttk.Checkbutton(
+                lfo_frame,
+                text=f"路由{route_index + 1}",
+                variable=route["enabled"],
+            ).grid(row=route_row, column=route_column, padx=4, sticky="w")
+            ttk.Combobox(
+                lfo_frame,
+                textvariable=route["source"],
+                values=tuple(LFO_SOURCES),
+                width=6,
+                state="readonly",
+            ).grid(row=route_row, column=route_column + 1, padx=4)
+            ttk.Combobox(
+                lfo_frame,
+                textvariable=route["destination"],
+                values=tuple(LFO_DESTINATIONS),
+                width=20,
+                state="readonly",
+            ).grid(row=route_row, column=route_column + 2, padx=4)
+            tk.Spinbox(
+                lfo_frame,
+                from_=-127,
+                to=127,
+                textvariable=route["depth"],
+                width=6,
+            ).grid(row=route_row, column=route_column + 3, padx=4)
+
+        effects_frame = ttk.LabelFrame(
+            parameter_controls, text="全局效果器", padding=6
+        )
+        effects_frame.grid(
+            row=3, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+        ttk.Label(effects_frame, text="模式").grid(row=0, column=0, padx=4)
+        effect_mode_box = ttk.Combobox(
+            effects_frame,
+            textvariable=self.effect_mode,
+            values=tuple(EFFECT_MODE_VALUES),
+            width=16,
+            state="readonly",
+        )
+        effect_mode_box.grid(row=0, column=1, padx=4)
+        effect_mode_box.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self.send_effect_mode_selection(),
+        )
+
+        effect_specs = (
+            ("Delay Time", self.delay_time, DELAY_TIME_CC),
+            ("Delay Feedback", self.delay_feedback, DELAY_FEEDBACK_CC),
+            ("Delay Mix", self.delay_mix, DELAY_MIX_CC),
+            ("Reverb Size", self.reverb_size, REVERB_SIZE_CC),
+            ("Reverb Decay", self.reverb_decay, REVERB_DECAY_CC),
+            ("Reverb Mix", self.reverb_mix, REVERB_MIX_CC),
+        )
+        for index, (label, variable, controller) in enumerate(effect_specs):
+            row = index // 2
+            column = 2 + (index % 2) * 2
+            ttk.Label(effects_frame, text=label).grid(
+                row=row, column=column, padx=(10, 2), sticky="e"
+            )
+            scale = tk.Scale(
+                effects_frame,
+                from_=0,
+                to=127,
+                orient=tk.HORIZONTAL,
+                variable=variable,
+                length=150,
+            )
+            scale.grid(row=row, column=column + 1, padx=2)
+            scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event, cc=controller, var=variable: (
+                    self.send_synth_control(cc, var.get())
+                ),
+            )
+
+        advanced_effects_frame = ttk.LabelFrame(
+            parameter_controls,
+            text="Distortion / Chorus / Phaser / Compressor",
+            padding=6,
+        )
+        advanced_effects_frame.grid(
+            row=4, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+        effect_blocks = (
+            (
+                "Distortion", self.distortion_enabled, DISTORTION_ENABLE_CC,
+                (
+                    ("Drive", self.distortion_drive, DISTORTION_DRIVE_CC),
+                    ("Tone", self.distortion_tone, DISTORTION_TONE_CC),
+                    ("Mix", self.distortion_mix, DISTORTION_MIX_CC),
+                ),
+            ),
+            (
+                "Chorus", self.chorus_enabled, CHORUS_ENABLE_CC,
+                (
+                    ("Rate", self.chorus_rate, CHORUS_RATE_CC),
+                    ("Depth", self.chorus_depth, CHORUS_DEPTH_CC),
+                    ("Delay", self.chorus_delay, CHORUS_DELAY_CC),
+                    ("Feedback", self.chorus_feedback, CHORUS_FEEDBACK_CC),
+                    ("Mix", self.chorus_mix, CHORUS_MIX_CC),
+                ),
+            ),
+            (
+                "Phaser", self.phaser_enabled, PHASER_ENABLE_CC,
+                (
+                    ("Rate", self.phaser_rate, PHASER_RATE_CC),
+                    ("Depth", self.phaser_depth, PHASER_DEPTH_CC),
+                    ("Center", self.phaser_center, PHASER_CENTER_CC),
+                    ("Feedback", self.phaser_feedback, PHASER_FEEDBACK_CC),
+                    ("Mix", self.phaser_mix, PHASER_MIX_CC),
+                ),
+            ),
+            (
+                "Compressor", self.compressor_enabled, COMPRESSOR_ENABLE_CC,
+                (
+                    ("Threshold", self.compressor_threshold,
+                     COMPRESSOR_THRESHOLD_CC),
+                    ("Ratio", self.compressor_ratio, COMPRESSOR_RATIO_CC),
+                    ("Attack", self.compressor_attack, COMPRESSOR_ATTACK_CC),
+                    ("Release", self.compressor_release, COMPRESSOR_RELEASE_CC),
+                    ("Makeup", self.compressor_makeup, COMPRESSOR_MAKEUP_CC),
+                    ("Mix", self.compressor_mix, COMPRESSOR_MIX_CC),
+                ),
+            ),
+        )
+        for block_index, (title, enabled, enable_cc, specs) in enumerate(
+            effect_blocks
+        ):
+            block = ttk.LabelFrame(advanced_effects_frame, text=title, padding=4)
+            block.grid(
+                row=block_index // 2,
+                column=block_index % 2,
+                padx=4,
+                pady=4,
+                sticky="nsew",
+            )
+            ttk.Checkbutton(
+                block,
+                text="开启",
+                variable=enabled,
+                command=lambda var=enabled, cc=enable_cc: self.send_synth_control(
+                    cc, 127 if var.get() else 0
+                ),
+            ).grid(row=0, column=0, padx=4, sticky="w")
+            start_row = 1
+            if title == "Distortion":
+                type_box = ttk.Combobox(
+                    block,
+                    textvariable=self.distortion_type,
+                    values=tuple(DISTORTION_TYPE_VALUES),
+                    width=12,
+                    state="readonly",
+                )
+                type_box.grid(row=0, column=1, padx=4)
+                type_box.bind(
+                    "<<ComboboxSelected>>",
+                    lambda _event: self.send_distortion_type_selection(),
+                )
+            for spec_index, (label, variable, controller) in enumerate(specs):
+                row = start_row + spec_index // 2
+                column = (spec_index % 2) * 2
+                ttk.Label(block, text=label).grid(
+                    row=row, column=column, padx=2, sticky="e"
+                )
+                scale = tk.Scale(
+                    block, from_=0, to=127, orient=tk.HORIZONTAL,
+                    variable=variable, length=130,
+                )
+                scale.grid(row=row, column=column + 1, padx=2)
+                scale.bind(
+                    "<ButtonRelease-1>",
+                    lambda _event, cc=controller, var=variable: (
+                        self.send_synth_control(cc, var.get())
+                    ),
+                )
 
         for column, osc_name in enumerate(("A", "B")):
             osc_frame = ttk.LabelFrame(
                 parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            osc_frame.grid(row=2, column=column, padx=6, pady=(6, 0))
+            osc_frame.grid(row=5, column=column, padx=6, pady=(6, 0))
             self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
-            self.root,
+            self.main_content,
             text="虚拟键盘（鼠标按住发声；电脑键盘 A W S E D F T G Y H U J K）",
             padding=10,
         )
@@ -402,11 +751,29 @@ class MidiUartSender:
             button.bind("<ButtonPress-1>", lambda _event, n=note: self.note_on(n))
             button.bind("<ButtonRelease-1>", lambda _event, n=note: self.note_off(n))
 
-        bottom = ttk.Frame(self.root, padding=(10, 0, 10, 10))
+        bottom = ttk.Frame(self.main_content, padding=(10, 0, 10, 10))
         bottom.grid(row=4, column=0, sticky="ew")
         ttk.Label(bottom, textvariable=self.status).pack(side=tk.LEFT)
         self.log = tk.Text(bottom, width=54, height=5, state=tk.DISABLED)
         self.log.pack(side=tk.RIGHT)
+
+    def _update_scroll_region(self, _event=None) -> None:
+        self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+
+    def _resize_scroll_content(self, event) -> None:
+        content_width = max(event.width, self.main_content.winfo_reqwidth())
+        self.main_canvas.itemconfigure(
+            self.main_content_window, width=content_width
+        )
+
+    def _scroll_main_view(self, event) -> None:
+        if event.delta == 0:
+            return
+        direction = -1 if event.delta > 0 else 1
+        if event.state & 0x0001:
+            self.main_canvas.xview_scroll(direction, "units")
+        else:
+            self.main_canvas.yview_scroll(direction, "units")
 
     def _build_oscillator_controls(
         self, parent: ttk.LabelFrame, osc_name: str
@@ -452,9 +819,11 @@ class MidiUartSender:
 
         parameter_specs = (
             ("Warp Amount", "warp_amount", 0, 127),
+            ("DDR波表编号", "wavetable_index", 0, 15),
             ("WT Position", "wt_position", 0, 127),
             ("Detune", "detune", 0, 127),
             ("Unison", "unison", 1, 8),
+            ("Level", "level", 0, 127),
             ("Attack", "attack", 0, 127),
             ("Decay", "decay", 0, 127),
             ("Sustain", "sustain", 0, 127),
@@ -483,46 +852,6 @@ class MidiUartSender:
                     self.send_synth_control(cc, var.get())
                 ),
             )
-
-        lfo_row = 2 + len(parameter_specs)
-        ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
-            row=lfo_row,
-            column=0,
-            columnspan=3,
-            sticky="ew",
-            pady=(6, 4),
-        )
-        ttk.Checkbutton(
-            parent,
-            text="临时Warp LFO",
-            variable=controls["lfo_enabled"],
-            command=lambda name=osc_name: self.toggle_warp_lfo(name),
-        ).grid(row=lfo_row + 1, column=0, columnspan=2, padx=4, sticky="w")
-
-        ttk.Label(parent, text="LFO速率/Hz").grid(
-            row=lfo_row + 2, column=0, padx=4, sticky="w"
-        )
-        tk.Scale(
-            parent,
-            from_=0.1,
-            to=10.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=controls["lfo_rate"],
-            length=260,
-        ).grid(row=lfo_row + 2, column=1, padx=4)
-
-        ttk.Label(parent, text="LFO深度").grid(
-            row=lfo_row + 3, column=0, padx=4, sticky="w"
-        )
-        tk.Scale(
-            parent,
-            from_=0,
-            to=127,
-            orient=tk.HORIZONTAL,
-            variable=controls["lfo_depth"],
-            length=260,
-        ).grid(row=lfo_row + 3, column=1, padx=4)
 
     def refresh_ports(self) -> None:
         if list_ports is None:
@@ -598,7 +927,6 @@ class MidiUartSender:
             port_to_close.close()
         self.connect_button.configure(text="连接")
         self.status.set("未连接")
-        self.lfo_last_value = {"A": None, "B": None}
 
     def _send(self, message: bytes, log_message: bool = True) -> bool:
         if self.port is None or not self.port.is_open:
@@ -613,7 +941,6 @@ class MidiUartSender:
                 failed_port.close()
             self.active_notes.clear()
             self.keyboard_notes.clear()
-            self.lfo_last_value = {"A": None, "B": None}
             self.connect_button.configure(text="连接")
             self.status.set("串口连接已断开")
             messagebox.showerror("发送失败", str(exc))
@@ -712,12 +1039,23 @@ class MidiUartSender:
         if self.send_control_change(FILTER_MODE_CC, value, CONTROL_CHANNEL):
             self.status.set(f"全局滤波器模式：{mode_name}")
 
+    def send_effect_mode_selection(self) -> None:
+        mode_name = self.effect_mode.get()
+        value = EFFECT_MODE_VALUES.get(mode_name, EFFECT_MODE_VALUES["旁路"])
+        if self.send_control_change(EFFECT_MODE_CC, value, CONTROL_CHANNEL):
+            self.status.set(f"全局效果器模式：{mode_name}")
+
+    def send_distortion_type_selection(self) -> None:
+        type_name = self.distortion_type.get()
+        value = DISTORTION_TYPE_VALUES.get(type_name, 0)
+        if self.send_control_change(
+            DISTORTION_TYPE_CC, value, CONTROL_CHANNEL
+        ):
+            self.status.set(f"Distortion类型：{type_name}")
+
     def send_filter_cutoff(self) -> None:
         base_value = max(0, min(127, int(self.filter_cutoff.get())))
         self.send_synth_control(FILTER_CUTOFF_CC, base_value)
-
-    def toggle_filter_lfo(self) -> None:
-        self.send_filter_lfo_configuration()
 
     def _filter_lfo_curve_changed(self) -> None:
         # 拖动节点会高频触发回调。等待75 ms后一次性发送完整配置，
@@ -734,128 +1072,131 @@ class MidiUartSender:
         value = max(-1.0, min(1.0, float(value)))
         return max(0, min(0x3FFF, round((value + 1.0) * 8191.5)))
 
+    @staticmethod
+    def _encode_route_depth(value: int) -> int:
+        """把-127～+127转换为14位Offset Binary调制深度。"""
+        value = max(-127, min(127, int(value)))
+        return max(0, min(0x3FFF, round((value + 127) * 16383 / 254)))
+
     def send_filter_lfo_configuration(self) -> None:
-        """发送三点LFO配置；最后的commit使全部字段在FPGA中同时生效。"""
+        """发送三条曲线和8条共享路由，最后在FPGA中原子提交。"""
         self.filter_lfo_config_after_id = None
         if self.port is None or not self.port.is_open:
             return
 
-        points = self.filter_lfo_curve.points
-        middle_time = max(0.125, min(0.875, float(points[1].time)))
-        rate_hz = max(0.1, min(10.0, float(self.filter_lfo_rate.get())))
+        active_rates = []
         phase_scale = float(1 << FILTER_LFO_PHASE_BITS)
-        step_0 = round(
-            rate_hz * phase_scale / (FILTER_LFO_SAMPLE_RATE * middle_time)
-        )
-        step_1 = round(
-            rate_hz * phase_scale
-            / (FILTER_LFO_SAMPLE_RATE * (1.0 - middle_time))
-        )
+        for lfo_index, parameter_map in enumerate(FILTER_LFO_PARAMETER_SETS):
+            points = self.filter_lfo_curves[lfo_index].points
+            middle_time = max(0.125, min(0.875, float(points[1].time)))
+            rate_hz = max(
+                0.1, min(10.0, float(self.filter_lfo_rate[lfo_index].get()))
+            )
+            active_rates.append(rate_hz)
+            step_0 = round(
+                rate_hz * phase_scale / (FILTER_LFO_SAMPLE_RATE * middle_time)
+            )
+            step_1 = round(
+                rate_hz * phase_scale
+                / (FILTER_LFO_SAMPLE_RATE * (1.0 - middle_time))
+            )
+            values = (
+                (
+                    parameter_map["enable"],
+                    1 if self.filter_lfo_enabled[lfo_index].get() else 0,
+                ),
+                (parameter_map["step_0"], max(1, min(0x3FFF, step_0))),
+                (parameter_map["step_1"], max(1, min(0x3FFF, step_1))),
+                (
+                    parameter_map["point_0"],
+                    self._encode_bipolar_q13(points[0].level),
+                ),
+                (
+                    parameter_map["point_1"],
+                    self._encode_bipolar_q13(points[1].level),
+                ),
+                (
+                    parameter_map["point_2"],
+                    self._encode_bipolar_q13(points[2].level),
+                ),
+                (
+                    parameter_map["curve_0"],
+                    self._encode_bipolar_q13(points[0].curve),
+                ),
+                (
+                    parameter_map["curve_1"],
+                    self._encode_bipolar_q13(points[1].curve),
+                ),
+            )
+            for parameter_id, value in values:
+                if not self.send_highres_parameter(
+                    parameter_id, value, log_message=False
+                ):
+                    return
 
-        values = (
-            (FILTER_LFO_PARAMETER["enable"], 1 if self.filter_lfo_enabled.get() else 0),
-            (FILTER_LFO_PARAMETER["step_0"], max(1, min(0x3FFF, step_0))),
-            (FILTER_LFO_PARAMETER["step_1"], max(1, min(0x3FFF, step_1))),
-            (
-                FILTER_LFO_PARAMETER["depth"],
-                max(0, min(127 << 7, int(self.filter_lfo_depth.get()) << 7)),
-            ),
-            (FILTER_LFO_PARAMETER["point_0"], self._encode_bipolar_q13(points[0].level)),
-            (FILTER_LFO_PARAMETER["point_1"], self._encode_bipolar_q13(points[1].level)),
-            (FILTER_LFO_PARAMETER["point_2"], self._encode_bipolar_q13(points[2].level)),
-            (FILTER_LFO_PARAMETER["curve_0"], self._encode_bipolar_q13(points[0].curve)),
-            (FILTER_LFO_PARAMETER["curve_1"], self._encode_bipolar_q13(points[1].curve)),
-        )
+        enabled_route_count = 0
+        for route_index, route in enumerate(self.lfo_routes):
+            destination_name = route["destination"].get()
+            destination = LFO_DESTINATIONS.get(destination_name, 0)
+            source = LFO_SOURCES.get(route["source"].get(), 0)
+            enabled = bool(route["enabled"].get()) and destination != 0
+            if enabled:
+                enabled_route_count += 1
+            route_values = (
+                (FILTER_LFO_PARAMETER["route_index"], route_index),
+                (FILTER_LFO_PARAMETER["route_enable"], 1 if enabled else 0),
+                (FILTER_LFO_PARAMETER["route_destination"], destination),
+                (
+                    FILTER_LFO_PARAMETER["route_depth"],
+                    self._encode_route_depth(route["depth"].get()),
+                ),
+                (FILTER_LFO_PARAMETER["route_source"], source),
+            )
+            for parameter_id, value in route_values:
+                if not self.send_highres_parameter(
+                    parameter_id, value, log_message=False
+                ):
+                    return
 
-        for parameter_id, value in values:
-            if not self.send_highres_parameter(parameter_id, value, log_message=False):
-                return
         if not self.send_highres_parameter(
             FILTER_LFO_PARAMETER["commit"], 1, log_message=False
         ):
             return
 
-        state = "开启" if self.filter_lfo_enabled.get() else "关闭"
-        depth = int(self.filter_lfo_depth.get())
-        if self.filter_mode.get() in ("梳状 +", "梳状 -"):
-            depth_text = f"{depth}（Comb有效约{round(depth * 70 / 127)}）"
-        else:
-            depth_text = str(depth)
+        enabled_names = [
+            f"LFO{index + 1}"
+            for index, enabled in enumerate(self.filter_lfo_enabled)
+            if enabled.get()
+        ]
+        state = "/".join(enabled_names) if enabled_names else "全部关闭"
         self.status.set(
-            f"FPGA Cutoff LFO已{state}：{rate_hz:.1f} Hz，"
-            f"Depth={depth_text}"
+            f"FPGA通用LFO：{state}，速率 "
+            f"{active_rates[0]:.1f}/{active_rates[1]:.1f}/{active_rates[2]:.1f} Hz，"
+            f"启用{enabled_route_count}条路由"
         )
 
-    def open_filter_lfo_editor(self) -> None:
-        if self.filter_lfo_window is not None:
-            self.filter_lfo_window.lift()
-            self.filter_lfo_window.focus_force()
+    def open_filter_lfo_editor(self, lfo_index: int) -> None:
+        if self.filter_lfo_windows[lfo_index] is not None:
+            self.filter_lfo_windows[lfo_index].lift()
+            self.filter_lfo_windows[lfo_index].focus_force()
             return
 
         window = tk.Toplevel(self.root)
-        window.title("Cutoff LFO曲线编辑器")
+        window.title(f"通用 LFO {lfo_index + 1} 曲线编辑器")
         window.resizable(False, False)
         editor = LfoCurveEditor(
             window,
-            self.filter_lfo_curve,
+            self.filter_lfo_curves[lfo_index],
             on_change=self._filter_lfo_curve_changed,
         )
         editor.pack(padx=10, pady=10)
-        self.filter_lfo_window = window
+        self.filter_lfo_windows[lfo_index] = window
 
         def close_editor() -> None:
             window.destroy()
-            self.filter_lfo_window = None
+            self.filter_lfo_windows[lfo_index] = None
 
         window.protocol("WM_DELETE_WINDOW", close_editor)
-
-    def toggle_warp_lfo(self, osc_name: str) -> None:
-        controls = self.osc_controls[osc_name]
-        enabled = bool(controls["lfo_enabled"].get())
-        self.lfo_phase[osc_name] = 0.0
-        self.lfo_last_value[osc_name] = None
-
-        if enabled:
-            self.status.set(f"OSC {osc_name}临时Warp LFO已开启")
-        else:
-            cc_map = OSC_A_CC if osc_name == "A" else OSC_B_CC
-            base_value = int(controls["warp_amount"].get())
-            self.send_control_change(
-                cc_map["warp_amount"], base_value, CONTROL_CHANNEL
-            )
-            self.status.set(f"OSC {osc_name}临时Warp LFO已关闭")
-
-    def _update_lfos(self) -> None:
-        now = time.monotonic()
-        elapsed = min(now - self.lfo_last_time, 0.25)
-        self.lfo_last_time = now
-
-        for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
-            controls = self.osc_controls[osc_name]
-            if not controls["lfo_enabled"].get():
-                continue
-
-            if self.port is None or not self.port.is_open:
-                continue
-
-            rate = max(0.1, min(10.0, float(controls["lfo_rate"].get())))
-            depth = max(0, min(127, int(controls["lfo_depth"].get())))
-            base_value = max(0, min(127, int(controls["warp_amount"].get())))
-            phase = self.lfo_phase[osc_name] + math.tau * rate * elapsed
-            self.lfo_phase[osc_name] = phase % math.tau
-            lfo_value = round(base_value + depth * math.sin(phase))
-            lfo_value = max(0, min(127, lfo_value))
-
-            if lfo_value != self.lfo_last_value[osc_name]:
-                if self.send_control_change(
-                    cc_map["warp_amount"],
-                    lfo_value,
-                    CONTROL_CHANNEL,
-                    log_message=False,
-                ):
-                    self.lfo_last_value[osc_name] = lfo_value
-
-        self.lfo_after_id = self.root.after(LFO_UPDATE_MS, self._update_lfos)
 
     def send_all_synth_controls(self) -> None:
         self.send_synth_control(PAN_CC, self.pan.get())
@@ -865,6 +1206,58 @@ class MidiUartSender:
             FILTER_RESONANCE_CC, self.filter_resonance.get()
         )
         self.send_synth_control(FILTER_MIX_CC, self.filter_mix.get())
+        self.send_synth_control(MASTER_LEVEL_CC, self.master_level.get())
+        self.send_effect_mode_selection()
+        self.send_synth_control(DELAY_TIME_CC, self.delay_time.get())
+        self.send_synth_control(DELAY_FEEDBACK_CC, self.delay_feedback.get())
+        self.send_synth_control(DELAY_MIX_CC, self.delay_mix.get())
+        self.send_synth_control(REVERB_SIZE_CC, self.reverb_size.get())
+        self.send_synth_control(REVERB_DECAY_CC, self.reverb_decay.get())
+        self.send_synth_control(REVERB_MIX_CC, self.reverb_mix.get())
+        self.send_synth_control(
+            DISTORTION_ENABLE_CC, 127 if self.distortion_enabled.get() else 0
+        )
+        self.send_distortion_type_selection()
+        self.send_synth_control(DISTORTION_DRIVE_CC, self.distortion_drive.get())
+        self.send_synth_control(DISTORTION_TONE_CC, self.distortion_tone.get())
+        self.send_synth_control(DISTORTION_MIX_CC, self.distortion_mix.get())
+        effect_parameter_groups = (
+            (
+                self.chorus_enabled, CHORUS_ENABLE_CC,
+                (
+                    (CHORUS_RATE_CC, self.chorus_rate),
+                    (CHORUS_DEPTH_CC, self.chorus_depth),
+                    (CHORUS_DELAY_CC, self.chorus_delay),
+                    (CHORUS_FEEDBACK_CC, self.chorus_feedback),
+                    (CHORUS_MIX_CC, self.chorus_mix),
+                ),
+            ),
+            (
+                self.phaser_enabled, PHASER_ENABLE_CC,
+                (
+                    (PHASER_RATE_CC, self.phaser_rate),
+                    (PHASER_DEPTH_CC, self.phaser_depth),
+                    (PHASER_CENTER_CC, self.phaser_center),
+                    (PHASER_FEEDBACK_CC, self.phaser_feedback),
+                    (PHASER_MIX_CC, self.phaser_mix),
+                ),
+            ),
+            (
+                self.compressor_enabled, COMPRESSOR_ENABLE_CC,
+                (
+                    (COMPRESSOR_THRESHOLD_CC, self.compressor_threshold),
+                    (COMPRESSOR_RATIO_CC, self.compressor_ratio),
+                    (COMPRESSOR_ATTACK_CC, self.compressor_attack),
+                    (COMPRESSOR_RELEASE_CC, self.compressor_release),
+                    (COMPRESSOR_MAKEUP_CC, self.compressor_makeup),
+                    (COMPRESSOR_MIX_CC, self.compressor_mix),
+                ),
+            ),
+        )
+        for enabled, enable_cc, parameters in effect_parameter_groups:
+            self.send_synth_control(enable_cc, 127 if enabled.get() else 0)
+            for controller, variable in parameters:
+                self.send_synth_control(controller, variable.get())
         self.send_filter_lfo_configuration()
         for osc_name, cc_map in (("A", OSC_A_CC), ("B", OSC_B_CC)):
             controls = self.osc_controls[osc_name]
@@ -873,9 +1266,11 @@ class MidiUartSender:
             self.send_warp_mode_selection(osc_name)
             for key in (
                 "warp_amount",
+                "wavetable_index",
                 "wt_position",
                 "detune",
                 "unison",
+                "level",
                 "attack",
                 "decay",
                 "sustain",
@@ -919,9 +1314,6 @@ class MidiUartSender:
         if self.filter_lfo_config_after_id is not None:
             self.root.after_cancel(self.filter_lfo_config_after_id)
             self.filter_lfo_config_after_id = None
-        if self.lfo_after_id is not None:
-            self.root.after_cancel(self.lfo_after_id)
-            self.lfo_after_id = None
         self.disconnect()
         self.root.destroy()
 

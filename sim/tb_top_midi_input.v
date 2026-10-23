@@ -15,6 +15,16 @@ module tb_top_midi_input;
     wire MAX_BCLK;
     wire MAX_LRC;
     wire PA_EN;
+    wire sd_clk;
+    tri  sd_cmd;
+    reg  sd_dat0;
+    wire [14:0] ddr_addr;
+    wire [2:0] ddr_bank;
+    wire ddr_cs, ddr_ras, ddr_cas, ddr_we, ddr_ck, ddr_ck_n;
+    wire ddr_cke, ddr_odt, ddr_reset_n;
+    wire [3:0] ddr_dm;
+    tri [31:0] ddr_dq;
+    tri [3:0] ddr_dqs, ddr_dqs_n;
 
     integer errors;
     integer osc_a_update_count;
@@ -28,6 +38,7 @@ module tb_top_midi_input;
     integer warp_b_before;
     integer valid_mismatch_count;
     integer switch_wait_samples;
+    integer clip_count_before;
 
     reg [7:0]  osc_a_slot_log [0:15];
     reg [31:0] osc_a_step_log [0:15];
@@ -41,7 +52,8 @@ module tb_top_midi_input;
         .DEFAULT_UNISON_COUNT(1),
         // 本测试专注 MIDI 路由顺序；容量由独立的 2×32 测试覆盖。
         .OSC_ENGINE_COUNT(1),
-        .SLOTS_PER_ENGINE(32)
+        .SLOTS_PER_ENGINE(32),
+        .EXTERNAL_WAVETABLE_ENABLE(0)
     ) dut (
         .sys_clk (sys_clk),
         .rst_n   (rst_n),
@@ -51,7 +63,13 @@ module tb_top_midi_input;
         .MAX_DIN (MAX_DIN),
         .MAX_BCLK(MAX_BCLK),
         .MAX_LRC (MAX_LRC),
-        .PA_EN   (PA_EN)
+        .PA_EN   (PA_EN),
+        .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
+        .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),
+        .ddr_ras(ddr_ras), .ddr_cas(ddr_cas), .ddr_we(ddr_we),
+        .ddr_ck(ddr_ck), .ddr_ck_n(ddr_ck_n), .ddr_cke(ddr_cke),
+        .ddr_odt(ddr_odt), .ddr_reset_n(ddr_reset_n), .ddr_dm(ddr_dm),
+        .ddr_dq(ddr_dq), .ddr_dqs(ddr_dqs), .ddr_dqs_n(ddr_dqs_n)
     );
 
     always #10 sys_clk = ~sys_clk;
@@ -184,10 +202,64 @@ module tb_top_midi_input;
         end
     endtask
 
+    task expect_master_output;
+        input signed [15:0] filter_sample;
+        input [8:0] gain_q8;
+        input signed [15:0] expected_output;
+        begin
+            force dut.effect_processed_sample = filter_sample;
+            force dut.global_effects_output_valid = 1'b1;
+            force dut.global_filtered_sample = filter_sample;
+            force dut.master_gain_q8 = gain_q8;
+            @(posedge sys_clk);
+            #1;
+            if (dut.master_output_sample !== expected_output) begin
+                $display("ERROR: master gain got %0d, expected %0d",
+                         dut.master_output_sample, expected_output);
+                errors = errors + 1;
+            end
+            release dut.effect_processed_sample;
+            release dut.global_effects_output_valid;
+            release dut.global_filtered_sample;
+            release dut.master_gain_q8;
+            @(posedge sys_clk);
+        end
+    endtask
+
+    task expect_mix_clip_protection;
+        begin
+            clip_count_before = dut.audio_clip_count;
+            force dut.osc_a_mix = 16'sh7FFF;
+            force dut.osc_b_mix = 16'sh7FFF;
+            force dut.osc_a_mix_valid = 1'b1;
+            force dut.osc_b_mix_valid = 1'b1;
+            force dut.osc_a_mix_gain_q8 = 9'd256;
+            force dut.osc_b_mix_gain_q8 = 9'd256;
+            @(posedge sys_clk);
+            #1;
+            @(posedge sys_clk);
+            #1;
+            if (dut.oscillator_mix !== 16'sh7FFF
+                || dut.oscillator_mix_clip !== 1'b1
+                || dut.audio_clip_count <= clip_count_before) begin
+                $display("ERROR: mixer saturation or clip monitor failed");
+                errors = errors + 1;
+            end
+            release dut.osc_a_mix;
+            release dut.osc_b_mix;
+            release dut.osc_a_mix_valid;
+            release dut.osc_b_mix_valid;
+            release dut.osc_a_mix_gain_q8;
+            release dut.osc_b_mix_gain_q8;
+            @(posedge sys_clk);
+        end
+    endtask
+
     initial begin
         sys_clk = 1'b0;
         rst_n = 1'b0;
         uart_rx = 1'b1;
+        sd_dat0 = 1'b1;
         errors = 0;
         osc_a_update_count = 0;
         osc_b_update_count = 0;
@@ -235,6 +307,11 @@ module tb_top_midi_input;
         send_cc(7'd43, 7'd80);
         send_cc(7'd44, 7'd48);
         send_cc(7'd45, 7'd72);
+        send_cc(7'd46, 7'd100);
+        send_cc(7'd47, 7'd60);
+        send_cc(7'd48, 7'd96);
+        send_cc(7'd49, 7'd3);
+        send_cc(7'd50, 7'd7);
 
         repeat (3) @(posedge sys_clk);
         if (dut.osc_a_wt_position_target !== 7'd85
@@ -268,19 +345,44 @@ module tb_top_midi_input;
         if (dut.filter_mode_target !== 3'd1
             || dut.filter_cutoff_target !== 7'd80
             || dut.filter_resonance_target !== 7'd48
-            || dut.filter_mix_target !== 7'd72) begin
+            || dut.filter_mix_target !== 7'd72
+            || dut.osc_a_level !== 7'd100
+            || dut.osc_b_level !== 7'd60
+            || dut.master_level_target !== 7'd96
+            || dut.osc_a_mix_gain_target_q8 !== 9'd50
+            || dut.osc_b_mix_gain_target_q8 !== 9'd30
+            || dut.master_gain_target_q8 !== 9'd194
+            || dut.osc_a_wavetable_index !== 4'd3
+            || dut.osc_b_wavetable_index !== 4'd7) begin
             $display("ERROR: global filter controls were not routed");
             errors = errors + 1;
         end
 
-        // 高精度SysEx现在只写FPGA LFO配置；字段在commit后同时生效。
+        // Master乘法保持宽位并在最后压回16位；0.5增益应精确减半。
+        expect_master_output(16'sd16000, 9'd128, 16'sd8000);
+
+        // 后续音符调度回归保持效果器旁路，避免Delay/Reverb尾音干扰静音判定。
+        send_cc(7'd51, 7'd0);
+
+        // 后续开关交叉渐变测试使用最大Level和Master。
+        send_cc(7'd46, 7'd127);
+        send_cc(7'd47, 7'd127);
+        send_cc(7'd48, 7'd127);
+
+        // 高精度SysEx写入通用LFO和路由影子寄存器；commit后同时生效。
         send_highres_parameter(7'd16, 14'd1);
-        send_highres_parameter(7'd19, 14'd4096);
+        send_highres_parameter(7'd26, 14'd0);
+        send_highres_parameter(7'd27, 14'd1);
+        send_highres_parameter(7'd28, 14'd8);
+        send_highres_parameter(7'd29, 14'd12288);
         send_highres_parameter(7'd25, 14'd1);
         repeat (3) @(posedge sys_clk);
         if (!dut.filter_lfo_enabled
-            || dut.u_filter_curve_lfo.active_depth !== 14'd4096) begin
-            $display("ERROR: FPGA filter LFO configuration was not committed");
+            || !dut.u_lfo_modulation_router.active_enable[0]
+            || dut.u_lfo_modulation_router.active_destination[0] !== 4'd8
+            || dut.u_lfo_modulation_router.active_depth_q13[0]
+               !== 14'sd4096) begin
+            $display("ERROR: FPGA LFO route configuration was not committed");
             errors = errors + 1;
         end
 
@@ -299,6 +401,79 @@ module tb_top_midi_input;
             $display("ERROR: independent parameter smoothing failed");
             errors = errors + 1;
         end
+
+        // 效果器参数使用CC51～57；验证后回到旁路，保持后续音频回归的原条件。
+        send_cc(7'd51, 7'd3);
+        send_cc(7'd52, 7'd80);
+        send_cc(7'd53, 7'd70);
+        send_cc(7'd54, 7'd60);
+        send_cc(7'd55, 7'd90);
+        send_cc(7'd56, 7'd75);
+        send_cc(7'd57, 7'd55);
+        send_cc(7'd58, 7'd127);
+        send_cc(7'd59, 7'd2);
+        send_cc(7'd60, 7'd91);
+        send_cc(7'd61, 7'd92);
+        send_cc(7'd62, 7'd93);
+        send_cc(7'd63, 7'd127);
+        send_cc(7'd64, 7'd41);
+        send_cc(7'd65, 7'd42);
+        send_cc(7'd66, 7'd43);
+        send_cc(7'd67, 7'd44);
+        send_cc(7'd68, 7'd45);
+        send_cc(7'd69, 7'd127);
+        send_cc(7'd70, 7'd51);
+        send_cc(7'd71, 7'd52);
+        send_cc(7'd72, 7'd53);
+        send_cc(7'd73, 7'd54);
+        send_cc(7'd74, 7'd55);
+        send_cc(7'd75, 7'd127);
+        send_cc(7'd76, 7'd61);
+        send_cc(7'd77, 7'd62);
+        send_cc(7'd78, 7'd63);
+        send_cc(7'd79, 7'd64);
+        send_cc(7'd80, 7'd65);
+        send_cc(7'd81, 7'd66);
+        repeat (3) @(posedge sys_clk);
+        if (dut.effect_mode_target !== 2'd3
+            || dut.delay_time_target !== 7'd80
+            || dut.delay_feedback_target !== 7'd70
+            || dut.delay_mix_target !== 7'd60
+            || dut.reverb_size_target !== 7'd90
+            || dut.reverb_decay_target !== 7'd75
+            || dut.reverb_mix_target !== 7'd55
+            || !dut.distortion_enable_target
+            || dut.distortion_type_target !== 2'd2
+            || dut.distortion_drive_target !== 7'd91
+            || dut.distortion_tone_target !== 7'd92
+            || dut.distortion_mix_target !== 7'd93
+            || !dut.chorus_enable_target
+            || dut.chorus_rate_target !== 7'd41
+            || dut.chorus_depth_target !== 7'd42
+            || dut.chorus_delay_target !== 7'd43
+            || dut.chorus_feedback_target !== 7'd44
+            || dut.chorus_mix_target !== 7'd45
+            || !dut.phaser_enable_target
+            || dut.phaser_rate_target !== 7'd51
+            || dut.phaser_depth_target !== 7'd52
+            || dut.phaser_center_target !== 7'd53
+            || dut.phaser_feedback_target !== 7'd54
+            || dut.phaser_mix_target !== 7'd55
+            || !dut.compressor_enable_target
+            || dut.compressor_threshold_target !== 7'd61
+            || dut.compressor_ratio_target !== 7'd62
+            || dut.compressor_attack_target !== 7'd63
+            || dut.compressor_release_target !== 7'd64
+            || dut.compressor_makeup_target !== 7'd65
+            || dut.compressor_mix_target !== 7'd66) begin
+            $display("ERROR: global effect controls were not routed");
+            errors = errors + 1;
+        end
+        send_cc(7'd51, 7'd0);
+        send_cc(7'd58, 7'd0);
+        send_cc(7'd63, 7'd0);
+        send_cc(7'd69, 7'd0);
+        send_cc(7'd75, 7'd0);
 
         // 非零深度下切换Warp模式时，必须先退回深度0，再提交新模式。
         if (dut.osc_a_warp_mode_active !== 4'd5) begin
@@ -334,11 +509,11 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
-        // 关闭OSC A后，A平滑降到0，仍开启的B平滑升到单位增益。
+        // 关闭OSC A后，A平滑降到0，B升到带6 dB余量的0.5增益。
         send_cc(7'd36, 7'd0);
         switch_wait_samples = 0;
         while (((dut.osc_a_mix_gain_q8 != 9'd0)
-                || (dut.osc_b_mix_gain_q8 != 9'd256))
+                || (dut.osc_b_mix_gain_q8 != 9'd128))
                && (switch_wait_samples < 300)) begin
             @(posedge dut.sample_tick);
             switch_wait_samples = switch_wait_samples + 1;
@@ -348,17 +523,17 @@ module tb_top_midi_input;
         if (dut.osc_a_enabled !== 1'b0
             || dut.osc_b_enabled !== 1'b1
             || dut.osc_a_mix_gain_q8 !== 9'd0
-            || dut.osc_b_mix_gain_q8 !== 9'd256) begin
+            || dut.osc_b_mix_gain_q8 !== 9'd128) begin
             $display("ERROR: OSC A switch did not reach muted crossfade state");
             errors = errors + 1;
         end
-        expect_pipelined_mix(16'sd16000, -16'sd12000, -16'sd12000);
+        expect_pipelined_mix(16'sd16000, -16'sd12000, -16'sd6000);
 
         // 从“仅B”切换到“仅A”，验证两个开关互相独立。
         send_cc(7'd36, 7'd127);
         send_cc(7'd37, 7'd0);
         switch_wait_samples = 0;
-        while (((dut.osc_a_mix_gain_q8 != 9'd256)
+        while (((dut.osc_a_mix_gain_q8 != 9'd128)
                 || (dut.osc_b_mix_gain_q8 != 9'd0))
                && (switch_wait_samples < 300)) begin
             @(posedge dut.sample_tick);
@@ -368,18 +543,18 @@ module tb_top_midi_input;
         #1;
         if (dut.osc_a_enabled !== 1'b1
             || dut.osc_b_enabled !== 1'b0
-            || dut.osc_a_mix_gain_q8 !== 9'd256
+            || dut.osc_a_mix_gain_q8 !== 9'd128
             || dut.osc_b_mix_gain_q8 !== 9'd0) begin
             $display("ERROR: OSC B switch did not reach muted crossfade state");
             errors = errors + 1;
         end
-        expect_pipelined_mix(16'sd16000, -16'sd12000, 16'sd16000);
+        expect_pipelined_mix(16'sd16000, -16'sd12000, 16'sd8000);
 
-        // 后续音符测试恢复两路开启，各自回到0.5增益。
+        // 后续音符测试恢复两路开启，各自回到0.25增益。
         send_cc(7'd37, 7'd127);
         switch_wait_samples = 0;
-        while (((dut.osc_a_mix_gain_q8 != 9'd128)
-                || (dut.osc_b_mix_gain_q8 != 9'd128))
+        while (((dut.osc_a_mix_gain_q8 != 9'd64)
+                || (dut.osc_b_mix_gain_q8 != 9'd64))
                && (switch_wait_samples < 300)) begin
             @(posedge dut.sample_tick);
             switch_wait_samples = switch_wait_samples + 1;
@@ -388,12 +563,12 @@ module tb_top_midi_input;
         #1;
         if (dut.osc_a_enabled !== 1'b1
             || dut.osc_b_enabled !== 1'b1
-            || dut.osc_a_mix_gain_q8 !== 9'd128
-            || dut.osc_b_mix_gain_q8 !== 9'd128) begin
-            $display("ERROR: dual oscillator gain did not return to 0.5 each");
+            || dut.osc_a_mix_gain_q8 !== 9'd64
+            || dut.osc_b_mix_gain_q8 !== 9'd64) begin
+            $display("ERROR: dual oscillator gain did not return to 0.25 each");
             errors = errors + 1;
         end
-        expect_pipelined_mix(16'sd16000, -16'sd12000, 16'sd2000);
+        expect_pipelined_mix(16'sd16000, -16'sd12000, 16'sd1000);
 
         // 控制通道上的Note必须被丢弃。
         send_uart_byte(8'h9F);
@@ -505,6 +680,14 @@ module tb_top_midi_input;
             || MAX_SD !== 1'b1 || MAX_GAIN !== 1'b1
             || PA_EN !== 1'b1) begin
             $display("ERROR: UART or MAX98357A control state is incorrect");
+            errors = errors + 1;
+        end
+
+        // 故意制造超量输入，确认最终饱和不会二进制回绕，且调试计数有效。
+        expect_mix_clip_protection();
+        expect_master_output(16'sh7FFF, 9'd256, 16'sh7FFF);
+        if (dut.filter_output_limit !== 1'b1) begin
+            $display("ERROR: filter endpoint monitor did not latch");
             errors = errors + 1;
         end
 

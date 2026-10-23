@@ -17,6 +17,16 @@ module tb_top_dual_unison8;
     wire MAX_BCLK;
     wire MAX_LRC;
     wire PA_EN;
+    wire sd_clk;
+    tri  sd_cmd;
+    reg  sd_dat0;
+    wire [14:0] ddr_addr;
+    wire [2:0] ddr_bank;
+    wire ddr_cs, ddr_ras, ddr_cas, ddr_we, ddr_ck, ddr_ck_n;
+    wire ddr_cke, ddr_odt, ddr_reset_n;
+    wire [3:0] ddr_dm;
+    tri [31:0] ddr_dq;
+    tri [3:0] ddr_dqs, ddr_dqs_n;
 
     integer errors;
     integer note_index;
@@ -27,7 +37,8 @@ module tb_top_dual_unison8;
         .UART_BAUD_RATE(TEST_UART_BAUD),
         .DEFAULT_UNISON_COUNT(1),
         .OSC_ENGINE_COUNT(2),
-        .SLOTS_PER_ENGINE(32)
+        .SLOTS_PER_ENGINE(32),
+        .EXTERNAL_WAVETABLE_ENABLE(0)
     ) dut (
         .sys_clk (sys_clk),
         .rst_n   (rst_n),
@@ -37,7 +48,13 @@ module tb_top_dual_unison8;
         .MAX_DIN (MAX_DIN),
         .MAX_BCLK(MAX_BCLK),
         .MAX_LRC (MAX_LRC),
-        .PA_EN   (PA_EN)
+        .PA_EN   (PA_EN),
+        .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
+        .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),
+        .ddr_ras(ddr_ras), .ddr_cas(ddr_cas), .ddr_we(ddr_we),
+        .ddr_ck(ddr_ck), .ddr_ck_n(ddr_ck_n), .ddr_cke(ddr_cke),
+        .ddr_odt(ddr_odt), .ddr_reset_n(ddr_reset_n), .ddr_dm(ddr_dm),
+        .ddr_dq(ddr_dq), .ddr_dqs(ddr_dqs), .ddr_dqs_n(ddr_dqs_n)
     );
 
     always #10 sys_clk = ~sys_clk;
@@ -90,6 +107,7 @@ module tb_top_dual_unison8;
         sys_clk = 1'b0;
         rst_n = 1'b0;
         uart_rx = 1'b1;
+        sd_dat0 = 1'b1;
         errors = 0;
         valid_count = 0;
 

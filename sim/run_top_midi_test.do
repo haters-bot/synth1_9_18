@@ -26,12 +26,21 @@ vlog -work work_top_midi \
     src/wavetable_phase_warp.v \
     src/acid_wavetable_rom.v \
     src/acid_wavetable_reader.v \
+    src/wavetable_frame_cache.v \
     src/oscillator_tdm_core.v \
     src/oscillator_tdm_bank.v \
     src/fir_decimator_8x_wrapper.v \
     src/global_svf_filter.v \
     src/global_comb_filter.v \
     src/global_filter.v \
+    src/global_delay.v \
+    src/global_reverb.v \
+    src/global_delay_reverb.v \
+    src/global_distortion.v \
+    src/global_phaser.v \
+    src/global_chorus.v \
+    src/global_compressor.v \
+    src/global_effects.v \
     src/i2s_tx.v \
     src/top.v.v \
     sim/tb_top_midi_input.v
@@ -63,6 +72,8 @@ add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_target
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_current
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_mix_target
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_mix_current
+add wave -radix unsigned sim:/tb_top_midi_input/dut/master_level_target
+add wave -radix unsigned sim:/tb_top_midi_input/dut/master_gain_q8
 add wave sim:/tb_top_midi_input/dut/osc_a_waveform_select
 add wave sim:/tb_top_midi_input/dut/osc_a_wt_position_current
 add wave sim:/tb_top_midi_input/dut/osc_a_detune_amount
@@ -81,6 +92,8 @@ add wave sim:/tb_top_midi_input/dut/osc_b_warp_amount_target
 add wave sim:/tb_top_midi_input/dut/osc_b_warp_amount_current
 add wave sim:/tb_top_midi_input/dut/osc_a_enabled
 add wave sim:/tb_top_midi_input/dut/osc_b_enabled
+add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_a_level
+add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_b_level
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_a_mix_gain_q8
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_b_mix_gain_q8
 add wave sim:/tb_top_midi_input/dut/osc_a_task_update_valid
@@ -92,5 +105,10 @@ add wave -radix hexadecimal sim:/tb_top_midi_input/dut/osc_b_task_update_phase_s
 add wave sim:/tb_top_midi_input/dut/osc_a_mix
 add wave sim:/tb_top_midi_input/dut/osc_b_mix
 add wave sim:/tb_top_midi_input/dut/oscillator_mix
+add wave sim:/tb_top_midi_input/dut/master_output_sample
+add wave sim:/tb_top_midi_input/dut/oscillator_mix_clip
+add wave sim:/tb_top_midi_input/dut/filter_output_limit
+add wave sim:/tb_top_midi_input/dut/master_output_clip
+add wave -radix unsigned sim:/tb_top_midi_input/dut/audio_clip_count
 
 run -all

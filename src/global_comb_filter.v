@@ -38,6 +38,7 @@ module global_comb_filter #(
     localparam [3:0] STATE_DAMP          = 4'd12;
     localparam [3:0] STATE_FEEDBACK      = 4'd13;
     localparam [3:0] STATE_WRITE         = 4'd14;
+    localparam [3:0] STATE_PREPARE_DELAY = 4'd15;
 
     // 四点插值需要D-1、D、D+1和D+2四个历史位置。
     // 最大延迟保留三个RAM位置，避免最深延迟处缺少插值邻点。
@@ -86,6 +87,9 @@ module global_comb_filter #(
     wire [19:0] delay_at_integer_q8;
     wire [19:0] delay_at_next_q8;
     wire [19:0] delay_delta_q8;
+    reg  [19:0] delay_at_integer_q8_pipeline;
+    reg  [19:0] delay_delta_q8_pipeline;
+    reg  [7:0]  cutoff_fraction_pipeline;
     wire [27:0] delay_interpolation_product;
     wire [19:0] delay_length_unclamped_q8;
     wire [19:0] delay_length_mapped_q8;
@@ -150,8 +154,9 @@ module global_comb_filter #(
     assign delay_at_integer_q8 = map_cutoff_to_delay_q8(cutoff_integer);
     assign delay_at_next_q8 = map_cutoff_to_delay_q8(cutoff_next_integer);
     assign delay_delta_q8 = delay_at_integer_q8 - delay_at_next_q8;
-    assign delay_interpolation_product = delay_delta_q8 * cutoff_fraction;
-    assign delay_length_unclamped_q8 = delay_at_integer_q8
+    assign delay_interpolation_product = delay_delta_q8_pipeline
+                                       * cutoff_fraction_pipeline;
+    assign delay_length_unclamped_q8 = delay_at_integer_q8_pipeline
                                      - ((delay_interpolation_product + 28'd128)
                                         >> 8);
     assign delay_length_mapped_q8 =
@@ -214,6 +219,20 @@ module global_comb_filter #(
     assign wet_value_wide = interpolation_history_valid
                           ? ($signed(comb_sum_wide) >>> 1)
                           : input_extended;
+
+    // Cutoff到延迟长度的指数映射先寄存查表结果和小数部分。
+    // 下一拍只执行线性插值和地址计算，避免整条映射链跨越一个50 MHz周期。
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            delay_at_integer_q8_pipeline <= 20'd2144;
+            delay_delta_q8_pipeline <= 20'd0;
+            cutoff_fraction_pipeline <= 8'd0;
+        end else begin
+            delay_at_integer_q8_pipeline <= delay_at_integer_q8;
+            delay_delta_q8_pipeline <= delay_delta_q8;
+            cutoff_fraction_pipeline <= cutoff_fraction;
+        end
+    end
 
     function signed [15:0] saturate_s18_to_s16;
         input signed [17:0] value;
@@ -285,6 +304,16 @@ module global_comb_filter #(
                 STATE_IDLE: begin
                     if (in_valid) begin
                         input_latched <= sample_in;
+                        negative_feedback_latched <= negative_feedback;
+                        feedback_coefficient_q15 <= $signed({
+                            1'b0, feedback_magnitude_q15
+                        });
+                        // 给Cutoff映射流水线一个完整周期，再锁存延迟地址。
+                        state <= STATE_PREPARE_DELAY;
+                    end
+                end
+
+                STATE_PREPARE_DELAY: begin
                         delay_length_latched <= delay_length_mapped;
                         delay_fraction_latched <= delay_fraction_mapped;
                         read_address_minus_1_latched <= write_pointer
@@ -309,12 +338,7 @@ module global_comb_filter #(
                         history_2_valid_latched <=
                             (filled_samples >= (delay_length_mapped
                              + {{(ADDR_WIDTH-1){1'b0}}, 2'd2}));
-                        negative_feedback_latched <= negative_feedback;
-                        feedback_coefficient_q15 <= $signed({
-                            1'b0, feedback_magnitude_q15
-                        });
                         state <= STATE_READ_MINUS_1;
-                    end
                 end
 
                 STATE_READ_MINUS_1: begin
