@@ -44,14 +44,18 @@ function [2:0] curve_alpha_q4;
     input [15:0] target_q2;
     input [4:0] half_width_q2;
     reg [15:0] py,distance_q2;
-    reg [5:0] edge_limit;
+    reg [5:0] edge_limit,remaining;
     begin
         py={y,2'b0};
         distance_q2=py>=target_q2 ? py-target_q2 : target_q2-py;
         edge_limit={1'b0,half_width_q2}+6'd2;
+        // Once the distance is inside this <=33 quarter-pixel window, its
+        // low six bits are exact. Keep the second subtraction off a 16-bit
+        // carry chain before color blending.
+        remaining=edge_limit-distance_q2[5:0];
         if(distance_q2>=edge_limit) curve_alpha_q4=0;
-        else if(edge_limit-distance_q2>=4) curve_alpha_q4=4;
-        else curve_alpha_q4=edge_limit-distance_q2;
+        else if(remaining>=6'd4) curve_alpha_q4=4;
+        else curve_alpha_q4=remaining[2:0];
     end
 endfunction
 `endif

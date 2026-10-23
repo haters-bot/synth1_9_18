@@ -46,16 +46,20 @@ module env_panel_renderer (
                   (in_y >= `ENV_WIN_Y0) && (in_y <= `ENV_WIN_Y1);
 
     // Segment Lengths (Dynamic based on parameters)
-    wire [13:0] len_a = `ENV_LEN_A(env_attack);
-    wire [13:0] len_h = `ENV_LEN_H(env_hold);
-    wire [13:0] len_d = `ENV_LEN_D(env_decay);
-    wire [13:0] len_s = 14'd120;
-    wire [13:0] len_r = `ENV_LEN_R(env_release);
+    reg [13:0] len_a,len_h,len_d,len_r;
+    wire [13:0] len_s = 14'd60;
 
     // Sustain level: 424 (100%) to 568 (0%) - Delta = 144px
     reg [1:0]  s0_tab;
 
-    wire [13:0] calc_y_sus = `ENV_BASE_Y - `ENV_SUS_HEIGHT(env_sustain);
+    reg [13:0] calc_y_sus;
+    // Parameter scaling is control-rate work; do not concatenate the selected
+    // ENV bank mux, constant multipliers and all five endpoint sums in one cycle.
+    always @(posedge clk) begin
+        len_a<=`ENV_LEN_A(env_attack);len_h<=`ENV_LEN_H(env_hold);
+        len_d<=`ENV_LEN_D(env_decay);len_r<=`ENV_LEN_R(env_release);
+        calc_y_sus<=`ENV_BASE_Y - `ENV_SUS_HEIGHT(env_sustain);
+    end
 
     always @(posedge clk) begin
         s0_x       <= in_x;
@@ -251,7 +255,7 @@ module env_panel_renderer (
     end
 
     // --------------------------------------------------------------------------
-    // Stage 2: Geometric Hit & Multi-Layer Pixel Compositing
+    // Stage 2: Register curve coverage/region classification before blending.
     // --------------------------------------------------------------------------
     wire [23:0] env_stroke_color = (s1_tab == 2'd1) ? 24'h20E8A0 : // Tab 1: Emerald
                                    (s1_tab == 2'd2) ? 24'hFFA834 : // Tab 2: Amber
@@ -264,42 +268,37 @@ module env_panel_renderer (
     wire [23:0] curve_bg=(s1_y>=s1_target_y && s1_y<=`ENV_BASE_Y) ? env_fill_color :
         s1_grid ? `COLOR_GRID_SUBTLE : 24'h0B0E14;
 
+    reg s2_in_win,s2_border,s2_node,s2_stroke,s2_fill,s2_grid;
+    reg [2:0] s2_alpha;
+    reg [23:0] s2_stroke_color,s2_curve_bg,s2_fill_color;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            out_hit_env <= 1'b0;
-            out_env_rgb <= 24'h0;
+            s2_in_win<=0;s2_border<=0;s2_node<=0;s2_stroke<=0;s2_fill<=0;s2_grid<=0;
+            s2_alpha<=0;s2_stroke_color<=0;s2_curve_bg<=0;s2_fill_color<=0;
         end else begin
-            out_hit_env <= 1'b0;
-            out_env_rgb <= 24'h0;
+            s2_in_win<=s1_in_win;
+            s2_border<=(s1_x==`ENV_WIN_X0)||(s1_x==`ENV_WIN_X1)||
+                       (s1_y==`ENV_WIN_Y0)||(s1_y==`ENV_WIN_Y1);
+            s2_node<=s1_hit_node;s2_stroke<=stroke_alpha!=0;
+            s2_fill<=(s1_y>=s1_target_y)&&(s1_y<=`ENV_BASE_Y);s2_grid<=s1_grid;
+            s2_alpha<=stroke_alpha;s2_stroke_color<=env_stroke_color;
+            s2_curve_bg<=curve_bg;s2_fill_color<=env_fill_color;
+        end
+    end
 
-            if (s1_in_win) begin
-                out_hit_env <= 1'b1;
-
-                // Priority 1: Window Bevel Frame
-                if ((s1_x == `ENV_WIN_X0) || (s1_x == `ENV_WIN_X1) ||
-                    (s1_y == `ENV_WIN_Y0) || (s1_y == `ENV_WIN_Y1)) begin
-                    out_env_rgb <= `COLOR_PANEL_BORDER;
-                end
-                // Priority 2: Control Handle Nodes (White Circles)
-                else if (s1_hit_node) begin
-                    out_env_rgb <= `COLOR_ENV_NODE;
-                end
-                // Priority 3: ADSR Curve Stroke (2px Neon Line)
-                else if (stroke_alpha!=0) begin
-                    out_env_rgb <= blend_rgb_q4(env_stroke_color,curve_bg,stroke_alpha);
-                end
-                // Priority 4: Translucent Fill Under Curve
-                else if ((s1_y >= s1_target_y) && (s1_y <= `ENV_BASE_Y)) begin
-                    out_env_rgb <= env_fill_color;
-                end
-                // Priority 5: Time Grid Ticks
-                else if (s1_grid) begin
-                    out_env_rgb <= `COLOR_GRID_SUBTLE;
-                end
-                // Window dark background
-                else begin
-                    out_env_rgb <= 24'h0B0E14;
-                end
+    // Stage 3: only registered coverage and color selection remain before RGB.
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin out_hit_env<=0;out_env_rgb<=0;end
+        else begin
+            out_hit_env<=s2_in_win;
+            out_env_rgb<=24'h0;
+            if(s2_in_win) begin
+                if(s2_border) out_env_rgb<=`COLOR_PANEL_BORDER;
+                else if(s2_node) out_env_rgb<=`COLOR_ENV_NODE;
+                else if(s2_stroke) out_env_rgb<=blend_rgb_q4(s2_stroke_color,s2_curve_bg,s2_alpha);
+                else if(s2_fill) out_env_rgb<=s2_fill_color;
+                else if(s2_grid) out_env_rgb<=`COLOR_GRID_SUBTLE;
+                else out_env_rgb<=24'h0B0E14;
             end
         end
     end

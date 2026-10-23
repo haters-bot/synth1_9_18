@@ -114,7 +114,7 @@ module hspi_touch_rx (
                 watchdog_cnt <= 24'd0;
             end else begin
                 // Auto-release contact if no new packet received for 50ms (3,125,000 cycles)
-                if (watchdog_cnt < 24'd3_125_000) begin
+                if (watchdog_cnt < 24'd2_500_000) begin
                     watchdog_cnt <= watchdog_cnt + 24'd1;
                 end else begin
                     touch_state <= 1'b0;

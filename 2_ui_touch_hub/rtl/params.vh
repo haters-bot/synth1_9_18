@@ -13,9 +13,10 @@
 // ------------------------------------------------------------------------------
 `define CANVAS_W              14'd1280
 `define CANVAS_H              14'd720
+`define PIXEL_CLK_HZ          50000000
 
 `define TOUCH_FRAME_HEADER    16'h5454
-`define MIDI_BAUD_DIV_31250   16'd2000 // 62.5MHz / 31250 = 2000
+`define MIDI_BAUD_DIV_31250   16'd1600 // 50MHz / 31250 = 1600
 
 // ------------------------------------------------------------------------------
 // 2. Parameter IDs (8-bit)

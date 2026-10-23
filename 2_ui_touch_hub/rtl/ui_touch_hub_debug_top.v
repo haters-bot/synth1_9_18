@@ -34,7 +34,8 @@ module ui_touch_hub_debug_top (
     output wire        tmds_clk_p_0,    // G15 (P), G16 (N)
     output wire        tmds_clk_n_0,
     output wire [2:0]  tmds_d_p_0,      // D0: J14/H14, D1: J15/H15, D2: K17/J17
-    output wire [2:0]  tmds_d_n_0
+    output wire [2:0]  tmds_d_n_0,
+    output wire        audio_link_tx
 
 );
 ui_touch_hub_top #(.DEBUG_TOUCH_LOG(1)) u_hub(
@@ -53,6 +54,7 @@ ui_touch_hub_top #(.DEBUG_TOUCH_LOG(1)) u_hub(
     .knob_spi_sclk(knob_spi_sclk),
     .knob_spi_mosi(knob_spi_mosi),
     .midi_uart_tx(midi_uart_tx),
+    .audio_link_tx(audio_link_tx),
     .led(led),
     .tmds_clk_p_0(tmds_clk_p_0),
     .tmds_clk_n_0(tmds_clk_n_0),

@@ -13,9 +13,10 @@
 // ------------------------------------------------------------------------------
 `define CANVAS_W              14'd1280
 `define CANVAS_H              14'd720
+`define PIXEL_CLK_HZ          50000000
 
 `define TOUCH_FRAME_HEADER    16'h5454
-`define MIDI_BAUD_DIV_31250   16'd2000 // 62.5MHz / 31250 = 2000
+`define MIDI_BAUD_DIV_31250   16'd1600 // 50MHz / 31250 = 1600
 
 // ------------------------------------------------------------------------------
 // 2. Parameter IDs (8-bit)
@@ -145,21 +146,21 @@
 
 // Envelope & Modulation Panel (Expanded full lower left area: Y = 368..708)
 `define ENV_PANEL_X0          14'd24
-`define ENV_PANEL_X1          14'd780
+`define ENV_PANEL_X1          14'd402
 `define ENV_PANEL_Y0          14'd368
 `define ENV_PANEL_Y1          14'd708
 `define ENV_WIN_X0            14'd36
-`define ENV_WIN_X1            14'd768
+`define ENV_WIN_X1            14'd390
 `define ENV_WIN_Y0            14'd404
 `define ENV_WIN_Y1            14'd580
 `define ENV_BASE_Y            14'd568
 `define ENV_PEAK_Y            14'd424
 
 // Shared forward geometry for drawing AND direct manipulation.
-`define ENV_LEN_A(v) (16'd20+(({9'd0,v}*16'd130)>>7))
-`define ENV_LEN_H(v) (({9'd0,v}*16'd60)>>7)
-`define ENV_LEN_D(v) (16'd24+(({9'd0,v}*16'd160)>>7))
-`define ENV_LEN_R(v) (16'd24+(({9'd0,v}*16'd160)>>7))
+`define ENV_LEN_A(v) (16'd10+(({9'd0,v}*16'd65)>>7))
+`define ENV_LEN_H(v) (({9'd0,v}*16'd30)>>7)
+`define ENV_LEN_D(v) (16'd12+(({9'd0,v}*16'd80)>>7))
+`define ENV_LEN_R(v) (16'd12+(({9'd0,v}*16'd80)>>7))
 `define ENV_SUS_HEIGHT(v) (({9'd0,v}*16'd144)>>7)
 
 // FX & Modulation Matrix Panel (Expanded full lower right area: Y = 368..708)

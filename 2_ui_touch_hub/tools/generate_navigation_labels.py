@@ -1,0 +1,107 @@
+"""Generate fixed navigation text rectangles and character ROM (no bitmap assets)."""
+from pathlib import Path
+import json
+ROOT=Path(__file__).resolve().parents[1]
+
+def main():
+    chars=json.loads((ROOT/'tools/ui_font_7x10.json').read_text())['characters']
+    lines=[]
+    def add(condition,x,y,text,large=False,color='DDE7F4'):
+        lines.append((condition,x,y,text.replace('/',':'),large,color))
+    add('1',52,16,'MENU')
+    add('1',136,14,'SYNTHESIZER')
+    add('1',344,14,'VISUALIZATION')
+    add('1',616,16,'SYSTEM')
+    add('usb_connected && !usb_error',840,16,'USB CONNECTED',False,'58DDB8')
+    add('!usb_connected || usb_error',840,16,'USB OFFLINE',False,'D0A46C')
+    add('view==0',1040,14,'MASTER')
+    add('view!=0',1056,16,'UI TOUCH HUB')
+    add('view==1',24,56,'PERFORMANCE MONITOR',True)
+    add('view==1',800,64,'SIX VIEWS / AWAITING INPUT',False,'B3C5D8')
+    titles=['01 NOTES','02 WAVEFORM','03 STEREO PHASE','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
+    details=['KEYS / VELOCITY','LEFT / RIGHT AUDIO','STEREO PHASE VIEW',
+             'FREQUENCY BARS','SPECTRUM HISTORY','LEVEL / VOICE COUNT']
+    for i in range(6):
+        x=24+(i%3)*418;y=96+(i//3)*296
+        add('view==1',x+20,y+12,titles[i],True)
+        add('view==1',x+22,y+56,'EXAMPLE / NOT LIVE',False,'D5AD78')
+        add('view==1',x+20,y+248,details[i],False,'C0D0E0')
+    add('view==2',32,56,'SYSTEM SETTINGS',True)
+    for i,title in enumerate(['CONTROLS','DISPLAY','INPUTS','ABOUT']):
+        x=[32,336,632,928][i]
+        add('view==2',x+24,98,title,False,'E8F0FA')
+    add('view==2 && settings_section_id==1',48,136,'CONTROLS',True)
+    add('view==2 && settings_section_id==1',48,184,'MACROS : AUDIO MAPPING NOT CONNECTED',False,'AFC3D8')
+    for i in range(4):
+        y=248+i*64
+        add('view==2 && settings_section_id==1',64,y,f'MACRO {i+1}')
+        add('view==2 && settings_section_id==1',264,y,'-',True)
+        add('view==2 && settings_section_id==1',600,y,'+',True)
+    add('view==2 && settings_section_id==1',48,528,'AUDIO MAPPING NOT CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==1',48,560,'VALUES KEPT WHEN CHANGING PAGES',False,'AFC3D8')
+    add('view==2 && settings_section_id==1',736,136,'DEVICE STATUS',True)
+    add('view==2 && settings_section_id==1 && usb_connected && !usb_error',736,192,'TOUCH USB: CONNECTED',False,'58DDB8')
+    add('view==2 && settings_section_id==1 && (!usb_connected || usb_error)',736,192,'TOUCH USB: OFFLINE / ERROR',False,'D0A46C')
+    add('view==2 && settings_section_id==1',736,232,'VIDEO : 1280 X 720 / 50 MHZ')
+    add('view==2 && settings_section_id==1',736,264,'REFRESH : 40.4 HZ')
+    add('view==2 && settings_section_id==1',736,304,'FIRMWARE : R17 NAV / SIX SLOTS')
+    add('view==2 && settings_section_id==1',736,344,'AUDIO INPUT : NOT CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==1',736,384,'NOTE INPUT : NOT CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==1',736,424,'DEPLOYMENT : SRAM')
+    add('view==2 && settings_section_id==1',736,480,'TOUCH DIAGNOSTICS')
+    add('view==2 && settings_section_id==1 && show_diagnostics',904,544,'ON : TAP TO HIDE')
+    add('view==2 && settings_section_id==1 && !show_diagnostics',904,544,'OFF : TAP TO SHOW')
+    add('view==2 && settings_section_id==2',64,152,'DISPLAY INFO',True)
+    add('view==2 && settings_section_id==2',64,224,'OUTPUT : 1280 X 720')
+    add('view==2 && settings_section_id==2',64,272,'PIXEL CLOCK : 50 MHZ')
+    add('view==2 && settings_section_id==2',64,320,'REFRESH : 40.4 HZ')
+    add('view==2 && settings_section_id==2',64,392,'DISPLAY MODE IS FIXED BY THE FPGA',False,'AFC3D8')
+    add('view==2 && settings_section_id==2',64,432,'NO BRIGHTNESS CONTROL IS CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==2',760,216,'DISPLAY INTERFACE',True)
+    add('view==2 && settings_section_id==2',760,296,'VIDEO MODE IS SET BY FPGA')
+    add('view==2 && settings_section_id==2',760,344,'FUTURE OPTIONS SLOT')
+    add('view==2 && settings_section_id==3',64,152,'INPUT STATUS',True)
+    add('view==2 && settings_section_id==3 && usb_connected && !usb_error',64,224,'TOUCH USB : CONNECTED',False,'58DDB8')
+    add('view==2 && settings_section_id==3 && (!usb_connected || usb_error)',64,224,'TOUCH USB : OFFLINE / ERROR',False,'D0A46C')
+    add('view==2 && settings_section_id==3',64,272,'AUDIO PCM : NOT CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==3',64,320,'NOTE EVENTS : NOT CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==3',64,368,'MIDI UART : PARAMETER CONTROL')
+    add('view==2 && settings_section_id==3',760,216,'DATA CONNECTIONS',True)
+    add('view==2 && settings_section_id==3',760,296,'AUDIO PCM : RESERVED PORT')
+    add('view==2 && settings_section_id==3',760,344,'NOTE EVENTS : RESERVED PORT')
+    add('view==2 && settings_section_id==4',64,152,'UI TOUCH HUB',True)
+    add('view==2 && settings_section_id==4',64,224,'FIRMWARE : R17 NAV / SIX SLOTS')
+    add('view==2 && settings_section_id==4',64,272,'CURRENT DEPLOYMENT : SRAM')
+    add('view==2 && settings_section_id==4',64,320,'CONFIGURATION FLASH NOT CHANGED',False,'AFC3D8')
+    add('view==2 && settings_section_id==4',64,392,'SETTINGS ITEMS CAN BE ADDED BY ID',False,'AFC3D8')
+    add('view==2 && settings_section_id==4',760,216,'EXPANSION INTERFACE',True)
+    add('view==2 && settings_section_id==4',760,296,'ADD A SECTION ID AND LABEL')
+    add('view==2 && settings_section_id==4',760,344,'CONNECT ITS STATE AND TOUCH')
+    add('view==2 && settings_section_id==4',760,392,'NO UNUSED SETTINGS ARE EXPOSED',False,'D6B989')
+    add('view==3',48,72,'WORKSPACE MENU',True)
+    for i,(title,detail) in enumerate([('SYNTHESIZER','OSC FILTER ENV FX LFO'),
+                                    ('VISUALIZATION','SIX LIVE DATA VIEWS'),
+                                    ('SYSTEM','CONTROLS AND STATUS')]):
+        x=48+i*408
+        add('view==3',x+20,208,title,True)
+        add('view==3',x+20,384,detail,False,'AFC3D8')
+    add('view==3',48,544,'PAGE SWITCHING KEEPS SYNTH SETTINGS',False,'B3C5D8')
+    add('view==3',48,576,'AUDIO DATA INPUTS ARE NOT CONNECTED',False,'D6B989')
+    # Menu covers the underlying page. Each page's rectangles are disjoint.
+    out=['// Generated by tools/generate_navigation_labels.py.\n']
+    out += ['reg [6:0] text_id; reg [5:0] text_col; reg [3:0] text_rx; reg [4:0] text_ry; reg text_large;\n',
+            'reg text_valid; reg [23:0] text_color;\nalways @(*) begin\n',
+            "text_id=0;text_col=0;text_rx=0;text_ry=0;text_large=0;text_valid=0;text_color=24'hE8F0FA;\n"]
+    for i,(condition,x,y,text,large,color) in enumerate(lines):
+        advance=16 if large else 12
+        assert x+len(text)*advance<=1280, (text,x)
+        out += [f"if(({condition}) && in_x>={x} && in_x<{x+len(text)*advance} && in_y>={y} && in_y<{y+(22 if large else 16)})begin\n",
+                f"text_valid=1;text_id=7'd{i};text_col=(in_x-{x})/{advance};text_rx=(in_x-{x})%{advance};text_ry=(in_y-{y});text_large=1'b{int(large)};text_color=24'h{color};end\n"]
+    out+=['end\nfunction [5:0] navigation_char; input [6:0] line; input [5:0] col; begin\ncase({line,col})\n']
+    for i,(_,_,_,text,_,_) in enumerate(lines):
+        for j,ch in enumerate(text):
+            if ch!=' ':out.append(f"13'd{i*64+j}:navigation_char=6'd{chars.index(ch)};\n")
+    out.append("default:navigation_char=0;endcase end endfunction\n")
+    (ROOT/'rtl/ui_vector_engine/navigation_labels.vh').write_text(''.join(out))
+    print(f'{len(lines)} navigation text rectangles generated')
+if __name__=='__main__':main()

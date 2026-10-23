@@ -5,6 +5,21 @@
 // ==============================================================================
 
 // 50MHz System Clock & Reset
+// Keep the three local serializer reset chains in their previously audited
+// bottom-right fabric sites. An unconstrained placement spread clk_5x_bit
+// across PTR3/PBR3 and failed minimum clock pulse width on these nine FFs.
+// Sites are from the 20261019_200320 routed timing report; all recovery,
+// removal, setup, hold and pulse-width checks remain enabled.
+INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R101C159[0][A];
+INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R101C161[0][A];
+INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R101C163[0][A];
+INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R88C164[0][B];
+INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R90C166[0][A];
+INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R92C168[0][A];
+INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R63C164[0][B];
+INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R61C164[0][A];
+INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R60C166[0][A];
+
 IO_LOC  "clk"             V22;
 IO_PORT "clk"             IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=OFF BANK_VCCIO=3.3;
 
@@ -55,7 +70,11 @@ IO_PORT "knob_spi_sclk"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 IO_LOC  "knob_spi_mosi"   T16;
 IO_PORT "knob_spi_mosi"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 
-// Teammate 3 (Audio Engine) UART MIDI Output (txp)
+// Audio-engine UART MIDI output to PMOD1 IO2 (J8 pin 9, 3.3V GPIO).
+IO_LOC  "audio_link_tx"   AB21;
+IO_PORT "audio_link_tx"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+// Board USB-UART monitor output (normal build mirrors MIDI; debug build logs).
 IO_LOC  "midi_uart_tx"    U15;
 IO_PORT "midi_uart_tx"    IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 

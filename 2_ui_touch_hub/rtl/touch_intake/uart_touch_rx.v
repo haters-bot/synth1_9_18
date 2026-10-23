@@ -7,7 +7,7 @@
 // ==============================================================================
 
 module uart_touch_rx #(
-    parameter CLK_FREQ = 62500000,
+    parameter CLK_FREQ = 50000000,
     parameter BAUD     = 115200
 )(
     input  wire        clk,

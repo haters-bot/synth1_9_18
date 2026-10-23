@@ -80,16 +80,16 @@ PLL PLL_inst (
 defparam PLL_inst.FCLKIN = "50";
 defparam PLL_inst.IDIV_SEL = 1;
 defparam PLL_inst.FBDIV_SEL = 1;
-// VCO = 50M x (FBDIV_SEL=1) x MDIV_SEL(25) / IDIV_SEL(1) = 1250MHz (合规区间 650~1300)
-// ODIV 一律取偶数（高�?PLL 分频器约束），输�?62.5MHz / 312.5MHz
-defparam PLL_inst.ODIV0_SEL = 20;  // clkout0 = 1250/20 = 62.5MHz 像素时钟 (720p 行格�? 50.5Hz)
-defparam PLL_inst.ODIV1_SEL = 4;   // clkout1 = 1250/4  = 312.5MHz = 5x 像素 (OSER10 DDR = 10x 串行�?
+// VCO = 50M x MDIV_SEL(20) / IDIV_SEL(1) = 1000MHz (合规区间 650~1300)
+// 50MHz pixel + 250MHz 5x bit clock leaves timing margin for the procedural UI.
+defparam PLL_inst.ODIV0_SEL = 20;  // clkout0 = 1000/20 = 50MHz pixel clock
+defparam PLL_inst.ODIV1_SEL = 4;   // clkout1 = 1000/4  = 250MHz = 5x pixel (OSER10 DDR)
 defparam PLL_inst.ODIV2_SEL = 8;
 defparam PLL_inst.ODIV3_SEL = 8;
 defparam PLL_inst.ODIV4_SEL = 8;
 defparam PLL_inst.ODIV5_SEL = 8;
 defparam PLL_inst.ODIV6_SEL = 8;
-defparam PLL_inst.MDIV_SEL = 25;
+defparam PLL_inst.MDIV_SEL = 20;
 defparam PLL_inst.MDIV_FRAC_SEL = 0;
 defparam PLL_inst.ODIV0_FRAC_SEL = 0;
 defparam PLL_inst.CLKOUT0_EN = "TRUE";

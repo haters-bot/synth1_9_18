@@ -195,71 +195,35 @@ module osc_panel_renderer (
         (s1_y==`OSCA_WIN_CY ? `COLOR_GRID_AXIS : `COLOR_GRID_SUBTLE) : 24'h0C0E14;
     wire [23:0] bg_b=fill_b ? `COLOR_OSCB_FILL : s1_grid_b ?
         (s1_y==`OSCB_WIN_CY ? `COLOR_GRID_AXIS : `COLOR_GRID_SUBTLE) : 24'h0C0E14;
+    // Stage three registers coverage and background before RGB arithmetic.
+    reg hit_a2,hit_b2,border_a2,border_b2;
+    reg [23:0] bg_a2,bg_b2,fg_a2,fg_b2;
+    reg [2:0] alpha_a2,alpha_b2;
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            out_hit_osca <= 1'b0;
-            out_osca_rgb <= 24'h0;
-            out_hit_oscb <= 1'b0;
-            out_oscb_rgb <= 24'h0;
+        if(!rst_n) begin
+            hit_a2<=0;hit_b2<=0;border_a2<=0;border_b2<=0;
+            bg_a2<=0;bg_b2<=0;fg_a2<=0;fg_b2<=0;alpha_a2<=0;alpha_b2<=0;
         end else begin
-            // OSC A
-            out_hit_osca <= 1'b0;
-            out_osca_rgb <= 24'h0;
-            if (s1_in_osca) begin
-                out_hit_osca <= 1'b1;
-                // Outer window border (1px)
-                if ((s1_x == `OSCA_WIN_X0) || (s1_x == `OSCA_WIN_X1) ||
-                    (s1_y == `OSCA_WIN_Y0) || (s1_y == `OSCA_WIN_Y1)) begin
-                    out_osca_rgb <= `COLOR_PANEL_BORDER;
-                end
-                // Fractional center with pixel coverage; no broad 7px halo.
-                else if(alpha_a!=0) begin
-                    out_osca_rgb<=blend_rgb_q4(s1_pwr_a ? `COLOR_OSCA_LINE : 24'h222A38,bg_a,alpha_a);
-                end
-                // Translucent glow fill
-                else if (s1_pwr_a && (((s1_y <= `OSCA_WIN_CY) && (s1_y >= s1_target_ya)) ||
-                                      ((s1_y >= `OSCA_WIN_CY) && (s1_y <= s1_target_ya)))) begin
-                    out_osca_rgb <= `COLOR_OSCA_FILL;
-                end
-                // Scope reference grid
-                else if (s1_grid_a) begin
-                    out_osca_rgb <= (s1_y == `OSCA_WIN_CY) ? `COLOR_GRID_AXIS : `COLOR_GRID_SUBTLE;
-                end
-                // Window dark background
-                else begin
-                    out_osca_rgb <= 24'h0C0E14;
-                end
-            end
-
-            // OSC B
-            out_hit_oscb <= 1'b0;
-            out_oscb_rgb <= 24'h0;
-            if (s1_in_oscb) begin
-                out_hit_oscb <= 1'b1;
-                // Outer window border
-                if ((s1_x == `OSCB_WIN_X0) || (s1_x == `OSCB_WIN_X1) ||
-                    (s1_y == `OSCB_WIN_Y0) || (s1_y == `OSCB_WIN_Y1)) begin
-                    out_oscb_rgb <= `COLOR_PANEL_BORDER;
-                end
-                // Fractional center with pixel coverage; no broad 7px halo.
-                else if(alpha_b!=0) begin
-                    out_oscb_rgb<=blend_rgb_q4(s1_pwr_b ? `COLOR_OSCB_LINE : 24'h222A38,bg_b,alpha_b);
-                end
-                // Translucent glow fill
-                else if (s1_pwr_b && (((s1_y <= `OSCB_WIN_CY) && (s1_y >= s1_target_yb)) ||
-                                      ((s1_y >= `OSCB_WIN_CY) && (s1_y <= s1_target_yb)))) begin
-                    out_oscb_rgb <= `COLOR_OSCB_FILL;
-                end
-                // Scope reference grid
-                else if (s1_grid_b) begin
-                    out_oscb_rgb <= (s1_y == `OSCB_WIN_CY) ? `COLOR_GRID_AXIS : `COLOR_GRID_SUBTLE;
-                end
-                // Window dark background
-                else begin
-                    out_oscb_rgb <= 24'h0C0E14;
-                end
-            end
+            hit_a2<=s1_in_osca;hit_b2<=s1_in_oscb;
+            border_a2<=s1_x==`OSCA_WIN_X0 || s1_x==`OSCA_WIN_X1 ||
+                       s1_y==`OSCA_WIN_Y0 || s1_y==`OSCA_WIN_Y1;
+            border_b2<=s1_x==`OSCB_WIN_X0 || s1_x==`OSCB_WIN_X1 ||
+                       s1_y==`OSCB_WIN_Y0 || s1_y==`OSCB_WIN_Y1;
+            bg_a2<=bg_a;bg_b2<=bg_b;alpha_a2<=alpha_a;alpha_b2<=alpha_b;
+            fg_a2<=s1_pwr_a ? `COLOR_OSCA_LINE : 24'h222A38;
+            fg_b2<=s1_pwr_b ? `COLOR_OSCB_LINE : 24'h222A38;
         end
     end
-
+    // Stage four performs only registered color blending and border selection.
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            out_hit_osca<=0;out_hit_oscb<=0;out_osca_rgb<=0;out_oscb_rgb<=0;
+        end else begin
+            out_hit_osca<=hit_a2;out_hit_oscb<=hit_b2;
+            out_osca_rgb<=!hit_a2 ? 24'd0 : border_a2 ? `COLOR_PANEL_BORDER :
+                blend_rgb_q4(fg_a2,bg_a2,alpha_a2);
+            out_oscb_rgb<=!hit_b2 ? 24'd0 : border_b2 ? `COLOR_PANEL_BORDER :
+                blend_rgb_q4(fg_b2,bg_b2,alpha_b2);
+        end
+    end
 endmodule

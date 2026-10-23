@@ -2,7 +2,7 @@
 // 64-byte binary frames, little endian; byte 63 is XOR(bytes 0..62).
 // Events within 16 clocks share a record; no ready/backpressure enters the UI.
 module ui_debug_trace #(
-    parameter CLK_FREQ=62500000, parameter BAUD=115200,
+    parameter CLK_FREQ=50000000, parameter BAUD=115200,
     parameter FIFO_BITS=5, parameter BATCH_CYCLES=16
 )(
     input wire clk,rst_n,
@@ -178,7 +178,7 @@ module ui_debug_trace #(
         .busy(byte_busy),.tx(uart_tx));
 endmodule
 
-module ui_trace_uart_byte #(parameter CLK_FREQ=62500000,parameter BAUD=115200)(
+module ui_trace_uart_byte #(parameter CLK_FREQ=50000000,parameter BAUD=115200)(
     input wire clk,rst_n,send,input wire [7:0] data,output reg busy,output reg tx
 );
     localparam DIV=(CLK_FREQ+BAUD/2)/BAUD;

@@ -42,8 +42,10 @@ module ui_touch_hub_top #(
     input  wire        knob_spi_sclk,   // U15 (LVCMOS33)
     input  wire        knob_spi_mosi,   // V15 (LVCMOS33)
 
-    // U15: normal build MIDI 31250; diagnostic build trace 115200.
+    // U15: board USB-UART monitor output (normal MIDI or diagnostic trace).
     output wire        midi_uart_tx,
+    // PMOD1 IO2/AB21: dedicated 3.3V UART TX to audio-board J8 pin 9.
+    output wire        audio_link_tx,
 
     // 板载状态指示灯
     output wire [1:0]  led,             // T18: PLL Lock, R18: Heartbeat
@@ -56,7 +58,7 @@ module ui_touch_hub_top #(
 );
 
     // --------------------------------------------------------------------------
-    // 1. PLL 时钟生成 (50MHz -> 62.5MHz 像素时钟 + 312.5MHz 5倍位时钟)
+    // 1. PLL 时钟生成 (50MHz 像素时钟 + 250MHz 5倍位时钟)
     // --------------------------------------------------------------------------
     wire clk_pixel;
     wire clk_5x_bit;
@@ -131,7 +133,7 @@ module ui_touch_hub_top #(
     wire active_touch_rx = touch_uart_rx & touch_uart_rx_y14;
 
     uart_touch_rx #(
-        .CLK_FREQ (62500000),
+        .CLK_FREQ (50000000),
         .BAUD     (115200)
     ) u_touch_rx (
         .clk         (clk_pixel),
@@ -242,6 +244,12 @@ module ui_touch_hub_top #(
     wire [63:0] touch_diag_coords;
     wire [15:0] touch_diag_count;
     wire touch_diag_mode;
+    wire binding_capture;
+    wire fx_event_valid,route_event_valid;
+    wire [7:0] fx_event_id,route_event_target;
+    wire [6:0] fx_event_value;
+    wire [1:0] route_event_source;
+    wire signed [7:0] route_event_depth;
     wire ui_touch_valid, ui_touch_down;
     wire [13:0] ui_touch_x, ui_touch_y;
     wire curve_capture,curve_focus_valid;
@@ -250,9 +258,13 @@ module ui_touch_hub_top #(
     wire [1:0] curve_update_tab;
     wire [4:0] curve_update_mask;
     wire [34:0] curve_update_values;
+    wire [34:0] display_env_values;
+    wire navigation_capture,navigation_delta_valid;
+    wire [7:0] navigation_delta_id;
+    wire signed [7:0] navigation_delta_value;
     wire midi_tx_busy;
     touch_event_router u_touch_router (
-        .curve_capture_active(curve_capture),.curve_focus_valid(curve_focus_valid),.curve_focus_id(curve_focus_id),
+        .curve_capture_active(curve_capture | binding_capture | navigation_capture),.curve_focus_valid(curve_focus_valid),.curve_focus_id(curve_focus_id),
         .ui_touch_valid(ui_touch_valid), .ui_touch_down(ui_touch_down),
         .ui_touch_x(ui_touch_x), .ui_touch_y(ui_touch_y),
         .diag_contact_coords (touch_diag_coords),
@@ -324,12 +336,13 @@ module ui_touch_hub_top #(
     wire [7:0]  midi_cc_param_id;
     wire [6:0]  midi_cc_val;
 
-    curve_touch_editor u_curve_editor (
+    curve_touch_editor #(.USE_DISPLAY_GEOMETRY(1)) u_curve_editor (
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),
-        .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .touch_valid(ui_touch_valid),.touch_down(ui_touch_down && !binding_capture && !navigation_capture),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .cutoff(val_flt_cutoff),.resonance(val_flt_res),.filter_type(val_flt_type),.env_tab(val_env_tab),
         .attack(val_env_attack),.hold(val_env_hold),.decay(val_env_decay),
         .sustain(val_env_sustain),.release_v(val_env_release),
+        .display_env_values(display_env_values),
         .capture_active(curve_capture),.focus_valid(curve_focus_valid),.focus_id(curve_focus_id),
         .update_valid(curve_update_valid),.update_filter(curve_update_filter),
         .update_tab(curve_update_tab),.update_mask(curve_update_mask),.update_values(curve_update_values)
@@ -341,13 +354,13 @@ module ui_touch_hub_top #(
         .curve_update_values(curve_update_values),.midi_tx_busy(midi_tx_busy),
         .clk               (clk_pixel),
         .rst_n             (sys_rst_n_sync),
-        .touch_delta_valid (touch_delta_valid),
-        .touch_selected_id (selected_param_id),
-        .touch_delta_val   (touch_delta_val),
+        .touch_delta_valid (navigation_delta_valid | touch_delta_valid),
+        .touch_selected_id (navigation_delta_valid ? navigation_delta_id : selected_param_id),
+        .touch_delta_val   (navigation_delta_valid ? navigation_delta_value : touch_delta_val),
         .btn_tap_valid     (btn_tap_valid),
         .btn_tap_id        (btn_tap_id),
         .btn_tap_action    (btn_tap_action),
-        .spi_param_valid   (spi_param_valid),
+        .spi_param_valid   (spi_param_valid && spi_param_id < 8'h60),
         .spi_param_id      (spi_param_id),
         .spi_param_val     (spi_param_val),
         .val_macro1        (val_macro1),
@@ -424,6 +437,14 @@ module ui_touch_hub_top #(
     wire [59:0] trace_lfo_state;
 
     ui_top_renderer u_render (
+        .navigation_capture(navigation_capture),.navigation_delta_valid(navigation_delta_valid),
+        .navigation_delta_id(navigation_delta_id),.navigation_delta_value(navigation_delta_value),
+        .display_env_snapshot(display_env_values),
+        .external_param_valid(spi_param_valid),.external_param_id(spi_param_id),.external_param_value(spi_param_val),
+        .binding_capture(binding_capture),
+        .fx_event_valid(fx_event_valid),.fx_event_id(fx_event_id),.fx_event_value(fx_event_value),
+        .route_event_valid(route_event_valid),.route_event_target(route_event_target),
+        .route_event_source(route_event_source),.route_event_depth(route_event_depth),
         .trace_lfo_state(trace_lfo_state),
         .ui_touch_valid(ui_touch_valid), .ui_touch_down(ui_touch_down),
         .ui_touch_x(ui_touch_x), .ui_touch_y(ui_touch_y),
@@ -519,6 +540,7 @@ module ui_touch_hub_top #(
         .pixel_clock     (clk_pixel),
         .ddr_bit_clock   (clk_5x_bit),
         .reset           (~sys_rst_n_sync),
+        .phy_reset       (~(rst_n & pll_lock & pll_usb_lock)),
         .den             (render_den),
         .hsync           (render_hsync),
         .vsync           (render_vsync),
@@ -534,7 +556,7 @@ module ui_touch_hub_top #(
     // --------------------------------------------------------------------------
     wire audio_midi_tx;
     midi_uart_tx #(
-        .CLK_FREQ (62500000),
+        .CLK_FREQ (50000000),
         .BAUD     (31250)
     ) u_midi_tx (
         .clk           (clk_pixel),
@@ -553,6 +575,8 @@ module ui_touch_hub_top #(
     // Diagnostic firmware uses the existing board USB-UART TX, never injects
     // trace bytes into MIDI. Internal MIDI generation/busy timing stays intact.
     generate if(DEBUG_TOUCH_LOG) begin: g_trace
+        // Keep the cross-board audio input idle while U15 carries trace records.
+        assign audio_link_tx=1'b1;
         reg [15:0] trace_raw_x,trace_raw_y;
         reg [1:0] trace_source;
         always @(posedge clk_pixel or negedge sys_rst_n_sync) begin
@@ -652,6 +676,7 @@ module ui_touch_hub_top #(
         );
     end else begin: g_midi
         assign midi_uart_tx=audio_midi_tx;
+        assign audio_link_tx=audio_midi_tx;
     end endgenerate
 
     // --------------------------------------------------------------------------

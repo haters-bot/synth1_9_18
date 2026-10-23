@@ -18,9 +18,28 @@ module tb_curve_touch_editor;
     reg [34:0] manual_values=0;
     integer cc_count=0,last_cc[0:127],byte_count=0,cc_num=0;
     reg [7:0] rxbyte;
-    integer bit_i,j,nx,ny,saved_count;
+    integer bit_i,j,nx,ny,saved_count,start_x,start_y,env1_a,env1_h,env1_d,env1_s,env1_r,env2_a;
     integer spans[0:5];
     always #8 clk=~clk;
+    // Full-precision test geometry for the approved compact ENV layout.
+    // Do not obtain gesture coordinates from internal DUT registers: that
+    // could hide the same node-placement error in both renderer and editor.
+    function integer attack_x;
+        input integer value;
+        begin attack_x=46+value*65/128;end
+    endfunction
+    function integer hold_x;
+        input integer av,hv;
+        begin hold_x=attack_x(av)+hv*30/128;end
+    endfunction
+    function integer decay_x;
+        input integer av,hv,dv;
+        begin decay_x=hold_x(av,hv)+12+dv*80/128;end
+    endfunction
+    function integer sustain_y;
+        input integer value;
+        begin sustain_y=568-value*144/128;end
+    endfunction
     touch_event_router router(.clk(clk),.rst_n(rst_n),.touch_valid(tv),.touch_state(td),
         .raw_touch_x(raw_x),.raw_touch_y(raw_y),
         .curve_capture_active(cap),.curve_focus_valid(fv),.curve_focus_id(fid),
@@ -104,7 +123,7 @@ module tb_curve_touch_editor;
         packet(1073,151,1);
         if(cut!=80 || res!=32) $fatal(1,"Return-to-anchor did not restore exact parameter values");
         packet(1101,140,1);up;drain;
-        if(last_cc[74]!=93 || last_cc[71]!=64) $fatal(1,"Filter XY MIDI lost a parameter");
+        if(last_cc[43]!=93 || last_cc[44]!=64) $fatal(1,"Filter XY MIDI lost a parameter");
         packet(1073,151,1);packet(168,385,1);
         if(tab!=0) $fatal(1,"Curve excursion activated ENV tab");
         packet(1279,0,1);
@@ -116,42 +135,54 @@ module tb_curve_touch_editor;
         packet(66,424,1);
         if(!cap || fid!=`PARAM_ID_ENV1_ATTACK) $fatal(1,"Attack handle not selected");
         packet(92,424,1);up;
-        if(a!=35 || h!=0 || d!=40 || s!=90 || r!=35) $fatal(1,"Attack drag changed unrelated stages");
-        packet(91,412,1);
+        if(a!=61 || h!=0 || d!=40 || s!=90 || r!=35) $fatal(1,"Attack drag changed unrelated stages: %0d/%0d/%0d/%0d/%0d",a,h,d,s,r);
+        start_x=hold_x(a,h);
+        packet(start_x,412,1);
         if(fid!=`PARAM_ID_ENV1_HOLD) $fatal(1,"Zero-Hold handle could not be selected separately");
-        packet(121,412,1);up;
-        if(h!=64 || a!=35) $fatal(1,"Hold drag failed %d",h);
-        packet(195,467,1);packet(235,431,1);up;
-        if(d!=72 || s!=122) $fatal(1,"Decay XY failed: %d %d",d,s);
-        packet(235,431,1);packet(235,467,1);up;
-        if(d!=72 || s!=90) $fatal(1,"Decay handle vertical-only sustain edit failed: %d %d",d,s);
-        packet(235,467,1);packet(235,431,1);up;
-        if(d!=72 || s!=122) $fatal(1,"Decay handle vertical restore failed: %d %d",d,s);
-        packet(355,431,1);packet(305,631,1);up;
-        if(s!=0 || d!=72) $fatal(1,"Sustain drag modified duration or failed saturation");
-        packet(422,568,1);packet(502,568,1);up;
-        if(r!=98 || a!=35 || h!=64) $fatal(1,"Release drag failed %d",r);
+        packet(start_x+30,412,1);up;
+        if(h!=127 || a!=61) $fatal(1,"Hold drag failed h=%d a=%d",h,a);
+        start_x=decay_x(a,h,d);start_y=sustain_y(s);
+        packet(start_x,start_y,1);packet(start_x+40,start_y-36,1);up;
+        if(d!=104 || s!=122 || a!=61 || h!=127 || r!=35)
+            $fatal(1,"Decay XY failed or changed unrelated stages: %0d/%0d/%0d/%0d/%0d",a,h,d,s,r);
+        env1_d=d;env1_s=s;
+        start_x=decay_x(a,h,d);start_y=sustain_y(s);
+        packet(start_x,start_y,1);packet(start_x,start_y+36,1);up;
+        if(d!=env1_d || s!=90) $fatal(1,"Decay handle vertical-only edit failed: %d %d",d,s);
+        start_x=decay_x(a,h,d);start_y=sustain_y(s);
+        packet(start_x,start_y,1);packet(start_x,start_y-36,1);up;
+        if(d!=env1_d || s!=env1_s) $fatal(1,"Decay handle vertical restore failed: %d %d",d,s);
+        env1_s=s;
+        start_x=decay_x(a,h,d)+60;start_y=sustain_y(s);
+        packet(start_x,start_y,1);packet(start_x,start_y+200,1);up;
+        if(s!=0 || d!=env1_d) $fatal(1,"Sustain drag modified duration or failed saturation");
+        start_x=decay_x(a,h,d)+60+12+r*80/128;
+        packet(start_x,568,1);packet(start_x+80,568,1);up;
+        if(r!=127 || a!=61 || h!=127) $fatal(1,"Release drag failed %d",r);
+        env1_a=a;env1_h=h;env1_d=d;env1_s=s;env1_r=r;
         drain;
-        if(last_cc[73]!=35 || last_cc[79]!=64 || last_cc[75]!=72 || last_cc[76]!=0 || last_cc[72]!=98)
-            $fatal(1,"ENV1 serial CC mismatch");
+        if(last_cc[24]!=env1_a || last_cc[25]!=env1_d || last_cc[26]!=env1_s || last_cc[27]!=env1_r || last_cc[79]!=-1)
+            $fatal(1,"ENV1 audio CC mapping mismatch or unsupported Hold was sent");
         saved_count=cc_count;
         click(168,385);
         if(tab!=1 || a!=10 || h!=0 || d!=40 || s!=90 || r!=35) $fatal(1,"ENV2 not independent");
-        packet(66,424,1);packet(92,424,1);up;
+        start_x=attack_x(a);
+        packet(start_x,424,1);packet(start_x+20,424,1);up;
         spi(`PARAM_ID_ENV1_ATTACK,77);
-        packet(100,652,1);packet(120,652,1);up;
-        if(a!=85) $fatal(1,"ENV2 physical/touch knob did not edit active bank");
+        packet(60,652,1);packet(80,652,1);up;
+        if(a!=85 || h!=0) $fatal(1,"ENV2 physical/touch knob did not edit active bank: a=%0d h=%0d",a,h);
+        env2_a=a;
         drain;
         if(cc_count!=saved_count) $fatal(1,"Local ENV2/tab changes leaked onto ENV1 MIDI");
         click(250,385);
         if(tab!=2 || a!=10) $fatal(1,"ENV3 not independent");
-        click(168,385);if(a!=85) $fatal(1,"ENV2 values lost on tab switch");
+        click(168,385);if(a!=env2_a) $fatal(1,"ENV2 values lost on tab switch");
         click(70,385);
-        if(a!=35 || h!=64 || d!=72 || s!=0 || r!=98) $fatal(1,"ENV1 values lost on tab switch");
+        if(a!=env1_a || h!=env1_h || d!=env1_d || s!=env1_s || r!=env1_r) $fatal(1,"ENV1 values lost on tab switch");
 
         // A contact starting outside the scope cannot capture it on entry.
         packet(790,500,1);packet(91,424,1);
-        if(cap || a!=35) $fatal(1,"Outside gesture captured ENV");
+        if(cap || a!=env1_a) $fatal(1,"Outside gesture captured ENV");
         up;
         packet(91,424,1);repeat(1030) @(negedge clk);
         packet(168,385,1);
@@ -176,8 +207,8 @@ module tb_curve_touch_editor;
         @(negedge clk);manual_valid=1;manual_values={21'd0,7'd63,7'd100};
         @(negedge clk);manual_valid=0;
         repeat(8) @(negedge clk);force_busy=0;drain;
-        if(last_cc[74]!=100 || last_cc[71]!=63) $fatal(1,"Latest XY MIDI did not survive UART busy");
-        spans[0]=280;spans[1]=44;spans[2]=130;spans[3]=60;spans[4]=160;spans[5]=144;
+        if(last_cc[43]!=100 || last_cc[44]!=63) $fatal(1,"Latest XY MIDI did not survive UART busy");
+        spans[0]=280;spans[1]=44;spans[2]=65;spans[3]=30;spans[4]=80;spans[5]=144;
         for(ny=0;ny<6;ny=ny+1) begin
             for(j=-5;j<=spans[ny]+5;j=j+1) begin
                 nx=j<=0 ? 0 : (j*128+spans[ny]/2)/spans[ny];if(nx>127) nx=127;

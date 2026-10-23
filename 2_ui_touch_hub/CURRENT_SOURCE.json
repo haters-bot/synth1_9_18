@@ -1,14 +1,16 @@
 {
-  "ui_source_commit": "a2b6e6cf629ac22738df7d88e05012e7a164fe28",
-  "baseline_manifest": "V1_0_SOURCE.json",
-  "source_archive_sha256": "1888C72D2934C698559D214177E32C7851B2759D79837D52BBCEF12D39CDE89E",
+  "ui_source_commit": "0dfae7c995bc7029f1253c8c4843a10eb3d4376f",
+  "shared_audio_base_commit": "3f2bed2b0731d4f7f1d0ccc2947f083bb47f28d4",
+  "integration_branch": "integration/dual-138k-uart-phase1",
+  "protocol_document": "docs/ui_uart_integration_v1.md",
+  "source_archive_sha256": "A5D30CBDA828C9B19CEAE0D8E26802D0E3999D3B71EC211F8038D57F421FA9B1",
   "excluded_source_paths": [
     "sim/transcript"
   ],
   "packaging_adjustments": [
-    "Ignore sim/transcript; stop tracking the shared copy while keeping the file on disk"
+    "Ignore simulator work, model output, and local transcripts while preserving files on disk"
   ],
   "diagnostic_bitstream_sha256": "F34A5197EE10D99C7AC58A0CC9392222C6F206DCE79E9C83B986207336D60226",
-  "hardware_validation": "UART STATUS received on COM6; camera normal; no real touch events captured yet; programmer exit missing after SSH loss; timing not closed",
+  "hardware_validation": "Phase 1 GPIO UART wiring pending user; UI/audio ModelSim tests pass; Gowin STA and board acceptance pending; no Flash operation",
   "pull_request": "https://github.com/haters-bot/synth1_9_18/pull/1"
 }

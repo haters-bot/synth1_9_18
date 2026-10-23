@@ -65,6 +65,9 @@ module tb_param_merger;
         .spi_param_valid   (spi_param_valid),
         .spi_param_id      (spi_param_id),
         .spi_param_val     (spi_param_val),
+        .curve_update_valid(1'b0), .curve_update_filter(1'b0),
+        .curve_update_tab(2'd0), .curve_update_mask(5'd0),
+        .curve_update_values(35'd0), .midi_tx_busy(1'b0),
         .val_macro1        (val_macro1),
         .val_macro2        (val_macro2),
         .val_macro3        (val_macro3),
@@ -129,8 +132,8 @@ module tb_param_merger;
         .midi_cc_val       (midi_cc_val)
     );
 
-    // 62.5MHz Clock Generator
-    always #8 clk = ~clk;
+    // 50 MHz physical parameter clock. Drive/check on the inactive edge.
+    always #10 clk = ~clk;
 
     initial begin
         clk = 0;
@@ -157,13 +160,13 @@ module tb_param_merger;
         end
 
         // 2. Test Physical Knob SPI Update from Teammate 1
-        @(posedge clk);
+        @(negedge clk);
         spi_param_valid = 1;
         spi_param_id    = `PARAM_ID_FLT_CUTOFF;
         spi_param_val   = 7'd112;
-        @(posedge clk);
+        @(negedge clk);
         spi_param_valid = 0;
-        @(posedge clk);
+        @(negedge clk);
 
         if (val_flt_cutoff !== 7'd112 || !midi_cc_req || midi_cc_val !== 7'd112) begin
             $display("[FAIL] SPI Cutoff update failed! Got %d, CC_req=%b", val_flt_cutoff, midi_cc_req);
@@ -173,13 +176,13 @@ module tb_param_merger;
         end
 
         // 3. Test Touch Delta Step Update
-        @(posedge clk);
+        @(negedge clk);
         touch_delta_valid = 1;
         touch_selected_id = `PARAM_ID_OSCA_WT_POS;
         touch_delta_val   = 8'sd15;
-        @(posedge clk);
+        @(negedge clk);
         touch_delta_valid = 0;
-        @(posedge clk);
+        @(negedge clk);
 
         if (val_osca_wt_pos !== 7'd15) begin
             $display("[FAIL] Touch Delta WT_POS update failed! Got %d", val_osca_wt_pos);
@@ -189,13 +192,13 @@ module tb_param_merger;
         end
 
         // 4. Test Boundary Clamping at Lower Bound (0)
-        @(posedge clk);
+        @(negedge clk);
         touch_delta_valid = 1;
         touch_selected_id = `PARAM_ID_OSCA_WT_POS;
         touch_delta_val   = -8'sd50; // 15 - 50 = -35 -> should clamp to 0
-        @(posedge clk);
+        @(negedge clk);
         touch_delta_valid = 0;
-        @(posedge clk);
+        @(negedge clk);
 
         if (val_osca_wt_pos !== 7'd0) begin
             $display("[FAIL] Lower clamp failed! Got %d", val_osca_wt_pos);
@@ -205,13 +208,13 @@ module tb_param_merger;
         end
 
         // 5. Test Boundary Clamping at Upper Bound (127)
-        @(posedge clk);
+        @(negedge clk);
         touch_delta_valid = 1;
         touch_selected_id = `PARAM_ID_FLT_CUTOFF;
         touch_delta_val   = 8'sd100; // 112 + 100 = 212 -> should clamp to 127
-        @(posedge clk);
+        @(negedge clk);
         touch_delta_valid = 0;
-        @(posedge clk);
+        @(negedge clk);
 
         if (val_flt_cutoff !== 7'd127) begin
             $display("[FAIL] Upper clamp failed! Got %d", val_flt_cutoff);
@@ -221,13 +224,13 @@ module tb_param_merger;
         end
 
         // 6. Test Button Tap OSC A Power Toggle (default 1 -> toggle to 0 -> toggle to 1)
-        @(posedge clk);
+        @(negedge clk);
         btn_tap_valid  = 1;
         btn_tap_id     = `PARAM_ID_OSCA_POWER;
         btn_tap_action = 2'd0;
-        @(posedge clk);
+        @(negedge clk);
         btn_tap_valid  = 0;
-        @(posedge clk);
+        @(negedge clk);
         if (val_osca_power !== 1'b0) begin
             $display("[FAIL] OSC A Power toggle failed! Got %b", val_osca_power);
             $stop;
@@ -236,13 +239,13 @@ module tb_param_merger;
         end
 
         // 7. Test Button Tap ENV Tab Switch (action=1 -> ENV 2, action=2 -> ENV 3)
-        @(posedge clk);
+        @(negedge clk);
         btn_tap_valid  = 1;
         btn_tap_id     = `PARAM_ID_ENV_TAB;
         btn_tap_action = 2'd1; // Tab 2
-        @(posedge clk);
+        @(negedge clk);
         btn_tap_valid  = 0;
-        @(posedge clk);
+        @(negedge clk);
         if (val_env_tab !== 2'd1) begin
             $display("[FAIL] ENV Tab switch failed! Got %d", val_env_tab);
             $stop;
@@ -251,13 +254,13 @@ module tb_param_merger;
         end
 
         // 8. Test Matrix Slot 1 Bypass Toggle (0 -> 1)
-        @(posedge clk);
+        @(negedge clk);
         btn_tap_valid  = 1;
         btn_tap_id     = `PARAM_ID_SLOT1_BYPASS;
         btn_tap_action = 2'd0;
-        @(posedge clk);
+        @(negedge clk);
         btn_tap_valid  = 0;
-        @(posedge clk);
+        @(negedge clk);
         if (val_slot_bypass[0] !== 1'b1) begin
             $display("[FAIL] Slot 1 Bypass toggle failed! Got %b", val_slot_bypass);
             $stop;
@@ -265,6 +268,55 @@ module tb_param_merger;
             $display("[PASS] Modulation Matrix Slot 1 Bypass toggle 0->1 verified");
         end
 
+        // Consecutive events must retain ID/value pairing at one event/clock.
+        @(negedge clk);spi_param_valid=1;spi_param_id=`PARAM_ID_FLT_CUTOFF;spi_param_val=21;
+        @(negedge clk);spi_param_id=`PARAM_ID_OSCA_WT_POS;spi_param_val=37;
+        @(negedge clk);
+        if(val_flt_cutoff!==21 || midi_cc_param_id!==`PARAM_ID_FLT_CUTOFF || midi_cc_val!==21 || !midi_cc_req)
+            $fatal(1,"First pipelined event not preserved");
+        spi_param_valid=0;
+        @(negedge clk);
+        if(val_osca_wt_pos!==37 || midi_cc_param_id!==`PARAM_ID_OSCA_WT_POS || midi_cc_val!==37 || !midi_cc_req)
+            $fatal(1,"Second pipelined event not preserved");
+        @(negedge clk);
+        if(midi_cc_req) $fatal(1,"Duplicate pipelined event");
+        // Same-cycle arbitration is button > SPI > touch.
+        btn_tap_valid=1;btn_tap_id=`PARAM_ID_OSCA_POWER;btn_tap_action=0;
+        spi_param_valid=1;spi_param_id=`PARAM_ID_FLT_CUTOFF;spi_param_val=99;
+        touch_delta_valid=1;touch_selected_id=`PARAM_ID_OSCA_WT_POS;touch_delta_val=5;
+        @(negedge clk);btn_tap_valid=0;spi_param_valid=0;touch_delta_valid=0;
+        @(negedge clk);
+        if(val_osca_power!==1 || val_flt_cutoff!==21 || val_osca_wt_pos!==37 || midi_cc_param_id!==`PARAM_ID_OSCA_POWER)
+            $fatal(1,"Same-cycle event source priority changed");
+        @(negedge clk);
+        spi_param_valid=1;spi_param_id=`PARAM_ID_FLT_CUTOFF;spi_param_val=99;
+        touch_delta_valid=1;touch_selected_id=`PARAM_ID_OSCA_WT_POS;touch_delta_val=5;
+        @(negedge clk);spi_param_valid=0;touch_delta_valid=0;
+        @(negedge clk);
+        if(val_flt_cutoff!==99 || val_osca_wt_pos!==37) $fatal(1,"SPI must win over touch");
+
+        // Filter UI enum 0..3 maps to audio modes 1..4 while enabled;
+        // toggling Filter Power maps to bypass 0/current mode.
+        @(negedge clk);btn_tap_valid=1;btn_tap_id=`PARAM_ID_FLT_TYPE;btn_tap_action=0;
+        @(negedge clk);btn_tap_valid=0;
+        @(negedge clk);
+        if(val_flt_type!==2'd1 || !midi_cc_req
+           || midi_cc_param_id!==`PARAM_ID_FLT_TYPE || midi_cc_val!==7'd2)
+            $fatal(1,"Filter type did not map HP to audio mode 2");
+        @(negedge clk);btn_tap_valid=1;btn_tap_id=`PARAM_ID_FLT_POWER;btn_tap_action=0;
+        @(negedge clk);btn_tap_valid=0;
+        @(negedge clk);
+        if(val_flt_power!==1'b0 || !midi_cc_req
+           || midi_cc_param_id!==`PARAM_ID_FLT_POWER || midi_cc_val!==7'd0)
+            $fatal(1,"Filter power-off did not map to audio bypass");
+        @(negedge clk);btn_tap_valid=1;btn_tap_id=`PARAM_ID_FLT_POWER;btn_tap_action=0;
+        @(negedge clk);btn_tap_valid=0;
+        @(negedge clk);
+        if(val_flt_power!==1'b1 || !midi_cc_req
+           || midi_cc_param_id!==`PARAM_ID_FLT_POWER || midi_cc_val!==7'd2)
+            $fatal(1,"Filter power-on did not restore selected audio mode");
+        $display("[PASS] Filter UI type/power mapped to audio mode and bypass CC42 semantics");
+        $display("[PASS] Event pipeline throughput, exact ID/value pairing, no duplicates, button/SPI/touch priority");
         $display("=================================================");
         $display("   ALL PARAM_MERGER UNIT TESTS PASSED (100%%)    ");
         $display("=================================================");

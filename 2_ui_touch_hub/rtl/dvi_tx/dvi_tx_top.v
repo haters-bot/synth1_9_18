@@ -3,6 +3,7 @@ module dvi_tx_top(
 	input				pixel_clock,
 	input				ddr_bit_clock,
 	input				reset,
+	input               phy_reset,
 	
 	input				den,
 	input				hsync,
@@ -49,7 +50,7 @@ module dvi_tx_top(
 				
 				.pixel_clock		(pixel_clock),
 				.ddr_bit_clock		(ddr_bit_clock),
-				.reset				(reset),
+				.reset				(phy_reset),
 				.data				(tmds_enc[(10*i) +: 10]),
 				.tmds_lane			(data_out_to_pins[i])
 			);

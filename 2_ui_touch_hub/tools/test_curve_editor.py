@@ -13,12 +13,13 @@ def main():
     sources=['rtl/touch_intake/touch_event_router.v','rtl/touch_intake/curve_touch_editor.v',
              'rtl/param_merger/param_merger.v','rtl/midi_uart_tx/midi_uart_tx.v',
              'rtl/ui_vector_engine/filter_panel_renderer.v','rtl/ui_vector_engine/env_panel_renderer.v',
-             'sim/tb_curve_touch_editor.v','sim/tb_curve_geometry.v','sim/tb_param_merger.v']
+             'sim/tb_curve_touch_editor.v','sim/tb_curve_geometry.v','sim/tb_param_merger.v',
+             'sim/tb_modulated_env_touch.v']
     with (out/'compile.log').open('w') as log:
         subprocess.run([str(MS/'vlog.exe'),'-sv','+incdir+'+str(ROOT/'rtl/ui_vector_engine'),
                         '+incdir+'+str(ROOT/'sim'),
                         *[str(ROOT/p) for p in sources]],cwd=out,stdout=log,stderr=subprocess.STDOUT,check=True)
-    for name in ['tb_curve_touch_editor','tb_curve_geometry','tb_param_merger']:
+    for name in ['tb_curve_touch_editor','tb_curve_geometry','tb_param_merger','tb_modulated_env_touch']:
         subprocess.run([str(MS/'vsim.exe'),'-c','-l',name+'.log',name,
                         '-do','run -all; quit -f'],cwd=out,capture_output=True,check=True)
         data=(out/(name+'.log')).read_text(errors='replace')

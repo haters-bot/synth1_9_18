@@ -74,6 +74,32 @@ module ui_top_renderer (
     input  wire       ui_touch_valid, ui_touch_down,
     input  wire [13:0] ui_touch_x, ui_touch_y,
 
+    // Reserved logical adapter; same clock, one-cycle normalized parameter events.
+    input wire external_param_valid,
+    input wire [7:0] external_param_id,
+    input wire [6:0] external_param_value,
+    output wire binding_capture,
+    output wire navigation_capture,
+    output wire navigation_delta_valid,
+    output wire [7:0] navigation_delta_id,
+    output wire signed [7:0] navigation_delta_value,
+    output wire fx_event_valid,
+    output wire [7:0] fx_event_id,
+    output wire [6:0] fx_event_value,
+    output wire route_event_valid,
+    output wire [7:0] route_event_target,
+    output wire [1:0] route_event_source,
+    output wire signed [7:0] route_event_depth,
+    output wire [132:0] fx_parameter_snapshot,
+    output wire [10:0] fx_switch_snapshot,
+    output wire [146:0] lfo_node_snapshot,
+    output wire [8:0] lfo_rate_snapshot,
+    output wire [2:0] lfo_step_snapshot,
+    output wire [2:0] lfo_once_snapshot,
+    output wire [105:0] route_source_snapshot,
+    output wire [423:0] route_depth_snapshot,
+    // Hit geometry follows the visible envelope; editing still writes base values.
+    output wire [34:0] display_env_snapshot,
     // Observation only; phase/running are intentionally excluded (no log flood).
     output wire [59:0] trace_lfo_state,
 
@@ -83,26 +109,160 @@ module ui_top_renderer (
     output reg         out_den,
     output reg  [23:0] out_pixel_data
 );
+    reg [7:0] hud_selected_id /* synthesis syn_preserve=1 syn_keep=1 */;
+    always @(posedge clk) hud_selected_id<=selected_param_id;
+
 
     // --------------------------------------------------------------------------
     // 1. Pipeline Delay Line for Sync Signals (3 Cycles)
     // --------------------------------------------------------------------------
+    // One entry stage with a preserved local copy per renderer limits the
+    // shared timing counter's fanout and cross-panel comparator sharing.
+    // All layers and sync gain one cycle: total latency is seven clocks.
+    wire [13:0] raster_x[0:10],raster_y[0:10];
+    genvar raster_unit;
+    generate for(raster_unit=0;raster_unit<11;raster_unit=raster_unit+1) begin: raster_entry
+        reg [13:0] local_x /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+        reg [13:0] local_y /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+        always @(posedge clk) begin
+            local_x<=in_pixel_x;local_y<=in_pixel_y;
+        end
+        assign raster_x[raster_unit]=local_x;
+        assign raster_y[raster_unit]=local_y;
+    end endgenerate
+    reg raster_hsync,raster_vsync,raster_den;
+    reg previous_vsync;
+    wire [1:0] navigation_view;
+    wire [7:0] settings_section_id;
+    wire show_diagnostics;
+    wire navigation_hit;
+    wire [23:0] navigation_rgb;
+    wire synth_touch_down=ui_touch_down && !navigation_capture;
+    always @(posedge clk or negedge rst_n)
+        if(!rst_n)previous_vsync<=0;else previous_vsync<=in_vsync;
+    ui_navigation_state u_navigation(.clk(clk),.rst_n(rst_n),
+        .frame_start(in_vsync && !previous_vsync),
+        .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .view(navigation_view),.settings_section_id(settings_section_id),.capture_active(navigation_capture),.show_diagnostics(show_diagnostics),
+        .delta_valid(navigation_delta_valid),.delta_id(navigation_delta_id),.delta_value(navigation_delta_value));
+    ui_navigation_renderer u_navigation_render(.clk(clk),.rst_n(rst_n),
+        .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
+        .show_diagnostics(show_diagnostics),.usb_connected(usb_connected),.usb_error(usb_conn_err),
+        .macro_values({val_macro4,val_macro3,val_macro2,val_macro1}),
+        .out_hit(navigation_hit),.out_rgb(navigation_rgb));
+    always @(posedge clk) begin
+        raster_hsync<=in_hsync;raster_vsync<=in_vsync;raster_den<=in_den;
+    end
     reg [2:0] pipe_hsync, pipe_vsync, pipe_den;
-    reg [13:0] p_x1, p_x2, p_x3;
-    reg [13:0] p_y1, p_y2, p_y3;
+    reg [13:0] p_x1 /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [13:0] p_x2 /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [13:0] p_x3;
+    reg [13:0] p_y1 /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [13:0] p_y2 /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [13:0] p_y3;
 
     always @(posedge clk) begin
-        pipe_hsync <= {pipe_hsync[1:0], in_hsync};
-        pipe_vsync <= {pipe_vsync[1:0], in_vsync};
-        pipe_den   <= {pipe_den[1:0],   in_den};
+        pipe_hsync <= {pipe_hsync[1:0], raster_hsync};
+        pipe_vsync <= {pipe_vsync[1:0], raster_vsync};
+        pipe_den   <= {pipe_den[1:0],   raster_den};
 
-        p_x1 <= in_pixel_x; p_x2 <= p_x1; p_x3 <= p_x2;
-        p_y1 <= in_pixel_y; p_y2 <= p_y1; p_y3 <= p_y2;
+        p_x1 <= raster_x[0]; p_x2 <= p_x1; p_x3 <= p_x2;
+        p_y1 <= raster_y[0]; p_y2 <= p_y1; p_y3 <= p_y2;
     end
 
     // --------------------------------------------------------------------------
     // 2. Sub-module Instantiations
     // --------------------------------------------------------------------------
+
+
+    wire [132:0] fx_values;
+    wire [10:0] fx_switches;
+    wire [105:0] mod_sources;
+    wire [423:0] mod_depths;
+    wire [370:0] mod_base,mod_preview;
+    wire mod_armed,mod_dragging;
+    wire [5:0] mod_hover,mod_selected;
+    wire [146:0] lfo_all_nodes;
+    wire [48:0] lfo_nodes;
+    wire [1:0] lfo_tab,lfo_preset;
+    wire [8:0] lfo_phase;
+    wire [8:0] lfo_all_rates;
+    wire [2:0] lfo_all_steps;
+    wire [2:0] lfo_all_once;
+    wire [12:0] lfo_curve_q6;
+    wire [8:0] lfo_raster_index=raster_x[9]<832 ? 0 : raster_x[9]>1216 ? 384 : raster_x[9]-832;
+    wire hit_fx_strip,hit_mod;
+    wire [23:0] fx_strip_rgb,mod_rgb;
+    assign fx_parameter_snapshot=fx_values;
+    assign fx_switch_snapshot=fx_switches;
+    assign lfo_node_snapshot=lfo_all_nodes;
+    assign lfo_rate_snapshot=lfo_all_rates;
+    assign lfo_step_snapshot=lfo_all_steps;
+    assign lfo_once_snapshot=lfo_all_once;
+    assign route_source_snapshot=mod_sources;
+    assign route_depth_snapshot=mod_depths;
+    assign display_env_snapshot=mod_preview[203+:35];
+    assign mod_base[0+:7]=val_macro1;
+    assign mod_base[7+:7]=val_macro2;
+    assign mod_base[14+:7]=val_macro3;
+    assign mod_base[21+:7]=val_macro4;
+    assign mod_base[28+:7]=val_master_vol;
+    assign mod_base[35+:7]=val_osca_unison;
+    assign mod_base[42+:7]=val_osca_detune;
+    assign mod_base[49+:7]=val_osca_blend;
+    assign mod_base[56+:7]=val_osca_phase;
+    assign mod_base[63+:7]=val_osca_rand;
+    assign mod_base[70+:7]=val_osca_wt_pos;
+    assign mod_base[77+:7]=val_osca_warp;
+    assign mod_base[84+:7]=val_osca_pan;
+    assign mod_base[91+:7]=val_osca_vol;
+    assign mod_base[98+:7]=val_oscb_unison;
+    assign mod_base[105+:7]=val_oscb_detune;
+    assign mod_base[112+:7]=val_oscb_blend;
+    assign mod_base[119+:7]=val_oscb_phase;
+    assign mod_base[126+:7]=val_oscb_rand;
+    assign mod_base[133+:7]=val_oscb_wt_pos;
+    assign mod_base[140+:7]=val_oscb_warp;
+    assign mod_base[147+:7]=val_oscb_pan;
+    assign mod_base[154+:7]=val_oscb_vol;
+    assign mod_base[161+:7]=val_flt_cutoff;
+    assign mod_base[168+:7]=val_flt_res;
+    assign mod_base[175+:7]=val_flt_pan;
+    assign mod_base[182+:7]=val_flt_drive;
+    assign mod_base[189+:7]=val_flt_fat;
+    assign mod_base[196+:7]=val_flt_mix;
+    assign mod_base[203+:7]=val_env_attack;
+    assign mod_base[210+:7]=val_env_hold;
+    assign mod_base[217+:7]=val_env_decay;
+    assign mod_base[224+:7]=val_env_sustain;
+    assign mod_base[231+:7]=val_env_release;
+    assign mod_base[238+:133]=fx_values;
+
+    fx_editor_state u_fx_state(.clk(clk),.rst_n(rst_n),
+        .touch_valid(ui_touch_valid),.touch_down(synth_touch_down && !binding_capture),
+        .touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .external_valid(external_param_valid),.external_id(external_param_id),.external_value(external_param_value),
+        .values(fx_values),.switches(fx_switches),
+        .event_valid(fx_event_valid),.event_id(fx_event_id),.event_value(fx_event_value));
+    lfo_binding_state #(.ENABLE_CANCEL(1)) u_binding(.clk(clk),.rst_n(rst_n),
+        .cancel(navigation_capture),
+        .touch_valid(ui_touch_valid),.touch_down(synth_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .active_tab(lfo_tab),.armed(mod_armed),.dragging(mod_dragging),.capture_active(binding_capture),
+        .selected_target(mod_selected),.hover_target(mod_hover),.sources(mod_sources),.depths(mod_depths),
+        .event_valid(route_event_valid),.event_target(route_event_target),
+        .event_source(route_event_source),.event_depth(route_event_depth));
+    modulation_preview u_mod_preview(.clk(clk),.rst_n(rst_n),
+        .nodes(lfo_all_nodes),.rates(lfo_all_rates),.stepped(lfo_all_steps),
+        .active_tab(lfo_tab),.active_phase(lfo_phase),.raster_index(lfo_raster_index),
+        .sources(mod_sources),.depths(mod_depths),.base_values(mod_base),
+        .preview_values(mod_preview),.raster_q6(lfo_curve_q6));
+    fx_strip_renderer u_fx_strip(.clk(clk),.rst_n(rst_n),.in_x(raster_x[1]),.in_y(raster_y[1]),
+        .values(mod_preview[238+:133]),.switches(fx_switches),.out_hit(hit_fx_strip),.out_rgb(fx_strip_rgb));
+    modulation_overlay u_mod_overlay(.clk(clk),.rst_n(rst_n),.in_x(raster_x[2]),.in_y(raster_y[2]),
+        .sources(mod_sources),.depths(mod_depths),.preview_values(mod_preview),
+        .armed(mod_armed),.dragging(mod_dragging),.hover_target(mod_hover),.selected_target(mod_selected),
+        .touch_x(ui_touch_x),.touch_y(ui_touch_y),.curve_nodes(lfo_nodes),
+        .active_tab(lfo_tab),.out_hit(hit_mod),.out_rgb(mod_rgb));
 
     // A. Procedural Knobs (32 rotary knobs)
     wire        hit_knob;
@@ -110,47 +270,47 @@ module ui_top_renderer (
     knob_vector_unit u_knobs (
         .clk               (clk),
         .rst_n             (rst_n),
-        .in_x              (in_pixel_x),
-        .in_y              (in_pixel_y),
-        .val_macro1        (val_macro1),
-        .val_macro2        (val_macro2),
-        .val_macro3        (val_macro3),
-        .val_macro4        (val_macro4),
-        .val_master_vol    (val_master_vol),
-        .val_osca_unison   (val_osca_unison),
-        .val_osca_detune   (val_osca_detune),
-        .val_osca_blend    (val_osca_blend),
-        .val_osca_phase    (val_osca_phase),
-        .val_osca_rand     (val_osca_rand),
-        .val_osca_wt_pos   (val_osca_wt_pos),
-        .val_osca_warp     (val_osca_warp),
-        .val_osca_pan      (val_osca_pan),
-        .val_osca_vol      (val_osca_vol),
-        .val_oscb_unison   (val_oscb_unison),
-        .val_oscb_detune   (val_oscb_detune),
-        .val_oscb_blend    (val_oscb_blend),
-        .val_oscb_phase    (val_oscb_phase),
-        .val_oscb_rand     (val_oscb_rand),
-        .val_oscb_wt_pos   (val_oscb_wt_pos),
-        .val_oscb_warp     (val_oscb_warp),
-        .val_oscb_pan      (val_oscb_pan),
-        .val_oscb_vol      (val_oscb_vol),
-        .val_flt_cutoff    (val_flt_cutoff),
-        .val_flt_res       (val_flt_res),
-        .val_flt_pan       (val_flt_pan),
-        .val_flt_drive     (val_flt_drive),
-        .val_flt_fat       (val_flt_fat),
-        .val_flt_mix       (val_flt_mix),
-        .val_env_attack    (val_env_attack),
-        .val_env_hold      (val_env_hold),
-        .val_env_decay     (val_env_decay),
-        .val_env_sustain   (val_env_sustain),
-        .val_env_release   (val_env_release),
+        .in_x              (raster_x[3]),
+        .in_y              (raster_y[3]),
+        .val_macro1        (mod_preview[0+:7]),
+        .val_macro2        (mod_preview[7+:7]),
+        .val_macro3        (mod_preview[14+:7]),
+        .val_macro4        (mod_preview[21+:7]),
+        .val_master_vol    (mod_preview[28+:7]),
+        .val_osca_unison   (mod_preview[35+:7]),
+        .val_osca_detune   (mod_preview[42+:7]),
+        .val_osca_blend    (mod_preview[49+:7]),
+        .val_osca_phase    (mod_preview[56+:7]),
+        .val_osca_rand     (mod_preview[63+:7]),
+        .val_osca_wt_pos   (mod_preview[70+:7]),
+        .val_osca_warp     (mod_preview[77+:7]),
+        .val_osca_pan      (mod_preview[84+:7]),
+        .val_osca_vol      (mod_preview[91+:7]),
+        .val_oscb_unison   (mod_preview[98+:7]),
+        .val_oscb_detune   (mod_preview[105+:7]),
+        .val_oscb_blend    (mod_preview[112+:7]),
+        .val_oscb_phase    (mod_preview[119+:7]),
+        .val_oscb_rand     (mod_preview[126+:7]),
+        .val_oscb_wt_pos   (mod_preview[133+:7]),
+        .val_oscb_warp     (mod_preview[140+:7]),
+        .val_oscb_pan      (mod_preview[147+:7]),
+        .val_oscb_vol      (mod_preview[154+:7]),
+        .val_flt_cutoff    (mod_preview[161+:7]),
+        .val_flt_res       (mod_preview[168+:7]),
+        .val_flt_pan       (mod_preview[175+:7]),
+        .val_flt_drive     (mod_preview[182+:7]),
+        .val_flt_fat       (mod_preview[189+:7]),
+        .val_flt_mix       (mod_preview[196+:7]),
+        .val_env_attack    (mod_preview[203+:7]),
+        .val_env_hold      (mod_preview[210+:7]),
+        .val_env_decay     (mod_preview[217+:7]),
+        .val_env_sustain   (mod_preview[224+:7]),
+        .val_env_release   (mod_preview[231+:7]),
         .val_fx_reverb     (val_fx_reverb),
         .val_fx_delay      (val_fx_delay),
         .val_fx_chorus     (val_fx_chorus),
         .val_portamento    (val_portamento),
-        .selected_param_id (selected_param_id),
+        .selected_param_id (hud_selected_id),
         .out_hit_knob      (hit_knob),
         .out_knob_rgb      (knob_rgb)
     );
@@ -161,8 +321,8 @@ module ui_top_renderer (
     button_vector_unit u_buttons (
         .clk               (clk),
         .rst_n             (rst_n),
-        .in_x              (in_pixel_x),
-        .in_y              (in_pixel_y),
+        .in_x              (raster_x[4]),
+        .in_y              (raster_y[4]),
         .val_osca_power    (val_osca_power),
         .val_oscb_power    (val_oscb_power),
         .val_flt_power     (val_flt_power),
@@ -182,7 +342,7 @@ module ui_top_renderer (
         .val_flt_keytrack  (val_flt_keytrack),
         .val_env_tab       (val_env_tab),
         .val_slot_bypass   (val_slot_bypass),
-        .selected_param_id (selected_param_id),
+        .selected_param_id (hud_selected_id),
         .active_btn_id     (active_btn_id),
         .btn_flash_active  (btn_flash_active),
         .out_hit_btn       (hit_btn),
@@ -195,14 +355,14 @@ module ui_top_renderer (
     osc_panel_renderer u_osc_scope (
         .clk            (clk),
         .rst_n          (rst_n),
-        .in_x           (in_pixel_x),
-        .in_y           (in_pixel_y),
+        .in_x           (raster_x[5]),
+        .in_y           (raster_y[5]),
         .val_osca_power (val_osca_power),
         .val_oscb_power (val_oscb_power),
         .val_osca_wave  (val_osca_wave),
         .val_oscb_wave  (val_oscb_wave),
-        .wt_pos_a       (val_osca_wt_pos),
-        .wt_pos_b       (val_oscb_wt_pos),
+        .wt_pos_a       (mod_preview[70+:7]),
+        .wt_pos_b       (mod_preview[133+:7]),
         .out_hit_osca   (hit_osca),
         .out_osca_rgb   (osca_rgb),
         .out_hit_oscb   (hit_oscb),
@@ -215,12 +375,12 @@ module ui_top_renderer (
     filter_panel_renderer u_flt_scope (
         .clk           (clk),
         .rst_n         (rst_n),
-        .in_x          (in_pixel_x),
-        .in_y          (in_pixel_y),
+        .in_x          (raster_x[6]),
+        .in_y          (raster_y[6]),
         .val_flt_power (val_flt_power),
         .val_flt_type  (val_flt_type),
-        .flt_cutoff    (val_flt_cutoff),
-        .flt_res       (val_flt_res),
+        .flt_cutoff    (mod_preview[161+:7]),
+        .flt_res       (mod_preview[168+:7]),
         .out_hit_flt   (hit_flt),
         .out_flt_rgb   (flt_rgb)
     );
@@ -231,14 +391,14 @@ module ui_top_renderer (
     env_panel_renderer u_env_scope (
         .clk         (clk),
         .rst_n       (rst_n),
-        .in_x        (in_pixel_x),
-        .in_y        (in_pixel_y),
+        .in_x        (raster_x[7]),
+        .in_y        (raster_y[7]),
         .val_env_tab (val_env_tab),
-        .env_attack  (val_env_attack),
-        .env_hold    (val_env_hold),
-        .env_decay   (val_env_decay),
-        .env_sustain (val_env_sustain),
-        .env_release (val_env_release),
+        .env_attack  (mod_preview[203+:7]),
+        .env_hold    (mod_preview[210+:7]),
+        .env_decay   (mod_preview[217+:7]),
+        .env_sustain (mod_preview[224+:7]),
+        .env_release (mod_preview[231+:7]),
         .out_hit_env (hit_env),
         .out_env_rgb (env_rgb)
     );
@@ -249,28 +409,26 @@ module ui_top_renderer (
     wire hit_curve_hint;
     wire [23:0] curve_hint_rgb;
     curve_hint_renderer u_curve_hints(
-        .clk(clk),.rst_n(rst_n),.in_x(in_pixel_x),.in_y(in_pixel_y),.env_tab(val_env_tab),
+        .clk(clk),.rst_n(rst_n),.in_x(raster_x[8]),.in_y(raster_y[8]),.env_tab(val_env_tab),
         .out_hit(hit_curve_hint),.out_rgb(curve_hint_rgb)
     );
-    wire [48:0] lfo_nodes;
-    wire [1:0] lfo_tab, lfo_preset;
     wire [2:0] lfo_rate;
     wire lfo_once, lfo_stepped, lfo_running;
-    wire [8:0] lfo_phase;
     assign trace_lfo_state={lfo_tab,lfo_preset,lfo_rate,lfo_once,lfo_stepped,2'b0,lfo_nodes};
     lfo_editor_state u_lfo_state (
         .clk(clk), .rst_n(rst_n),
-        .touch_valid(ui_touch_valid), .touch_down(ui_touch_down),
+        .touch_valid(ui_touch_valid), .touch_down(synth_touch_down && !binding_capture),
         .touch_x(ui_touch_x), .touch_y(ui_touch_y),
         .active_tab(lfo_tab), .nodes(lfo_nodes), .rate(lfo_rate),
         .once_mode(lfo_once), .stepped(lfo_stepped), .preset(lfo_preset),
+        .all_nodes(lfo_all_nodes),.all_rates(lfo_all_rates),.all_stepped(lfo_all_steps),.all_once(lfo_all_once),
         .phase(lfo_phase), .running(lfo_running)
     );
     lfo_panel_renderer u_lfo_panel (
-        .clk(clk), .rst_n(rst_n), .in_x(in_pixel_x), .in_y(in_pixel_y),
+        .clk(clk), .rst_n(rst_n), .in_x(raster_x[9]), .in_y(raster_y[9]),
         .active_tab(lfo_tab), .nodes(lfo_nodes), .rate(lfo_rate),
         .once_mode(lfo_once), .stepped(lfo_stepped), .preset(lfo_preset),
-        .phase(lfo_phase), .running(lfo_running), .out_hit(hit_fx), .out_rgb(fx_rgb)
+        .curve_q6(lfo_curve_q6), .phase(lfo_phase), .running(lfo_running), .out_hit(hit_fx), .out_rgb(fx_rgb)
     );
 
     // --------------------------------------------------------------------------
@@ -326,7 +484,7 @@ module ui_top_renderer (
     reg [6:0] sel_val_comb;
     reg [6:0] sel_val;
     always @(*) begin
-        case (selected_param_id)
+        case (hud_selected_id)
             `PARAM_ID_MACRO1:       sel_val_comb = val_macro1;
             `PARAM_ID_MACRO2:       sel_val_comb = val_macro2;
             `PARAM_ID_MACRO3:       sel_val_comb = val_macro3;
@@ -410,14 +568,14 @@ module ui_top_renderer (
     reg [5:0]  reg_ch_hud_d1;
 
     always @(posedge clk) begin
-        reg_hud_label      <= get_param_label3(selected_param_id);
+        reg_hud_label      <= get_param_label3(hud_selected_id);
         reg_slider_pos_x   <= 14'd544 + ((sel_val * 14'd192) >> 7);
-        reg_param_selected <= (selected_param_id != `PARAM_ID_NONE);
-        reg_ch_hud_d100    <= (selected_param_id == `PARAM_ID_NONE) ? `CH_MINUS :
+        reg_param_selected <= (hud_selected_id != `PARAM_ID_NONE);
+        reg_ch_hud_d100    <= (hud_selected_id == `PARAM_ID_NONE) ? `CH_MINUS :
                               (comb_d100 == 4'd0) ? `CH_SPACE : (`CH_0 + comb_d100);
-        reg_ch_hud_d10     <= (selected_param_id == `PARAM_ID_NONE) ? `CH_MINUS :
+        reg_ch_hud_d10     <= (hud_selected_id == `PARAM_ID_NONE) ? `CH_MINUS :
                               (comb_d100 == 4'd0 && comb_d10 == 4'd0) ? `CH_SPACE : (`CH_0 + comb_d10);
-        reg_ch_hud_d1      <= (selected_param_id == `PARAM_ID_NONE) ? `CH_MINUS : (`CH_0 + comb_d1);
+        reg_ch_hud_d1      <= (hud_selected_id == `PARAM_ID_NONE) ? `CH_MINUS : (`CH_0 + comb_d1);
     end
 
     // --------------------------------------------------------------------------
@@ -431,13 +589,38 @@ module ui_top_renderer (
     wire [3:0] hud_ry_sub = p_y2[3:0] - 4'd1;
     wire [2:0] font_hud_ry = hud_ry_sub[3:1];
 
+    // Decode characters on the control side. The pixel path selects a row/bit
+    // of a cached 3x5 bitmap rather than decoding the full alphabet six times.
+    reg [14:0] hud_glyph[0:5];
+    wire [35:0] hud_chars={reg_hud_label,reg_ch_hud_d100,reg_ch_hud_d10,reg_ch_hud_d1};
+    genvar hg,hp;
+    generate for(hg=0;hg<6;hg=hg+1) begin: hud_glyph_cache
+        for(hp=0;hp<15;hp=hp+1) begin: bits_cache
+            always @(posedge clk)
+                hud_glyph[hg][14-hp]<=get_font_3x5(hud_chars[(5-hg)*6+:6],hp%3,hp/3);
+        end
+    end endgenerate
+    function hud_bitmap_pixel;
+        input [14:0] bitmap;
+        input [1:0] rx;
+        input [2:0] ry;
+        reg [2:0] row;
+        begin
+            case(ry)
+                0:row=bitmap[14:12];1:row=bitmap[11:9];2:row=bitmap[8:6];
+                3:row=bitmap[5:3];4:row=bitmap[2:0];default:row=0;
+            endcase
+            hud_bitmap_pixel=rx<3 ? row[2-rx] : 1'b0;
+        end
+    endfunction
+
     reg hud_lbl_pixel;
     always @(*) begin
         hud_lbl_pixel = 1'b0;
         if (font_hud_y_valid) begin
-            if      (p_x2 >= 14'd450 && p_x2 <= 14'd455) hud_lbl_pixel = get_font_3x5(reg_hud_label[17:12], (p_x2 - 14'd450) >> 1, font_hud_ry);
-            else if (p_x2 >= 14'd460 && p_x2 <= 14'd465) hud_lbl_pixel = get_font_3x5(reg_hud_label[11:6],  (p_x2 - 14'd460) >> 1, font_hud_ry);
-            else if (p_x2 >= 14'd470 && p_x2 <= 14'd475) hud_lbl_pixel = get_font_3x5(reg_hud_label[5:0],   (p_x2 - 14'd470) >> 1, font_hud_ry);
+            if      (p_x2 >= 14'd450 && p_x2 <= 14'd455) hud_lbl_pixel = hud_bitmap_pixel(hud_glyph[0], (p_x2 - 14'd450) >> 1, font_hud_ry);
+            else if (p_x2 >= 14'd460 && p_x2 <= 14'd465) hud_lbl_pixel = hud_bitmap_pixel(hud_glyph[1], (p_x2 - 14'd460) >> 1, font_hud_ry);
+            else if (p_x2 >= 14'd470 && p_x2 <= 14'd475) hud_lbl_pixel = hud_bitmap_pixel(hud_glyph[2], (p_x2 - 14'd470) >> 1, font_hud_ry);
         end
     end
 
@@ -469,9 +652,9 @@ module ui_top_renderer (
     always @(*) begin
         hud_num_pixel = 1'b0;
         if (font_hud_y_valid) begin
-            if      (p_x2 >= 14'd798 && p_x2 <= 14'd803) hud_num_pixel = get_font_3x5(reg_ch_hud_d100, (p_x2 - 14'd798) >> 1, font_hud_ry);
-            else if (p_x2 >= 14'd807 && p_x2 <= 14'd812) hud_num_pixel = get_font_3x5(reg_ch_hud_d10,  (p_x2 - 14'd807) >> 1, font_hud_ry);
-            else if (p_x2 >= 14'd816 && p_x2 <= 14'd821) hud_num_pixel = get_font_3x5(reg_ch_hud_d1,   (p_x2 - 14'd816) >> 1, font_hud_ry);
+            if      (p_x2 >= 14'd798 && p_x2 <= 14'd803) hud_num_pixel = hud_bitmap_pixel(hud_glyph[3], (p_x2 - 14'd798) >> 1, font_hud_ry);
+            else if (p_x2 >= 14'd807 && p_x2 <= 14'd812) hud_num_pixel = hud_bitmap_pixel(hud_glyph[4], (p_x2 - 14'd807) >> 1, font_hud_ry);
+            else if (p_x2 >= 14'd816 && p_x2 <= 14'd821) hud_num_pixel = hud_bitmap_pixel(hud_glyph[5], (p_x2 - 14'd816) >> 1, font_hud_ry);
         end
     end
 
@@ -713,7 +896,7 @@ module ui_top_renderer (
 
     // R15I: native coverage captions / values and fractional curve edges.
     // Updating these observation inputs never feeds back into touch handling.
-    wire in_contact_diag_raw = p_y2 >= 14'd694 && p_y2 <= 14'd719;
+    wire in_contact_diag_raw = show_diagnostics && p_y2 >= 14'd694 && p_y2 <= 14'd719;
     wire [7:0] contact_col = (p_x2 - 14'd64) >> 4;
     wire [1:0] contact_rx = (p_x2 - 14'd64) >> 2;
     wire [2:0] contact_ry = (p_y2 - 14'd696) >> 2;
@@ -723,8 +906,8 @@ module ui_top_renderer (
         case (contact_col)
             0: contact_ch = `CH_R;
             1: contact_ch = `CH_1;
-            2: contact_ch = `CH_5;
-            3: contact_ch = `CH_I;
+            2: contact_ch = `CH_6;
+            3: contact_ch = `CH_A;
             5: contact_ch = `CH_C;
             6: contact_ch = `CH_COLON;
             7: contact_ch = hex2ch(touch_diag_count[15:12]);
@@ -767,7 +950,7 @@ module ui_top_renderer (
     wire [13:0] contact_y = touch_diag_coords[13:0];
     wire [13:0] contact_dx = p_x2 > contact_x ? p_x2-contact_x : contact_x-p_x2;
     wire [13:0] contact_dy = p_y2 > contact_y ? p_y2-contact_y : contact_y-p_y2;
-    wire contact_cross_raw = touch_diag_count != 16'd0 &&
+    wire contact_cross_raw = show_diagnostics && touch_diag_count != 16'd0 &&
         ((contact_dx <= 14'd12 && contact_dy <= 14'd1) ||
          (contact_dy <= 14'd12 && contact_dx <= 14'd1));
 
@@ -792,23 +975,13 @@ module ui_top_renderer (
         end else if (hit_btn) begin
             pixel_mux = btn_rgb;
         end
-        // Priority 2: Rotary Knobs & Value Arc Gauges
-        else if (hit_knob) begin
-            pixel_mux = knob_rgb;
-        end
         // Priority 3: Top Universal HUD Adjustment Bar
         else if (hit_hud) begin
             pixel_mux = hud_rgb;
         end
         // Priority 4: Scopes & Dynamic Curves
-        else if (hit_osca) begin
-            pixel_mux = osca_rgb;
-        end else if (hit_oscb) begin
-            pixel_mux = oscb_rgb;
-        end else if (hit_flt) begin
+        else if (hit_flt) begin
             pixel_mux = flt_rgb;
-        end else if (hit_env) begin
-            pixel_mux = env_rgb;
         end else if (hit_fx) begin
             pixel_mux = fx_rgb;
         end
@@ -837,6 +1010,38 @@ module ui_top_renderer (
     // --------------------------------------------------------------------------
     // 5. Video Output Registers
     // --------------------------------------------------------------------------
+    // Old layers reach pixel_mux in three stages. Register that composition
+    // at stage four, insert knobs/OSC/ENV (four stages) at stage five, then combine
+    // with the five-stage FX/modulation layers in the final output register.
+    reg [23:0] base_pixel,base_pixel0;
+    reg base_diagnostic,base_diagnostic0;
+    reg top_hit0,hud_hit0,filter_hit0;
+    reg hsync_extra,vsync_extra,den_extra,hsync_extra0,vsync_extra0,den_extra0;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            base_pixel<=0;base_diagnostic<=0;hsync_extra<=0;vsync_extra<=0;den_extra<=0;
+            base_pixel0<=0;base_diagnostic0<=0;hsync_extra0<=0;vsync_extra0<=0;den_extra0<=0;
+            top_hit0<=0;hud_hit0<=0;filter_hit0<=0;
+        end else begin
+            base_pixel0<=pixel_mux;
+            top_hit0<=in_contact_diag || contact_cross || hit_curve_hint || hit_fx || hit_btn;
+            hud_hit0<=hit_hud;filter_hit0<=hit_flt;
+            if(top_hit0) base_pixel<=base_pixel0;
+            else if(hit_knob) base_pixel<=knob_rgb;
+            else if(hud_hit0) base_pixel<=base_pixel0;
+            else if(hit_osca) base_pixel<=osca_rgb;
+            else if(hit_oscb) base_pixel<=oscb_rgb;
+            else if(filter_hit0) base_pixel<=base_pixel0;
+            else if(hit_env) base_pixel<=env_rgb;
+            else base_pixel<=base_pixel0;
+            base_diagnostic0<=in_contact_diag || contact_cross;
+            base_diagnostic<=base_diagnostic0;
+            hsync_extra0<=pipe_hsync[2];vsync_extra0<=pipe_vsync[2];den_extra0<=pipe_den[2];
+            hsync_extra<=hsync_extra0;vsync_extra<=vsync_extra0;den_extra<=den_extra0;
+        end
+    end
+    wire [23:0] composed_pixel=navigation_hit ? navigation_rgb : base_diagnostic ? base_pixel :
+        hit_mod ? mod_rgb : hit_fx_strip ? fx_strip_rgb : base_pixel;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             out_hsync      <= 1'b0;
@@ -844,10 +1049,10 @@ module ui_top_renderer (
             out_den        <= 1'b0;
             out_pixel_data <= 24'h0;
         end else begin
-            out_hsync      <= pipe_hsync[2];
-            out_vsync      <= pipe_vsync[2];
-            out_den        <= pipe_den[2];
-            out_pixel_data <= pipe_den[2] ? pixel_mux : 24'h000000;
+            out_hsync      <= hsync_extra;
+            out_vsync      <= vsync_extra;
+            out_den        <= den_extra;
+            out_pixel_data <= den_extra ? composed_pixel : 24'h000000;
         end
     end
 

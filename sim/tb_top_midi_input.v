@@ -8,6 +8,7 @@ module tb_top_midi_input;
     reg sys_clk;
     reg rst_n;
     reg uart_rx;
+    reg midi_gpio_rx;
 
     wire MAX_SD;
     wire MAX_GAIN;
@@ -58,6 +59,7 @@ module tb_top_midi_input;
         .sys_clk (sys_clk),
         .rst_n   (rst_n),
         .uart_rx (uart_rx),
+        .midi_gpio_rx(midi_gpio_rx),
         .MAX_SD  (MAX_SD),
         .MAX_GAIN(MAX_GAIN),
         .MAX_DIN (MAX_DIN),
@@ -115,6 +117,23 @@ module tb_top_midi_input;
             end
 
             uart_rx = 1'b1;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+        end
+    endtask
+
+    task send_gpio_uart_byte;
+        input [7:0] value;
+        integer bit_number;
+        begin
+            @(negedge sys_clk);
+            midi_gpio_rx = 1'b0;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+            for (bit_number = 0; bit_number < 8;
+                 bit_number = bit_number + 1) begin
+                midi_gpio_rx = value[bit_number];
+                repeat (CLKS_PER_BIT) @(negedge sys_clk);
+            end
+            midi_gpio_rx = 1'b1;
             repeat (CLKS_PER_BIT) @(negedge sys_clk);
         end
     endtask
@@ -259,6 +278,7 @@ module tb_top_midi_input;
         sys_clk = 1'b0;
         rst_n = 1'b0;
         uart_rx = 1'b1;
+        midi_gpio_rx = 1'b1;
         sd_dat0 = 1'b1;
         errors = 0;
         osc_a_update_count = 0;
@@ -266,9 +286,20 @@ module tb_top_midi_input;
         valid_mismatch_count = 0;
 
         repeat (6) @(posedge sys_clk);
+
         @(negedge sys_clk);
         rst_n = 1'b1;
         repeat (6) @(posedge sys_clk);
+
+        // Verify the dedicated PMOD RX independently from the board USB-UART.
+        send_gpio_uart_byte(8'hBF);
+        send_gpio_uart_byte(8'h14);
+        send_gpio_uart_byte(8'h55);
+        repeat (3) @(posedge sys_clk);
+        if (dut.osc_a_wt_position_target !== 7'd85) begin
+            $display("ERROR: PMOD GPIO UART input did not update OSC A WT position");
+            errors = errors + 1;
+        end
 
         // 演奏通道上的CC不能修改控制参数。
         send_uart_byte(8'hB0);

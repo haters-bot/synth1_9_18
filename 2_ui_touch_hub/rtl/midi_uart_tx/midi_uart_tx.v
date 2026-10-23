@@ -1,18 +1,16 @@
 // ==============================================================================
 // Module: midi_uart_tx.v
 // Description: MIDI UART Protocol Transmitter for Audio Engine (Teammate 3)
-//              - Baud Rate: 31250 bit/s (Standard MIDI) @ 62.5MHz Pixel Clock
-//              - Channel 1 (Priority 1): Note-On (0x90) / Note-Off (0x80)
-//              - Channel 16 (Priority 2): Control Change (0xBF)
-//                CC10: Pan, CC20: WT Pos, CC21: Waveform, CC22: Detune, CC23: Unison,
-//                CC74: Cutoff, CC71: Res, CC73: Attack, CC72: Release
+//              - Baud Rate: 31250 bit/s (Standard MIDI) @ 50MHz Pixel Clock
+//              - Channel 1: Note-On (0x90) / Note-Off (0x80)
+//              - Channel 16: Audio-engine CC map (see doc/MIDI_CONTROL_PROTOCOL.md)
 // Project: 2_ui_touch_hub (FPGA Real-time Polyphonic Synthesizer UI)
 // ==============================================================================
 
 `include "params.vh"
 
 module midi_uart_tx #(
-    parameter CLK_FREQ = 62500000,
+    parameter CLK_FREQ = 50000000,
     parameter BAUD     = 31250
 )(
     input  wire        clk,
@@ -37,50 +35,81 @@ module midi_uart_tx #(
     localparam CLK_DIV = CLK_FREQ / BAUD; // 62,500,000 / 31250 = 2000
 
     // --------------------------------------------------------------------------
-    // 1. Parameter ID to MIDI CC Number Translation
+    // 1. UI parameter ID to the audio-engine CC map (protocol v1)
     // --------------------------------------------------------------------------
     function [6:0] map_id_to_cc;
         input [7:0] id;
         begin
             case (id)
-                `PARAM_ID_OSCA_PAN,
-                `PARAM_ID_OSCB_PAN:     map_id_to_cc = 7'd10; // CC10 Pan
-                `PARAM_ID_OSCA_WT_POS,
-                `PARAM_ID_OSCB_WT_POS:  map_id_to_cc = 7'd20; // CC20 WT Position
-                `PARAM_ID_OSCA_WARP,
-                `PARAM_ID_OSCB_WARP:    map_id_to_cc = 7'd21; // CC21 Waveform
-                `PARAM_ID_OSCA_DETUNE,
-                `PARAM_ID_OSCB_DETUNE:  map_id_to_cc = 7'd22; // CC22 Detune
-                `PARAM_ID_OSCA_UNISON,
-                `PARAM_ID_OSCB_UNISON:  map_id_to_cc = 7'd23; // CC23 Unison
-                `PARAM_ID_FLT_CUTOFF:   map_id_to_cc = 7'd74; // CC74 Cutoff
-                `PARAM_ID_FLT_RES:      map_id_to_cc = 7'd71; // CC71 Resonance
-                `PARAM_ID_FLT_DRIVE:    map_id_to_cc = 7'd13; // CC13 Drive
-                `PARAM_ID_FLT_MIX:      map_id_to_cc = 7'd95; // CC95 Mix
-                `PARAM_ID_FLT_PAN:      map_id_to_cc = 7'd10; // CC10 Pan
-                `PARAM_ID_ENV1_ATTACK:  map_id_to_cc = 7'd73; // CC73 Attack
-                `PARAM_ID_ENV1_RELEASE: map_id_to_cc = 7'd72; // CC72 Release
-                `PARAM_ID_ENV1_DECAY:   map_id_to_cc = 7'd75; // CC75 Decay
-                `PARAM_ID_ENV1_SUSTAIN: map_id_to_cc = 7'd76; // CC76 Sustain
-                `PARAM_ID_ENV1_HOLD:    map_id_to_cc = 7'd79; // CC79 Hold
-                `PARAM_ID_FX_REVERB:    map_id_to_cc = 7'd91; // CC91 Reverb
-                `PARAM_ID_FX_DELAY:     map_id_to_cc = 7'd12; // CC12 Delay
-                `PARAM_ID_FX_CHORUS:    map_id_to_cc = 7'd93; // CC93 Chorus
-                `PARAM_ID_PORTAMENTO:   map_id_to_cc = 7'd5;  // CC5 Portamento
-                `PARAM_ID_MASTER_VOL:   map_id_to_cc = 7'd7;  // CC7 Master Volume
-                `PARAM_ID_MACRO1:       map_id_to_cc = 7'd1;  // CC1 Macro 1 / Mod Wheel
-                `PARAM_ID_MACRO2:       map_id_to_cc = 7'd2;  // CC2 Macro 2
-                `PARAM_ID_MACRO3:       map_id_to_cc = 7'd3;  // CC3 Macro 3
-                `PARAM_ID_MACRO4:       map_id_to_cc = 7'd4;  // CC4 Macro 4
-                `PARAM_ID_OSCA_POWER:   map_id_to_cc = 7'd102;// CC102 OSC A Power
-                `PARAM_ID_OSCB_POWER:   map_id_to_cc = 7'd103;// CC103 OSC B Power
-                `PARAM_ID_FLT_POWER:    map_id_to_cc = 7'd104;// CC104 Filter Power
-                `PARAM_ID_SLOT1_BYPASS: map_id_to_cc = 7'd110;// CC110 Slot 1 Bypass
-                `PARAM_ID_SLOT2_BYPASS: map_id_to_cc = 7'd111;// CC111 Slot 2 Bypass
-                `PARAM_ID_SLOT3_BYPASS: map_id_to_cc = 7'd112;// CC112 Slot 3 Bypass
-                `PARAM_ID_SLOT4_BYPASS: map_id_to_cc = 7'd113;// CC113 Slot 4 Bypass
+                `PARAM_ID_OSCA_WT_POS:  map_id_to_cc = 7'd20; // OSC A WT Position
+                `PARAM_ID_OSCB_WT_POS:  map_id_to_cc = 7'd28; // OSC B WT Position
+                `PARAM_ID_OSCA_WAVE:    map_id_to_cc = 7'd21; // OSC A waveform
+                `PARAM_ID_OSCB_WAVE:    map_id_to_cc = 7'd29; // OSC B waveform
+                `PARAM_ID_OSCA_WARP:    map_id_to_cc = 7'd39; // OSC A warp amount
+                `PARAM_ID_OSCB_WARP:    map_id_to_cc = 7'd41; // OSC B warp amount
+                `PARAM_ID_OSCA_DETUNE:  map_id_to_cc = 7'd22; // OSC A detune
+                `PARAM_ID_OSCB_DETUNE:  map_id_to_cc = 7'd30; // OSC B detune
+                `PARAM_ID_OSCA_UNISON:  map_id_to_cc = 7'd23; // OSC A unison
+                `PARAM_ID_OSCB_UNISON:  map_id_to_cc = 7'd31; // OSC B unison
+                `PARAM_ID_OSCA_VOL:     map_id_to_cc = 7'd46; // OSC A level
+                `PARAM_ID_OSCB_VOL:     map_id_to_cc = 7'd47; // OSC B level
+                `PARAM_ID_OSCA_POWER:   map_id_to_cc = 7'd36; // OSC A enable
+                `PARAM_ID_OSCB_POWER:   map_id_to_cc = 7'd37; // OSC B enable
+                `PARAM_ID_FLT_TYPE,
+                `PARAM_ID_FLT_POWER:    map_id_to_cc = 7'd42; // Filter mode
+                `PARAM_ID_FLT_CUTOFF:   map_id_to_cc = 7'd43; // Filter cutoff
+                `PARAM_ID_FLT_RES:      map_id_to_cc = 7'd44; // Filter resonance
+                `PARAM_ID_FLT_MIX:      map_id_to_cc = 7'd45; // Filter mix
+                `PARAM_ID_ENV1_ATTACK:  map_id_to_cc = 7'd24; // OSC A attack
+                `PARAM_ID_ENV1_DECAY:   map_id_to_cc = 7'd25; // OSC A decay
+                `PARAM_ID_ENV1_SUSTAIN: map_id_to_cc = 7'd26; // OSC A sustain
+                `PARAM_ID_ENV1_RELEASE: map_id_to_cc = 7'd27; // OSC A release
+                `PARAM_ID_MASTER_VOL:   map_id_to_cc = 7'd48; // Master level
                 default:                map_id_to_cc = 7'd0;
             endcase
+        end
+    endfunction
+
+    function cc_id_supported;
+        input [7:0] id;
+        begin
+            case (id)
+                `PARAM_ID_OSCA_WT_POS, `PARAM_ID_OSCB_WT_POS,
+                `PARAM_ID_OSCA_WAVE, `PARAM_ID_OSCB_WAVE,
+                `PARAM_ID_OSCA_WARP, `PARAM_ID_OSCB_WARP,
+                `PARAM_ID_OSCA_DETUNE, `PARAM_ID_OSCB_DETUNE,
+                `PARAM_ID_OSCA_UNISON, `PARAM_ID_OSCB_UNISON,
+                `PARAM_ID_OSCA_VOL, `PARAM_ID_OSCB_VOL,
+                `PARAM_ID_OSCA_POWER, `PARAM_ID_OSCB_POWER,
+                `PARAM_ID_FLT_TYPE, `PARAM_ID_FLT_POWER,
+                `PARAM_ID_FLT_CUTOFF, `PARAM_ID_FLT_RES,
+                `PARAM_ID_FLT_MIX,
+                `PARAM_ID_ENV1_ATTACK, `PARAM_ID_ENV1_DECAY,
+                `PARAM_ID_ENV1_SUSTAIN, `PARAM_ID_ENV1_RELEASE,
+                `PARAM_ID_MASTER_VOL:
+                    cc_id_supported = 1'b1;
+                default:
+                    cc_id_supported = 1'b0;
+            endcase
+        end
+    endfunction
+
+    function [6:0] map_id_value;
+        input [7:0] id;
+        input [6:0] value;
+        begin
+            // UI waveform enum: 0=sine, 1=saw, 2=square, 3=triangle.
+            // Audio CC uses the center of each documented value band.
+            if ((id == `PARAM_ID_OSCA_WAVE) || (id == `PARAM_ID_OSCB_WAVE)) begin
+                case (value[1:0])
+                    2'd0: map_id_value = 7'd0;
+                    2'd1: map_id_value = 7'd96;
+                    2'd2: map_id_value = 7'd64;
+                    default: map_id_value = 7'd32;
+                endcase
+            end else begin
+                map_id_value = value;
+            end
         end
     endfunction
 
@@ -106,13 +135,17 @@ module midi_uart_tx #(
     reg [1:0] seq_state;
 
     // Safe Unison clamping (1..8)
-    wire [6:0] safe_cc_val = (map_id_to_cc(cc_param_id) == 7'd23) ?
+    wire [6:0] safe_cc_val = ((map_id_to_cc(cc_param_id) == 7'd23)
+                              || (map_id_to_cc(cc_param_id) == 7'd31)) ?
                              ((cc_val == 7'd0) ? 7'd1 : ((cc_val > 7'd8) ? 7'd8 : cc_val)) : cc_val;
 
-    wire        in_push = (note_on_req || note_off_req || (cc_req && fifo_count < 4'd7)) && (fifo_count < 4'd8);
+    wire        in_push = (note_on_req || note_off_req
+                           || (cc_req && cc_id_supported(cc_param_id)
+                               && fifo_count < 4'd7)) && (fifo_count < 4'd8);
     wire [23:0] in_msg  = note_on_req  ? {8'h90, 1'b0, note_number, 1'b0, note_velocity} :
                           note_off_req ? {8'h80, 1'b0, note_number, 8'h00} :
-                                         {8'hBF, 1'b0, map_id_to_cc(cc_param_id), 1'b0, safe_cc_val};
+                                         {8'hBF, 1'b0, map_id_to_cc(cc_param_id), 1'b0,
+                                          map_id_value(cc_param_id, safe_cc_val)};
 
     wire in_pop = (seq_state == SEQ_IDLE) && (fifo_count != 4'd0) && !uart_byte_busy;
 

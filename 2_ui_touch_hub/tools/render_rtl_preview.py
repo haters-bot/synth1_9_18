@@ -40,6 +40,8 @@ def main():
     parser.add_argument('--filter-type', type=int, choices=range(4), default=0)
     parser.add_argument('--value', type=int, choices=range(128), metavar='0..127',
                         help='Override numeric parameters to check digit extremes')
+    parser.add_argument('--demo-binding', action='store_true',
+                        help='Drive real touch packets to bind LFO1 to cutoff and LFO2 to delay mix')
     args = parser.parse_args()
     if not re.fullmatch(r'[A-Za-z0-9_-]+', args.label):
         parser.error('Use an ASCII artifact label')
@@ -94,10 +96,18 @@ wire [23:0] rgb;
 integer f, x, y, pixels=0;
 integer dx_check, dy_check, geometry_checks=0, node_checks=0;
 integer offset_index;
+integer mm0,mm1,pbefore,pafter,da,db,c1,c2,c3,ref_h;
 integer lfo_x, lfo_segment, lfo_fraction, lfo_a, lfo_b, lfo_expected, lfo_expected_q2, lfo_checks=0;
 reg signed [8:0] offset_check;
 reg signed [13:0] reference_dev;
 always #8 clk=~clk;
+task demo_packet;
+    input integer px,py;input pressed;
+    begin
+        @(negedge clk);ui_touch_valid=1;ui_touch_down=pressed;ui_touch_x=px;ui_touch_y=py;
+        @(negedge clk);ui_touch_valid=0;repeat(8) @(negedge clk);
+    end
+endtask
 ui_top_renderer dut(CONNECTIONS);
 always @(posedge clk) begin
     #1;
@@ -129,12 +139,21 @@ always @(posedge clk) begin
         lfo_fraction=lfo_x==384 ? 64 : lfo_x%64;
         lfo_a=(dut.lfo_nodes >> (lfo_segment*7)) & 127;
         lfo_b=(dut.lfo_nodes >> ((lfo_segment+1)*7)) & 127;
-        lfo_expected=dut.lfo_stepped && lfo_fraction!=64 ? lfo_a :
-            ((64-lfo_fraction)*lfo_a+lfo_fraction*lfo_b)/64;
+        pbefore=lfo_segment==0 ? lfo_a : (dut.lfo_nodes>>((lfo_segment-1)*7))&127;
+        pafter=lfo_segment==5 ? lfo_b : (dut.lfo_nodes>>((lfo_segment+2)*7))&127;
+        da=lfo_a-pbefore;db=lfo_b-lfo_a;
+        mm0=lfo_segment==0 || da*db<=0 ? 0 : da>0 ? (da<db ? da:db) : (da>db ? da:db);
+        da=lfo_b-lfo_a;db=pafter-lfo_b;
+        mm1=lfo_segment==5 || da*db<=0 ? 0 : da>0 ? (da<db ? da:db) : (da>db ? da:db);
+        c1=mm0;c2=3*(lfo_b-lfo_a)-2*mm0-mm1;c3=-2*(lfo_b-lfo_a)+mm0+mm1;
+        ref_h=c3*lfo_fraction+c2*64;
+        ref_h=ref_h*lfo_fraction+c1*4096;
+        ref_h=(ref_h*lfo_fraction+lfo_a*262144)>>>12;
+        if(dut.lfo_stepped && lfo_fraction!=64) ref_h=lfo_a*64;
+        lfo_expected=ref_h>>6;
         if(dut.u_lfo_panel.curve_y !== 14'(543-lfo_expected))
             $fatal(1,"LFO interpolation mismatch at x=%0d",lfo_x);
-        lfo_expected_q2=dut.lfo_stepped && lfo_fraction!=64 ? (543-lfo_a)*4 :
-            (543*64-(lfo_a*64+(lfo_b-lfo_a)*lfo_fraction))/16;
+        lfo_expected_q2=(543*64-ref_h)/16;
         if(dut.u_lfo_panel.curve_y_q2 !== lfo_expected_q2[15:0])
             $fatal(1,"LFO fractional interpolation mismatch at x=%0d",lfo_x);
         lfo_checks=lfo_checks+1;
@@ -163,7 +182,9 @@ initial begin
     @(negedge clk); ui_touch_down=0;
     @(negedge clk); ui_touch_valid=0;
     repeat(1000) @(negedge clk);
+    DEMO_BINDING
     for(y=0;y<720;y=y+1) begin
+        if(y%120==0) $display("RTL frame progress: row %0d / 720",y);
         for(x=0;x<1280;x=x+1) begin
             @(negedge clk); in_den=1; in_pixel_x=x; in_pixel_y=y;
         end
@@ -179,13 +200,23 @@ initial begin
 end
 endmodule
 '''.replace('CONNECTIONS', ',\n'.join(connections)).replace('LFO_TAB_X', str(850+88*args.lfo_tab))
+    demo='''
+    demo_packet(850,385,1);demo_packet(0,0,0);
+    demo_packet(1140,385,1);demo_packet(0,0,0);
+    demo_packet(980,485,1);demo_packet(950,268,1);demo_packet(0,0,0);
+    demo_packet(930,385,1);demo_packet(0,0,0);
+    demo_packet(1140,385,1);demo_packet(0,0,0);
+    demo_packet(980,485,1);demo_packet(728,416,1);demo_packet(0,0,0);
+    repeat(1000) @(negedge clk);
+'''
+    tb=tb.replace('DEMO_BINDING',demo if args.demo_binding else '')
     (out / 'tb_ui_frame.v').write_text(tb, encoding='utf-8')
     subprocess.run([str(MODELSIM/'vlib.exe'), 'work'], cwd=out, check=True, capture_output=True)
     ui = ROOT/'rtl/ui_vector_engine'
     files = [str(ui/name) for name in ['sine_table.v', 'knob_vector_unit.v',
              'osc_panel_renderer.v', 'filter_panel_renderer.v', 'env_panel_renderer.v',
-             'button_vector_unit.v', 'fx_matrix_panel_renderer.v',
-             'lfo_editor_state.v', 'lfo_panel_renderer.v', 'curve_hint_renderer.v', 'ui_top_renderer.v']]
+             'button_vector_unit.v', 'fx_matrix_panel_renderer.v', 'ui_navigation_state.v', 'ui_navigation_renderer.v',
+             'fx_editor_state.v', 'fx_strip_renderer.v', 'lfo_smooth_table.v', 'lfo_binding_state.v', 'modulation_preview.v', 'modulation_overlay.v', 'lfo_editor_state.v', 'lfo_panel_renderer.v', 'curve_hint_renderer.v', 'ui_top_renderer.v']]
     with (out/'compile.log').open('w') as log:
         subprocess.run([str(MODELSIM/'vlog.exe'), '-sv', '+incdir+'+str(ui),
                         *files, 'tb_ui_frame.v'], cwd=out, stdout=log, stderr=subprocess.STDOUT, check=True)

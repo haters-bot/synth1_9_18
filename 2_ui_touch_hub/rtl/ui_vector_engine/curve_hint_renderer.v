@@ -9,52 +9,52 @@ module curve_hint_renderer(
     output reg out_hit,
     output reg [23:0] out_rgb
 );
-    reg [143:0] label;
-    reg valid;
-    reg [4:0] col;
-    reg [3:0] row;
-    reg [5:0] ch;
-    reg local_note;
-    always @(*) begin
-        valid=0;label=pack_font24("                        ");col=0;row=0;local_note=0;
-        if(in_x>=880 && in_x<1072 && in_y>=108 && in_y<118) begin
-            valid=1;col=(in_x-880)>>3;row=in_y[3:0]-4'd12;
-            label=pack_font24("X:CUTOFF  Y:RES         ");
-        end else if(in_x>=48 && in_x<240 && in_y>=592 && in_y<602) begin
-            valid=1;col=(in_x-48)>>3;row=in_y[3:0];
-            label=pack_font24("X:TIME  Y:LEVEL         ");
-        end else if(in_x>=48 && in_x<240 && in_y>=608 && in_y<618) begin
-            valid=1;col=(in_x-48)>>3;row=in_y[3:0];local_note=env_tab!=0;
-            label=env_tab==0 ? pack_font24("H HANDLE ABOVE PEAK     ") : pack_font24("ENV 2:3 LOCAL EDIT ONLY ");
-        end
+    function [5:0] label_char;
+        input [143:0] text;
+        input [4:0] col;
+        begin
         case(col)
-            0:ch=label[143:138];
-            1:ch=label[137:132];
-            2:ch=label[131:126];
-            3:ch=label[125:120];
-            4:ch=label[119:114];
-            5:ch=label[113:108];
-            6:ch=label[107:102];
-            7:ch=label[101:96];
-            8:ch=label[95:90];
-            9:ch=label[89:84];
-            10:ch=label[83:78];
-            11:ch=label[77:72];
-            12:ch=label[71:66];
-            13:ch=label[65:60];
-            14:ch=label[59:54];
-            15:ch=label[53:48];
-            16:ch=label[47:42];
-            17:ch=label[41:36];
-            18:ch=label[35:30];
-            19:ch=label[29:24];
-            20:ch=label[23:18];
-            21:ch=label[17:12];
-            22:ch=label[11:6];
-            23:ch=label[5:0];
-            default:ch=0;
+            0:label_char=text[143:138];
+            1:label_char=text[137:132];
+            2:label_char=text[131:126];
+            3:label_char=text[125:120];
+            4:label_char=text[119:114];
+            5:label_char=text[113:108];
+            6:label_char=text[107:102];
+            7:label_char=text[101:96];
+            8:label_char=text[95:90];
+            9:label_char=text[89:84];
+            10:label_char=text[83:78];
+            11:label_char=text[77:72];
+            12:label_char=text[71:66];
+            13:label_char=text[65:60];
+            14:label_char=text[59:54];
+            15:label_char=text[53:48];
+            16:label_char=text[47:42];
+            17:label_char=text[41:36];
+            18:label_char=text[35:30];
+            19:label_char=text[29:24];
+            20:label_char=text[23:18];
+            21:label_char=text[17:12];
+            22:label_char=text[11:6];
+            23:label_char=text[5:0];
+            default:label_char=0;
         endcase
-    end
+        end
+    endfunction
+    wire filter_area=in_x>=880 && in_x<1072 && in_y>=108 && in_y<118;
+    wire time_area=in_x>=48 && in_x<240 && in_y>=592 && in_y<602;
+    wire note_area=in_x>=48 && in_x<240 && in_y>=608 && in_y<618;
+    wire valid=filter_area || time_area || note_area;
+    wire local_note=note_area && env_tab!=0;
+    wire [3:0] row=filter_area ? in_y[3:0]-4'd12 : in_y[3:0];
+    // Constant text per disjoint row: no label mux followed by a character mux.
+    wire [4:0] filter_col=in_x[7:3]-5'd14;
+    wire [4:0] env_col=in_x[7:3]-5'd6;
+    wire [5:0] ch=(filter_area ? label_char(pack_font24("X:CUTOFF  Y:RES         "),filter_col) : 6'd0) |
+                 (time_area ? label_char(pack_font24("X:TIME  Y:LEVEL         "),env_col) : 6'd0) |
+                 (note_area && env_tab==0 ? label_char(pack_font24("H HANDLE ABOVE PEAK     "),env_col) : 6'd0) |
+                 (note_area && env_tab!=0 ? label_char(pack_font24("ENV 2:3 LOCAL EDIT ONLY "),env_col) : 6'd0);
     reg v0,n0,n1;
     reg [1:0] coverage1;
     reg [23:0] bg0,bg1;

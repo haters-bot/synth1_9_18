@@ -2,13 +2,15 @@
 
 // Captures a curve gesture at first contact; edits absolute parameter values.
 // All arithmetic is at touch/control rate, outside the raster path.
-module curve_touch_editor # (parameter WATCHDOG_CYCLES=3125000)(
+module curve_touch_editor # (parameter WATCHDOG_CYCLES=2500000,
+                            parameter USE_DISPLAY_GEOMETRY=0)(
     input wire clk,rst_n,
     input wire touch_valid,touch_down,
     input wire [13:0] touch_x,touch_y,
     input wire [6:0] cutoff,resonance,
     input wire [1:0] filter_type,env_tab,
     input wire [6:0] attack,hold,decay,sustain,release_v,
+    input wire [34:0] display_env_values,
     output reg capture_active,
     output reg focus_valid,
     output reg [7:0] focus_id,
@@ -38,6 +40,9 @@ module curve_touch_editor # (parameter WATCHDOG_CYCLES=3125000)(
     reg [11:0] best_dist;
     reg [2:0] nearest;
     integer pipe_i;
+    // Locate moving handles at their displayed modulation position, but latch
+    // the separate base inputs for no-jump relative parameter edits.
+    wire [34:0] hit_env=USE_DISPLAY_GEOMETRY ? display_env_values : {release_v,sustain,decay,hold,attack};
     function [11:0] distance;
         input [10:0] x;
         input [9:0] y,nx,ny;
@@ -71,11 +76,11 @@ module curve_touch_editor # (parameter WATCHDOG_CYCLES=3125000)(
                 s_pipe[pipe_i]<=s_pipe[pipe_i-1];r_pipe[pipe_i]<=r_pipe[pipe_i-1];
                 tab_pipe[pipe_i]<=tab_pipe[pipe_i-1];type_pipe[pipe_i]<=type_pipe[pipe_i-1];
             end
-            la0<=`ENV_LEN_A(attack);lh0<=`ENV_LEN_H(hold);
-            ld0<=`ENV_LEN_D(decay);lr0<=`ENV_LEN_R(release_v);sh0<=`ENV_SUS_HEIGHT(sustain);
+            la0<=`ENV_LEN_A(hit_env[0+:7]);lh0<=`ENV_LEN_H(hit_env[7+:7]);
+            ld0<=`ENV_LEN_D(hit_env[14+:7]);lr0<=`ENV_LEN_R(hit_env[28+:7]);sh0<=`ENV_SUS_HEIGHT(hit_env[21+:7]);
             ax1<=10'd36+la0;hx1<=10'd36+la0+lh0;
-            dx1<=10'd36+la0+lh0+ld0;sx1<=10'd156+la0+lh0+ld0;
-            rx1<=10'd156+la0+lh0+ld0+lr0;sy1<=10'd568-sh0;
+            dx1<=10'd36+la0+lh0+ld0;sx1<=10'd96+la0+lh0+ld0;
+            rx1<=10'd96+la0+lh0+ld0+lr0;sy1<=10'd568-sh0;
             distances2[0]<=distance(x_pipe[1][10:0],y_pipe[1][9:0],ax1,10'd424);
             distances2[1]<=distance(x_pipe[1][10:0],y_pipe[1][9:0],hx1,10'd412);
             distances2[2]<=distance(x_pipe[1][10:0],y_pipe[1][9:0],dx1,sy1);
@@ -88,7 +93,7 @@ module curve_touch_editor # (parameter WATCHDOG_CYCLES=3125000)(
     function [6:0] pixel_value;
         input signed [17:0] pixels;
         input integer span;
-        reg [17:0] reciprocal;
+        reg [18:0] reciprocal;
         reg [26:0] scaled;
         begin
             // Bounded reciprocal multiply replaces a long signed divider.
@@ -96,8 +101,8 @@ module curve_touch_editor # (parameter WATCHDOG_CYCLES=3125000)(
             // pixel in every supported span (including 127 saturation).
             case(span)
                 280:reciprocal=18'd29959;44:reciprocal=18'd190650;
-                130:reciprocal=18'd64528;60:reciprocal=18'd139810;
-                160:reciprocal=18'd52429;144:reciprocal=18'd58254;
+                65:reciprocal=19'd129056;30:reciprocal=19'd279620;
+                80:reciprocal=19'd104858;144:reciprocal=18'd58254;
                 default:reciprocal=0;
             endcase
             scaled=pixels[8:0]*reciprocal+27'd32768;
@@ -133,11 +138,11 @@ module curve_touch_editor # (parameter WATCHDOG_CYCLES=3125000)(
                 update_values[13:7]<=zero_y ? base_res : pixel_value(p1,44);
                 update_values[34:14]<=0;
             end else begin
-                update_values[6:0]<=zero_x ? base_a : pixel_value(p0,130);
-                update_values[13:7]<=zero_x ? base_h : pixel_value(p1,60);
-                update_values[20:14]<=zero_x ? base_d : pixel_value(p2,160);
+                update_values[6:0]<=zero_x ? base_a : pixel_value(p0,65);
+                update_values[13:7]<=zero_x ? base_h : pixel_value(p1,30);
+                update_values[20:14]<=zero_x ? base_d : pixel_value(p2,80);
                 update_values[27:21]<=zero_y ? base_s : pixel_value(p3,144);
-                update_values[34:28]<=zero_x ? base_r : pixel_value(p4,160);
+                update_values[34:28]<=zero_x ? base_r : pixel_value(p4,80);
             end
             if(watchdog<WATCHDOG_CYCLES) watchdog<=watchdog+1'b1;
             else begin finger_down<=0;capture_active<=0; end
@@ -177,11 +182,11 @@ module curve_touch_editor # (parameter WATCHDOG_CYCLES=3125000)(
                             p1<=((base_res*18'd44)>>7)+(notch_gesture ? -move_up : move_up);
                             pending_mask<=5'b00011;
                         end else begin
-                            p0<=((base_a*18'd130)>>7)+move_x;
-                            p1<=((base_h*18'd60)>>7)+move_x;
-                            p2<=((base_d*18'd160)>>7)+move_x;
+                            p0<=((base_a*18'd65)>>7)+move_x;
+                            p1<=((base_h*18'd30)>>7)+move_x;
+                            p2<=((base_d*18'd80)>>7)+move_x;
                             p3<=((base_s*18'd144)>>7)+move_up;
-                            p4<=((base_r*18'd160)>>7)+move_x;
+                            p4<=((base_r*18'd80)>>7)+move_x;
                             case(handle)
                                 0:pending_mask<=5'b00001;
                                 1:pending_mask<=5'b00010;

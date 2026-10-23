@@ -11,6 +11,12 @@ temp/
 
 # Modelsim work directory
 sim/work/
+sim/work*/
+sim/transcript
+sim/modelsim.ini
+*.wlf
+/transcript
+/modelsim.ini
 
 # Ephemeral audit photos and crops
 *.jpg
@@ -21,6 +27,3 @@ tools/*.png
 # Python cache
 __pycache__/
 *.pyc
-
-# Keep simulator console output local only
-/sim/transcript

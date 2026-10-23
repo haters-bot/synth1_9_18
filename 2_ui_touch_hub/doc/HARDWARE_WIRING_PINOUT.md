@@ -58,11 +58,15 @@
 | `knob_spi_sclk` | **`U16`** | LVCMOS33 | Input | SPI 时钟信号 (支持最高 25MHz) |
 | `knob_spi_mosi` | **`T16`** | LVCMOS33 | Input | SPI 数据输入 (16-bit 旋钮通道与采样值) |
 
-### 2. 队友 3 (音频引擎组) UART MIDI 协议输出接口
-UI Touch Hub 汇聚琴键与参数后，通过单线 UART 发送给音频引擎（直连板载调试串口 TX / 跨板排针）：
+### 2. 音频引擎跨板 UART MIDI 控制链路（独立GPIO）
+不要将UI的UART输出接到音频板V14：V14同时连接板载USB-JTAG/USB-UART桥的TX网络。两边使用专用PMOD1 IO2；互连前确认没有接DVP摄像头或SDRAM1扩展设备。
 | 信号名称 | 物理引脚 | IO 标准 | 方向 | 接口协议与说明 |
 | :--- | :--- | :--- | :--- | :--- |
-| `midi_uart_tx` | **`U15`** | LVCMOS33 | Output | 31250 / 115200 波特率 MIDI 发送端 (直连音频核 `uart_rx`) |
+| UI `audio_link_tx` | **`AB21` / PMOD1 IO2 / J8 pin 9** | LVCMOS33 | Output | 31250 baud MIDI，接音频板J8 pin 9 |
+| Audio `midi_gpio_rx` | **`AB21` / PMOD1 IO2 / J8 pin 9** | LVCMOS33 | Input | 专用跨板接收；音频V14调试UART保留 |
+| 公共地 | **J8 pin 3或4** | GND | — | 两板共地；不要跨接3.3V电源 |
+
+UI板U15继续作为板载USB-UART监视端，不再承载跨板物理连线。音频端两个UART RX在逻辑上合并；第一阶段同一时刻只能有一个发送源活动。两个TX不做电气并联。
 
 ### 3. PC 触控调试中继接口 (Debug Touch RX)
 若使用 USB 虚拟串口/HID 转发触控坐标包 (`0x54, 0x54, X, Y, State`)：

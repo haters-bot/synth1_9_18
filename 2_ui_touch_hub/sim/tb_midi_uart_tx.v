@@ -22,6 +22,7 @@ module tb_midi_uart_tx;
 
     wire uart_tx;
     wire tx_busy;
+    reg [7:0] b0, b1, b2;
 
     // Use smaller divider in testbench for fast simulation (CLK_DIV=20 instead of 2000)
     midi_uart_tx #(
@@ -67,7 +68,34 @@ module tb_midi_uart_tx;
         end
     endtask
 
-    reg [7:0] b0, b1, b2;
+    task send_cc_check;
+        input [7:0] parameter_id;
+        input [6:0] value;
+        input [6:0] expected_cc;
+        input [6:0] expected_value;
+        begin
+            @(negedge clk);
+            cc_req = 1'b1;
+            cc_param_id = parameter_id;
+            cc_val = value;
+            @(negedge clk);
+            cc_req = 1'b0;
+            receive_byte(b0);
+            receive_byte(b1);
+            receive_byte(b2);
+            if (b0 !== 8'hBF || b1 !== {1'b0, expected_cc}
+                || b2 !== {1'b0, expected_value}) begin
+                $display("[FAIL] CC map id=%02h got %02h %02h %02h expected BF %02h %02h",
+                         parameter_id, b0, b1, b2,
+                         {1'b0, expected_cc}, {1'b0, expected_value});
+                $stop;
+            end else begin
+                $display("[PASS] CC map id=%02h -> CC%0d value=%0d",
+                         parameter_id, expected_cc, expected_value);
+            end
+            repeat (8) @(posedge clk);
+        end
+    endtask
 
     initial begin
         clk = 0;
@@ -158,8 +186,8 @@ module tb_midi_uart_tx;
         #200;
 
         // ----------------------------------------------------------------------
-        // Test 4: Parameter CC (Filter Cutoff -> CC74 = 0x4A, Val 112 = 0x70)
-        // Expected MIDI Packet: 0xBF, 0x4A, 0x70
+        // Test 4: Parameter CC (Filter Cutoff -> audio protocol CC43)
+        // Expected MIDI Packet: 0xBF, 0x2B, 0x70
         // ----------------------------------------------------------------------
         $display("[INFO] Starting Test 4: Parameter CC Channel 16 (Cutoff)");
         @(posedge clk);
@@ -173,14 +201,52 @@ module tb_midi_uart_tx;
         receive_byte(b1);
         receive_byte(b2);
 
-        if (b0 !== 8'hBF || b1 !== 8'h4A || b2 !== 8'h70) begin
-            $display("[FAIL] CC Cutoff packet mismatch! Got %h %h %h, expected BF 4A 70", b0, b1, b2);
+        if (b0 !== 8'hBF || b1 !== 8'h2B || b2 !== 8'h70) begin
+            $display("[FAIL] CC Cutoff packet mismatch! Got %h %h %h, expected BF 2B 70", b0, b1, b2);
             $stop;
         end else begin
-            $display("[PASS] Received CC74: %h %h %h (Ch16 Cutoff=112)", b0, b1, b2);
+            $display("[PASS] Received CC43: %h %h %h (Ch16 Cutoff=112)", b0, b1, b2);
         end
 
-        #200;
+        // Audio-engine protocol v1: B oscillator controls are independent,
+        // wave enums are converted to the centers of the audio value bands.
+        send_cc_check(`PARAM_ID_OSCB_WT_POS, 7'd85, 7'd28, 7'd85);
+        send_cc_check(`PARAM_ID_OSCB_DETUNE, 7'd52, 7'd30, 7'd52);
+        send_cc_check(`PARAM_ID_OSCB_UNISON, 7'd127, 7'd31, 7'd8);
+        send_cc_check(`PARAM_ID_OSCB_WAVE, 7'd3, 7'd29, 7'd32);
+        send_cc_check(`PARAM_ID_OSCA_WAVE, 7'd2, 7'd21, 7'd64);
+        send_cc_check(`PARAM_ID_FLT_RES, 7'd48, 7'd44, 7'd48);
+        send_cc_check(`PARAM_ID_FLT_MIX, 7'd72, 7'd45, 7'd72);
+        send_cc_check(`PARAM_ID_FLT_TYPE, 7'd4, 7'd42, 7'd4);
+        send_cc_check(`PARAM_ID_FLT_POWER, 7'd0, 7'd42, 7'd0);
+        send_cc_check(`PARAM_ID_ENV1_ATTACK, 7'd12, 7'd24, 7'd12);
+        send_cc_check(`PARAM_ID_ENV1_RELEASE, 7'd67, 7'd27, 7'd67);
+        send_cc_check(`PARAM_ID_MASTER_VOL, 7'd100, 7'd48, 7'd100);
+
+        // Unsupported legacy/local-only controls must not emit CC0 or alias
+        // into unrelated audio parameters (Hold, pan, and FX placeholders).
+        @(negedge clk);
+        cc_req = 1'b1;
+        cc_param_id = `PARAM_ID_ENV1_HOLD;
+        cc_val = 7'd90;
+        @(negedge clk);
+        cc_req = 1'b0;
+        repeat (8) @(posedge clk);
+        if (tx_busy !== 1'b0 || uart_tx !== 1'b1) begin
+            $display("[FAIL] Unsupported Hold control emitted UART data");
+            $stop;
+        end else begin
+            $display("[PASS] Unsupported Hold control was suppressed");
+        end
+        @(negedge clk);cc_req=1;cc_param_id=`PARAM_ID_OSCA_PAN;cc_val=7'd127;
+        @(negedge clk);cc_req=0;
+        repeat (8) @(posedge clk);
+        if (tx_busy !== 1'b0 || uart_tx !== 1'b1) begin
+            $display("[FAIL] Unsupported mono Pan control emitted UART data");
+            $stop;
+        end else begin
+            $display("[PASS] Unsupported mono Pan control was suppressed");
+        end
 
         // ----------------------------------------------------------------------
         // Test 5: Rapid Back-to-Back Enqueue (FIFO Protection)

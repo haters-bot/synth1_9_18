@@ -252,7 +252,7 @@ module usb_touch_intake (
                 dbg_pkt_cnt    <= dbg_pkt_cnt + 8'd1;
             end else begin
                 // Auto-release contact if no new packet received for 50ms (3,125,000 cycles at 62.5MHz)
-                if (wdt_count < 24'd3_125_000) begin
+                if (wdt_count < 24'd2_500_000) begin
                     wdt_count <= wdt_count + 24'd1;
                 end else begin
                     touch_state <= 1'b0;

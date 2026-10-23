@@ -14,112 +14,191 @@ module lfo_panel_renderer(
     input wire once_mode, stepped,
     input wire [8:0] phase,
     input wire running,
+    input wire [12:0] curve_q6,
     output reg out_hit,
     output reg [23:0] out_rgb
 );
+    // Control state settles independently of the pixel pipeline. Isolate the
+    // editor's bank selection before the per-pixel nearest-node mux/geometry.
+    reg [48:0] nodes_r;
+    always @(posedge clk) nodes_r<=nodes;
     function [6:0] node_value;
         input [2:0] idx;
         begin
             case(idx)
-                0:node_value=nodes[6:0]; 1:node_value=nodes[13:7];
-                2:node_value=nodes[20:14]; 3:node_value=nodes[27:21];
-                4:node_value=nodes[34:28]; 5:node_value=nodes[41:35];
-                default:node_value=nodes[48:42];
+                0:node_value=nodes_r[6:0]; 1:node_value=nodes_r[13:7];
+                2:node_value=nodes_r[20:14]; 3:node_value=nodes_r[27:21];
+                4:node_value=nodes_r[34:28]; 5:node_value=nodes_r[41:35];
+                default:node_value=nodes_r[48:42];
             endcase
         end
     endfunction
     wire [8:0] gx = in_x-14'd832;
     wire [2:0] segment = gx[8:6] < 6 ? gx[8:6] : 3'd5;
-    wire [9:0] rounded_x = {1'b0,gx}+10'd32;
-    wire [2:0] nearest = rounded_x[9:6] > 6 ? 3'd6 : rounded_x[8:6];
     wire [6:0] a = node_value(segment), b = node_value(segment+1'b1);
-    wire [6:0] nn = node_value(nearest);
     wire [6:0] prev = node_value(segment==0 ? 3'd0 : segment-1'b1);
-    wire [13:0] nx = 14'd832+{nearest,6'b0};
-    wire [13:0] ny = 14'd543-nn;
-    wire node_hit = in_x+3 >= nx && in_x <= nx+3 && in_y+3 >= ny && in_y <= ny+3;
+    // Node boxes are disjoint (7 x 7 pixels), so nearest-node selection is
+    // unnecessary for hit testing. Parallel fixed-X boxes remove the
+    // segment/nearest/node-value mux chain from the first pixel stage.
+    wire node_hit0 = in_x >= 14'd829 && in_x <= 14'd835 &&
+        in_y+14'd3 >= (14'd543-{7'd0,nodes_r[6:0]}) &&
+        in_y <= (14'd543-{7'd0,nodes_r[6:0]})+14'd3;
+    wire node_hit1 = in_x >= 14'd893 && in_x <= 14'd899 &&
+        in_y+14'd3 >= (14'd543-{7'd0,nodes_r[13:7]}) &&
+        in_y <= (14'd543-{7'd0,nodes_r[13:7]})+14'd3;
+    wire node_hit2 = in_x >= 14'd957 && in_x <= 14'd963 &&
+        in_y+14'd3 >= (14'd543-{7'd0,nodes_r[20:14]}) &&
+        in_y <= (14'd543-{7'd0,nodes_r[20:14]})+14'd3;
+    wire node_hit3 = in_x >= 14'd1021 && in_x <= 14'd1027 &&
+        in_y+14'd3 >= (14'd543-{7'd0,nodes_r[27:21]}) &&
+        in_y <= (14'd543-{7'd0,nodes_r[27:21]})+14'd3;
+    wire node_hit4 = in_x >= 14'd1085 && in_x <= 14'd1091 &&
+        in_y+14'd3 >= (14'd543-{7'd0,nodes_r[34:28]}) &&
+        in_y <= (14'd543-{7'd0,nodes_r[34:28]})+14'd3;
+    wire node_hit5 = in_x >= 14'd1149 && in_x <= 14'd1155 &&
+        in_y+14'd3 >= (14'd543-{7'd0,nodes_r[41:35]}) &&
+        in_y <= (14'd543-{7'd0,nodes_r[41:35]})+14'd3;
+    wire node_hit6 = in_x >= 14'd1213 && in_x <= 14'd1219 &&
+        in_y+14'd3 >= (14'd543-{7'd0,nodes_r[48:42]}) &&
+        in_y <= (14'd543-{7'd0,nodes_r[48:42]})+14'd3;
+    wire node_hit = node_hit0 || node_hit1 || node_hit2 || node_hit3 ||
+                    node_hit4 || node_hit5 || node_hit6;
     wire jump_hit = stepped && gx[5:0]==0 &&
         ((in_y>=543-a && in_y<=543-prev) || (in_y>=543-prev && in_y<=543-a));
 
     // Native 7x10 coverage glyphs in the existing 8-pixel character cells.
     // Decode character/coordinates first, look up the font in the next stage.
-    reg [143:0] label;
+    reg [4:0] label_id;
     reg [13:0] tx, ty;
     reg label_area;
     always @(*) begin
-        label=pack_font24("                        "); tx=0; ty=0; label_area=0;
+        label_id=0; tx=0; ty=0; label_area=0;
         if(in_y>=380 && in_y<390) begin
             label_area=1; ty=380;
-            if(in_x>=824 && in_x<880) begin tx=824; label=pack_font24("LFO 1                   "); end
-            else if(in_x>=912 && in_x<968) begin tx=912; label=pack_font24("LFO 2                   "); end
-            else if(in_x>=1000 && in_x<1056) begin tx=1000; label=pack_font24("LFO 3                   "); end
-            else if(in_x>=1112 && in_x<1240) begin tx=1112; label=pack_font24("LOCAL PREVIEW           "); end
+            if(in_x>=824 && in_x<880) begin tx=824; label_id=1; end
+            else if(in_x>=912 && in_x<968) begin tx=912; label_id=2; end
+            else if(in_x>=1000 && in_x<1056) begin tx=1000; label_id=3; end
+            else if(in_x>=1112 && in_x<1240) begin tx=1112; label_id=4; end
             else label_area=0;
         end else if(in_y>=570 && in_y<580) begin
             label_area=1; ty=570;
-            if(in_x>=840 && in_x<920) begin tx=840; label=pack_font24("TRIANGLE                "); end
-            else if(in_x>=992 && in_x<1040) begin tx=992; label=pack_font24("RAMP                    "); end
-            else if(in_x>=1136 && in_x<1200) begin tx=1136; label=pack_font24("SQUARE                  "); end
+            if(in_x>=840 && in_x<920) begin tx=840; label_id=5; end
+            else if(in_x>=992 && in_x<1040) begin tx=992; label_id=6; end
+            else if(in_x>=1136 && in_x<1200) begin tx=1136; label_id=7; end
             else label_area=0;
         end else if(in_y>=616 && in_y<626) begin
             label_area=1; ty=616;
-            if(in_x>=856 && in_x<904) begin tx=856; label=pack_font24("RATE                    "); end
-            else if(in_x>=992 && in_x<1040) begin tx=992; label=pack_font24("MODE                    "); end
-            else if(in_x>=1120 && in_x<1224) begin tx=1120; label=pack_font24("RESTART                 "); end
+            if(in_x>=856 && in_x<904) begin tx=856; label_id=8; end
+            else if(in_x>=992 && in_x<1040) begin tx=992; label_id=9; end
+            else if(in_x>=1120 && in_x<1224) begin tx=1120; label_id=10; end
             else label_area=0;
         end else if(in_y>=636 && in_y<646) begin
             label_area=1; ty=636;
             if(in_x>=840 && in_x<920) begin
                 tx=840;
-                case(rate)
-                    0:label=pack_font24("0.25 HZ                 "); 1:label=pack_font24("0.5 HZ                  ");
-                    2:label=pack_font24("1 HZ                    "); 3:label=pack_font24("2 HZ                    ");
-                    4:label=pack_font24("4 HZ                    "); default:label=pack_font24("8 HZ                    ");
-                endcase
-            end else if(in_x>=984 && in_x<1048) begin tx=984; label=once_mode ? pack_font24("ONCE                    ") : pack_font24("FREE                    "); end
-            else if(in_x>=1136 && in_x<1208) begin tx=1136; label=running ? pack_font24("PLAYING                 ") : pack_font24("STOPPED                 "); end
+                label_id=11;
+            end else if(in_x>=984 && in_x<1048) begin tx=984; label_id=12; end
+            else if(in_x>=1136 && in_x<1208) begin tx=1136; label_id=13; end
             else label_area=0;
         end else if(in_y>=664 && in_y<674 && in_x>=832 && in_x<992) begin
-            label_area=1; tx=832; ty=664; label=pack_font24("DRAG THE 7 NODES        ");
+            label_area=1; tx=832; ty=664; label_id=14;
         end else if(in_y>=682 && in_y<692 && in_x>=832 && in_x<992) begin
-            label_area=1; tx=832; ty=682; label=pack_font24("AUDIO LINK PENDING      ");
+            label_area=1; tx=832; ty=682; label_id=15;
         end
     end
-    // All label origins are aligned to 8 pixels. Only character-cell bits
-    // need subtraction, while the 2x glyph column comes straight from X.
-    wire [4:0] text_col=in_x[7:3]-tx[7:3];
-    wire [3:0] text_dy=in_y[3:0]-ty[3:0];
-    reg [5:0] ch;
-    always @(*) begin
-        case(text_col)
-            0:ch=label[143:138];
-            1:ch=label[137:132];
-            2:ch=label[131:126];
-            3:ch=label[125:120];
-            4:ch=label[119:114];
-            5:ch=label[113:108];
-            6:ch=label[107:102];
-            7:ch=label[101:96];
-            8:ch=label[95:90];
-            9:ch=label[89:84];
-            10:ch=label[83:78];
-            11:ch=label[77:72];
-            12:ch=label[71:66];
-            13:ch=label[65:60];
-            14:ch=label[59:54];
-            15:ch=label[53:48];
-            16:ch=label[47:42];
-            17:ch=label[41:36];
-            18:ch=label[35:30];
-            19:ch=label[29:24];
-            20:ch=label[23:18];
-            21:ch=label[17:12];
-            22:ch=label[11:6];
-            23:ch=label[5:0];
-            default:ch=0;
-        endcase
-    end
-    reg [13:0] x0,y0,x1,y1;
+    // Capture the character number before the font lookup. Keeping the packed
+    // label and origin out of the second stage removes a coordinate subtract
+    // plus 24-way character mux from the font register path.
+    reg [13:0] x0 /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [13:0] y0 /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [5:0] char0;
+    reg [3:0] text_ry0;
+    reg text_valid0;
+    reg [2:0] text_rx0;
+    function [5:0] label_char_at;
+        input [4:0] id;
+        input [4:0] column;
+        input [2:0] rate_sel;
+        input once_sel, running_sel;
+        begin
+            label_char_at=0;
+            case(id)
+                1,2,3: begin
+                    case(column)
+                        0:label_char_at=`CH_L; 1:label_char_at=`CH_F; 2:label_char_at=`CH_O;
+                        4:label_char_at=`CH_1+(id-1);
+                    endcase
+                end
+                4: begin case(column)
+                    0:label_char_at=`CH_L; 1:label_char_at=`CH_O; 2:label_char_at=`CH_C;
+                    3:label_char_at=`CH_A; 4:label_char_at=`CH_L; 6:label_char_at=`CH_P;
+                    7:label_char_at=`CH_R; 8:label_char_at=`CH_E; 9:label_char_at=`CH_V;
+                    10:label_char_at=`CH_I; 11:label_char_at=`CH_E; 12:label_char_at=`CH_W;
+                endcase end
+                5: begin case(column)
+                    0:label_char_at=`CH_T; 1:label_char_at=`CH_R; 2:label_char_at=`CH_I;
+                    3:label_char_at=`CH_A; 4:label_char_at=`CH_N; 5:label_char_at=`CH_G;
+                    6:label_char_at=`CH_L; 7:label_char_at=`CH_E;
+                endcase end
+                6: begin case(column)
+                    0:label_char_at=`CH_R; 1:label_char_at=`CH_A; 2:label_char_at=`CH_M; 3:label_char_at=`CH_P;
+                endcase end
+                7: begin case(column)
+                    0:label_char_at=`CH_S; 1:label_char_at=`CH_Q; 2:label_char_at=`CH_U;
+                    3:label_char_at=`CH_A; 4:label_char_at=`CH_R; 5:label_char_at=`CH_E;
+                endcase end
+                8: begin case(column) 0:label_char_at=`CH_R; 1:label_char_at=`CH_A; 2:label_char_at=`CH_T; 3:label_char_at=`CH_E; endcase end
+                9: begin case(column) 0:label_char_at=`CH_M; 1:label_char_at=`CH_O; 2:label_char_at=`CH_D; 3:label_char_at=`CH_E; endcase end
+                10: begin case(column) 0:label_char_at=`CH_R; 1:label_char_at=`CH_E; 2:label_char_at=`CH_S; 3:label_char_at=`CH_T; 4:label_char_at=`CH_A; 5:label_char_at=`CH_R; 6:label_char_at=`CH_T; endcase end
+                11: begin case(rate_sel)
+                    0: case(column) 0:label_char_at=`CH_0; 1:label_char_at=`CH_DOT; 2:label_char_at=`CH_2; 3:label_char_at=`CH_5; 5:label_char_at=`CH_H; 6:label_char_at=`CH_Z; endcase
+                    1: case(column) 0:label_char_at=`CH_0; 1:label_char_at=`CH_DOT; 2:label_char_at=`CH_5; 4:label_char_at=`CH_H; 5:label_char_at=`CH_Z; endcase
+                    2: case(column) 0:label_char_at=`CH_1; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
+                    3: case(column) 0:label_char_at=`CH_2; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
+                    4: case(column) 0:label_char_at=`CH_4; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
+                    default: case(column) 0:label_char_at=`CH_8; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
+                endcase end
+                12: begin case(column) 0:label_char_at=once_sel?`CH_O:`CH_F; 1:label_char_at=once_sel?`CH_N:`CH_R; 2:label_char_at=once_sel?`CH_C:`CH_E; 3:label_char_at=once_sel?`CH_E:`CH_E; endcase end
+                13: begin case(column) 0:label_char_at=running_sel?`CH_P:`CH_S; 1:label_char_at=running_sel?`CH_L:`CH_T; 2:label_char_at=running_sel?`CH_A:`CH_O; 3:label_char_at=running_sel?`CH_Y:`CH_P; 4:label_char_at=running_sel?`CH_I:`CH_P; 5:label_char_at=running_sel?`CH_N:`CH_E; 6:label_char_at=running_sel?`CH_G:`CH_D; 7:label_char_at=running_sel?`CH_SPACE:`CH_E; endcase end
+                14: begin case(column) 0:label_char_at=`CH_D; 1:label_char_at=`CH_R; 2:label_char_at=`CH_A; 3:label_char_at=`CH_G; 5:label_char_at=`CH_T; 6:label_char_at=`CH_H; 8:label_char_at=`CH_7; 10:label_char_at=`CH_N; 11:label_char_at=`CH_O; 12:label_char_at=`CH_D; 13:label_char_at=`CH_E; 14:label_char_at=`CH_S; endcase end
+                15: begin case(column) 0:label_char_at=`CH_A; 1:label_char_at=`CH_U; 2:label_char_at=`CH_D; 3:label_char_at=`CH_I; 4:label_char_at=`CH_O; 6:label_char_at=`CH_L; 7:label_char_at=`CH_I; 8:label_char_at=`CH_N; 9:label_char_at=`CH_K; 11:label_char_at=`CH_P; 12:label_char_at=`CH_E; 13:label_char_at=`CH_N; 14:label_char_at=`CH_D; 15:label_char_at=`CH_I; 16:label_char_at=`CH_N; 17:label_char_at=`CH_G; endcase end
+            endcase
+        end
+    endfunction
+    // Disjoint label rectangles: decode constant labels in parallel rather
+    // than selecting an ID/origin before a second variable character mux.
+    wire [5:0] char_parallel =
+        ((in_x>=14'd824 && in_x<14'd880 && in_y>=14'd380 && in_y<14'd390) ?
+            label_char_at(5'd1,in_x[7:3]-5'd7,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd912 && in_x<14'd968 && in_y>=14'd380 && in_y<14'd390) ?
+            label_char_at(5'd2,in_x[7:3]-5'd18,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd1000 && in_x<14'd1056 && in_y>=14'd380 && in_y<14'd390) ?
+            label_char_at(5'd3,in_x[7:3]-5'd29,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd1112 && in_x<14'd1240 && in_y>=14'd380 && in_y<14'd390) ?
+            label_char_at(5'd4,in_x[7:3]-5'd11,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd840 && in_x<14'd920 && in_y>=14'd570 && in_y<14'd580) ?
+            label_char_at(5'd5,in_x[7:3]-5'd9,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd992 && in_x<14'd1040 && in_y>=14'd570 && in_y<14'd580) ?
+            label_char_at(5'd6,in_x[7:3]-5'd28,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd1136 && in_x<14'd1200 && in_y>=14'd570 && in_y<14'd580) ?
+            label_char_at(5'd7,in_x[7:3]-5'd14,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd856 && in_x<14'd904 && in_y>=14'd616 && in_y<14'd626) ?
+            label_char_at(5'd8,in_x[7:3]-5'd11,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd992 && in_x<14'd1040 && in_y>=14'd616 && in_y<14'd626) ?
+            label_char_at(5'd9,in_x[7:3]-5'd28,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd1120 && in_x<14'd1224 && in_y>=14'd616 && in_y<14'd626) ?
+            label_char_at(5'd10,in_x[7:3]-5'd12,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd840 && in_x<14'd920 && in_y>=14'd636 && in_y<14'd646) ?
+            label_char_at(5'd11,in_x[7:3]-5'd9,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd984 && in_x<14'd1048 && in_y>=14'd636 && in_y<14'd646) ?
+            label_char_at(5'd12,in_x[7:3]-5'd27,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd1136 && in_x<14'd1208 && in_y>=14'd636 && in_y<14'd646) ?
+            label_char_at(5'd13,in_x[7:3]-5'd14,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd832 && in_x<14'd992 && in_y>=14'd664 && in_y<14'd674) ?
+            label_char_at(5'd14,in_x[7:3]-5'd8,rate,once_mode,running) : 6'd0) |
+        ((in_x>=14'd832 && in_x<14'd992 && in_y>=14'd682 && in_y<14'd692) ?
+            label_char_at(5'd15,in_x[7:3]-5'd8,rate,once_mode,running) : 6'd0);
+    reg [13:0] x1,y1;
     reg hit0,hit1,graph0,graph1,node0,node1,grid0,grid1;
     reg jump0,jump1;
     reg [6:0] a0;
@@ -127,23 +206,21 @@ module lfo_panel_renderer(
     reg [6:0] frac0;
     reg signed [15:0] product1;
     reg [6:0] a1;
-    reg [5:0] ch0;
-    reg [2:0] rx0;
-    reg [3:0] ry0;
-    reg text_valid0;
     reg [1:0] text1;
     reg [23:0] base0,base1;
     reg [13:0] head0,head1;
     reg step0;
     wire signed [16:0] interpolated = $signed({10'd0,a1})+(product1 >>> 6);
-    wire [13:0] curve_y = 14'd543-interpolated[6:0];
+    reg [12:0] amplitude0,amplitude1;
+    wire [13:0] curve_y = 14'd543-amplitude1[12:6];
     wire signed [16:0] interpolated_q6=$signed({4'd0,a1,6'b0})+$signed(product1);
-    wire signed [16:0] curve_y_q6=17'sd34752-interpolated_q6;
+    wire signed [16:0] curve_y_q6=17'sd34752-$signed({4'd0,amplitude1});
     wire [15:0] curve_y_q2={3'b0,curve_y_q6[16:4]};
     wire [2:0] stroke_alpha=curve_alpha_q4(y1,curve_y_q2,5'd3);
     wire [23:0] graph_bg=x1==head1 ? 24'h6888A8 : grid1 ? 24'h243244 :
         y1>curve_y ? 24'h102C3C : 24'h0A0E16;
     always @(posedge clk) begin
+        amplitude0<=curve_q6;amplitude1<=amplitude0;
         x0<=in_x; y0<=in_y;
         hit0<=in_x>=796 && in_x<=1256 && in_y>=368 && in_y<=693;
         graph0<=in_x>=832 && in_x<=1216 && in_y>=416 && in_y<=543;
@@ -154,8 +231,10 @@ module lfo_panel_renderer(
         frac0<=in_x==1216 ? 7'd64 : {1'b0,gx[5:0]};
         head0<=14'd832+phase;
         step0<=stepped;
-        ch0<=ch; rx0<=in_x[2:0]; ry0<=text_dy;
-        text_valid0<=label_area && text_col<20 && in_x[2:0]<7;
+        char0<=char_parallel;
+        text_ry0<=in_y[3:0]-ty[3:0];
+        text_valid0<=label_area && ((in_x[7:3]-tx[7:3])<20);
+        text_rx0<=in_x[2:0];
         base0<=24'h181C24;
         if(in_x==796 || in_x==1256 || in_y==368 || in_y==693) base0<=24'h2A3140;
         else if(in_y<=398) begin
@@ -178,7 +257,8 @@ module lfo_panel_renderer(
         node1<=node0; grid1<=grid0; base1<=base0; head1<=head0; jump1<=jump0;
         a1<=a0;
         product1<=step0 && frac0!=64 ? 16'sd0 : delta0*$signed({1'b0,frac0});
-        text1<=text_valid0 ? get_font_7x10(ch0,rx0,ry0) : 2'd0;
+        text1<=text_valid0 && text_rx0<7 ?
+            get_font_7x10(char0,text_rx0,text_ry0) : 2'd0;
     end
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n) begin out_hit<=0; out_rgb<=0; end

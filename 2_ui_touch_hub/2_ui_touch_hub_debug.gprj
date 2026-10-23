@@ -22,6 +22,12 @@
         <File path="rtl/ui_vector_engine/env_panel_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/button_vector_unit.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/fx_matrix_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/fx_editor_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/fx_strip_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_smooth_table.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_binding_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/modulation_preview.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/modulation_overlay.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/lfo_editor_state.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/lfo_panel_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/curve_hint_renderer.v" type="file.verilog" enable="1"/>

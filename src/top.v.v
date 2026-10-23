@@ -9,6 +9,7 @@ module top #(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
     input  wire uart_rx,       // 板载USB-UART接收，引脚V14
+    input  wire midi_gpio_rx,  // 跨板MIDI输入：PMOD1 IO2 / AB21
     output wire MAX_SD,        // MAX98357A使能，引脚AB20
     output wire MAX_GAIN,      // MAX98357A增益选择，引脚AA21
     output wire MAX_DIN,       // MAX98357A串行音频数据，引脚AB22
@@ -113,6 +114,9 @@ module top #(
     wire [7:0] uart_byte;
     wire       uart_byte_valid;
     wire       uart_framing_error;
+    // UART outputs are open-idle-high logically, not electrically wired
+    // together. AND permits either source; the other source must stay idle.
+    wire       midi_serial_rx = uart_rx & midi_gpio_rx;
     wire       midi_note_event_valid;
     wire       midi_note_event_on;
     wire [3:0] midi_note_event_channel;
@@ -526,7 +530,7 @@ module top #(
     ) u_uart_rx (
         .clk          (clk_sys),
         .rst_n        (rst_n_sys),
-        .rx           (uart_rx),
+        .rx           (midi_serial_rx),
         .data         (uart_byte),
         .data_valid   (uart_byte_valid),
         .framing_error(uart_framing_error)

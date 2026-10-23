@@ -112,6 +112,57 @@ module param_merger (
     output reg  [7:0]  midi_cc_param_id,
     output reg  [6:0]  midi_cc_val
 );
+    // Capture all event buses together before arbitration. This breaks the
+    // shared UI-ID decode path without changing same-cycle source priority.
+    // MIDI busy remains live backpressure; events gain one clock of latency.
+    reg  event_spi_param_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [7:0] event_spi_param_id /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [6:0] event_spi_param_val /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg  event_touch_delta_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [7:0] event_touch_selected_id /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg signed [7:0] event_touch_delta_val /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg  event_curve_update_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg  event_curve_update_filter /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [1:0] event_curve_update_tab /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [4:0] event_curve_update_mask /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [34:0] event_curve_update_values /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg  event_btn_tap_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [7:0] event_btn_tap_id /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [1:0] event_btn_tap_action /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin
+            event_spi_param_valid<=0;
+            event_spi_param_id<=0;
+            event_spi_param_val<=0;
+            event_touch_delta_valid<=0;
+            event_touch_selected_id<=0;
+            event_touch_delta_val<=0;
+            event_curve_update_valid<=0;
+            event_curve_update_filter<=0;
+            event_curve_update_tab<=0;
+            event_curve_update_mask<=0;
+            event_curve_update_values<=0;
+            event_btn_tap_valid<=0;
+            event_btn_tap_id<=0;
+            event_btn_tap_action<=0;
+        end else begin
+            event_spi_param_valid<=spi_param_valid;
+            event_spi_param_id<=spi_param_id;
+            event_spi_param_val<=spi_param_val;
+            event_touch_delta_valid<=touch_delta_valid;
+            event_touch_selected_id<=touch_selected_id;
+            event_touch_delta_val<=touch_delta_val;
+            event_curve_update_valid<=curve_update_valid;
+            event_curve_update_filter<=curve_update_filter;
+            event_curve_update_tab<=curve_update_tab;
+            event_curve_update_mask<=curve_update_mask;
+            event_curve_update_values<=curve_update_values;
+            event_btn_tap_valid<=btn_tap_valid;
+            event_btn_tap_id<=btn_tap_id;
+            event_btn_tap_action<=btn_tap_action;
+        end
+    end
+
 
     // 7-Bit Saturation Clamp
     function [6:0] clamp7;
@@ -238,10 +289,10 @@ module param_merger (
             midi_cc_val      <= 7'd0;
         end else begin
             midi_cc_req <= 1'b0;
-            if(curve_update_valid) begin
-                curve_pending<=1;curve_filter<=curve_update_filter;
-                curve_tab<=curve_update_tab;curve_mask<=curve_update_mask;
-                curve_values<=curve_update_values;
+            if(event_curve_update_valid) begin
+                curve_pending<=1;curve_filter<=event_curve_update_filter;
+                curve_tab<=event_curve_update_tab;curve_mask<=event_curve_update_mask;
+                curve_values<=event_curve_update_values;
             end
 
             // Flash feedback countdown (~160ms @ 62.5MHz)
@@ -254,14 +305,14 @@ module param_merger (
             // ------------------------------------------------------------------
             // 1. Process Button Tap / Toggle Events (Highest Priority)
             // ------------------------------------------------------------------
-            if (btn_tap_valid) begin
+            if (event_btn_tap_valid) begin
                 midi_cc_req      <= 1'b1;
-                midi_cc_param_id <= btn_tap_id;
-                active_btn_id    <= btn_tap_id;
+                midi_cc_param_id <= event_btn_tap_id;
+                active_btn_id    <= event_btn_tap_id;
                 btn_flash_active <= 1'b1;
                 flash_timer      <= 24'd10_000_000;
 
-                case (btn_tap_id)
+                case (event_btn_tap_id)
                     `PARAM_ID_OSCA_POWER: begin
                         val_osca_power <= ~val_osca_power;
                         midi_cc_val    <= ~val_osca_power ? 7'd127 : 7'd0;
@@ -272,11 +323,14 @@ module param_merger (
                     end
                     `PARAM_ID_FLT_POWER: begin
                         val_flt_power <= ~val_flt_power;
-                        midi_cc_val   <= ~val_flt_power ? 7'd127 : 7'd0;
+                        // Audio CC42 uses 0=bypass and 1..4 for the four UI modes.
+                        midi_cc_val   <= ~val_flt_power
+                                       ? ({5'd0, val_flt_type} + 7'd1)
+                                       : 7'd0;
                     end
 
                     `PARAM_ID_OSCA_WAVE: begin
-                        if (btn_tap_action == 2'd2) begin
+                        if (event_btn_tap_action == 2'd2) begin
                             val_osca_wave <= val_osca_wave - 2'd1;
                             midi_cc_val   <= {5'd0, val_osca_wave - 2'd1};
                         end else begin
@@ -285,7 +339,7 @@ module param_merger (
                         end
                     end
                     `PARAM_ID_OSCB_WAVE: begin
-                        if (btn_tap_action == 2'd2) begin
+                        if (event_btn_tap_action == 2'd2) begin
                             val_oscb_wave <= val_oscb_wave - 2'd1;
                             midi_cc_val   <= {5'd0, val_oscb_wave - 2'd1};
                         end else begin
@@ -295,10 +349,10 @@ module param_merger (
                     end
 
                     `PARAM_ID_OSCA_OCT: begin
-                        if (btn_tap_action == 2'd1 && val_osca_oct < 4'd8) begin
+                        if (event_btn_tap_action == 2'd1 && val_osca_oct < 4'd8) begin
                             val_osca_oct <= val_osca_oct + 4'd1;
                             midi_cc_val  <= {3'd0, val_osca_oct + 4'd1};
-                        end else if (btn_tap_action == 2'd2 && val_osca_oct > 4'd0) begin
+                        end else if (event_btn_tap_action == 2'd2 && val_osca_oct > 4'd0) begin
                             val_osca_oct <= val_osca_oct - 4'd1;
                             midi_cc_val  <= {3'd0, val_osca_oct - 4'd1};
                         end else begin
@@ -306,10 +360,10 @@ module param_merger (
                         end
                     end
                     `PARAM_ID_OSCA_SEMI: begin
-                        if (btn_tap_action == 2'd1 && val_osca_semi < 5'd24) begin
+                        if (event_btn_tap_action == 2'd1 && val_osca_semi < 5'd24) begin
                             val_osca_semi <= val_osca_semi + 5'd1;
                             midi_cc_val   <= {2'd0, val_osca_semi + 5'd1};
-                        end else if (btn_tap_action == 2'd2 && val_osca_semi > 5'd0) begin
+                        end else if (event_btn_tap_action == 2'd2 && val_osca_semi > 5'd0) begin
                             val_osca_semi <= val_osca_semi - 5'd1;
                             midi_cc_val   <= {2'd0, val_osca_semi - 5'd1};
                         end else begin
@@ -317,10 +371,10 @@ module param_merger (
                         end
                     end
                     `PARAM_ID_OSCA_FINE: begin
-                        if (btn_tap_action == 2'd1 && val_osca_fine < 7'd127) begin
+                        if (event_btn_tap_action == 2'd1 && val_osca_fine < 7'd127) begin
                             val_osca_fine <= val_osca_fine + 7'd1;
                             midi_cc_val   <= val_osca_fine + 7'd1;
-                        end else if (btn_tap_action == 2'd2 && val_osca_fine > 7'd0) begin
+                        end else if (event_btn_tap_action == 2'd2 && val_osca_fine > 7'd0) begin
                             val_osca_fine <= val_osca_fine - 7'd1;
                             midi_cc_val   <= val_osca_fine - 7'd1;
                         end else begin
@@ -329,10 +383,10 @@ module param_merger (
                     end
 
                     `PARAM_ID_OSCB_OCT: begin
-                        if (btn_tap_action == 2'd1 && val_oscb_oct < 4'd8) begin
+                        if (event_btn_tap_action == 2'd1 && val_oscb_oct < 4'd8) begin
                             val_oscb_oct <= val_oscb_oct + 4'd1;
                             midi_cc_val  <= {3'd0, val_oscb_oct + 4'd1};
-                        end else if (btn_tap_action == 2'd2 && val_oscb_oct > 4'd0) begin
+                        end else if (event_btn_tap_action == 2'd2 && val_oscb_oct > 4'd0) begin
                             val_oscb_oct <= val_oscb_oct - 4'd1;
                             midi_cc_val  <= {3'd0, val_oscb_oct - 4'd1};
                         end else begin
@@ -340,10 +394,10 @@ module param_merger (
                         end
                     end
                     `PARAM_ID_OSCB_SEMI: begin
-                        if (btn_tap_action == 2'd1 && val_oscb_semi < 5'd24) begin
+                        if (event_btn_tap_action == 2'd1 && val_oscb_semi < 5'd24) begin
                             val_oscb_semi <= val_oscb_semi + 5'd1;
                             midi_cc_val   <= {2'd0, val_oscb_semi + 5'd1};
-                        end else if (btn_tap_action == 2'd2 && val_oscb_semi > 5'd0) begin
+                        end else if (event_btn_tap_action == 2'd2 && val_oscb_semi > 5'd0) begin
                             val_oscb_semi <= val_oscb_semi - 5'd1;
                             midi_cc_val   <= {2'd0, val_oscb_semi - 5'd1};
                         end else begin
@@ -351,10 +405,10 @@ module param_merger (
                         end
                     end
                     `PARAM_ID_OSCB_FINE: begin
-                        if (btn_tap_action == 2'd1 && val_oscb_fine < 7'd127) begin
+                        if (event_btn_tap_action == 2'd1 && val_oscb_fine < 7'd127) begin
                             val_oscb_fine <= val_oscb_fine + 7'd1;
                             midi_cc_val   <= val_oscb_fine + 7'd1;
-                        end else if (btn_tap_action == 2'd2 && val_oscb_fine > 7'd0) begin
+                        end else if (event_btn_tap_action == 2'd2 && val_oscb_fine > 7'd0) begin
                             val_oscb_fine <= val_oscb_fine - 7'd1;
                             midi_cc_val   <= val_oscb_fine - 7'd1;
                         end else begin
@@ -384,18 +438,22 @@ module param_merger (
                     end
 
                     `PARAM_ID_FLT_TYPE: begin
-                        if (btn_tap_action == 2'd2) begin
+                        if (event_btn_tap_action == 2'd2) begin
                             val_flt_type <= val_flt_type - 2'd1;
-                            midi_cc_val  <= {5'd0, val_flt_type - 2'd1};
+                            midi_cc_val  <= val_flt_power
+                                           ? ({5'd0, val_flt_type - 2'd1} + 7'd1)
+                                           : 7'd0;
                         end else begin
                             val_flt_type <= val_flt_type + 2'd1;
-                            midi_cc_val  <= {5'd0, val_flt_type + 2'd1};
+                            midi_cc_val  <= val_flt_power
+                                           ? ({5'd0, val_flt_type + 2'd1} + 7'd1)
+                                           : 7'd0;
                         end
                     end
 
                     `PARAM_ID_ENV_TAB: begin
-                        if(btn_tap_action<3) val_env_tab <= btn_tap_action;
-                        midi_cc_val <= {5'd0, btn_tap_action};
+                        if(event_btn_tap_action<3) val_env_tab <= event_btn_tap_action;
+                        midi_cc_val <= {5'd0, event_btn_tap_action};
                         midi_cc_req <= 0; // Local selection has no defined audio CC.
                     end
 
@@ -423,65 +481,65 @@ module param_merger (
             // ------------------------------------------------------------------
             // 2. Process Absolute Update from Teammate 1 (SPI Knobs)
             // ------------------------------------------------------------------
-            else if (spi_param_valid) begin
+            else if (event_spi_param_valid) begin
                 midi_cc_req      <= 1'b1;
-                midi_cc_param_id <= spi_param_id;
-                midi_cc_val      <= spi_param_val;
-                if(val_env_tab!=0 && spi_param_id>=`PARAM_ID_ENV1_ATTACK && spi_param_id<=`PARAM_ID_ENV1_RELEASE)
+                midi_cc_param_id <= event_spi_param_id;
+                midi_cc_val      <= event_spi_param_val;
+                if(val_env_tab!=0 && event_spi_param_id>=`PARAM_ID_ENV1_ATTACK && event_spi_param_id<=`PARAM_ID_ENV1_RELEASE)
                     midi_cc_req<=0;
 
-                case (spi_param_id)
-                    `PARAM_ID_MACRO1:       val_macro1       <= spi_param_val;
-                    `PARAM_ID_MACRO2:       val_macro2       <= spi_param_val;
-                    `PARAM_ID_MACRO3:       val_macro3       <= spi_param_val;
-                    `PARAM_ID_MACRO4:       val_macro4       <= spi_param_val;
-                    `PARAM_ID_MASTER_VOL:   val_master_vol   <= spi_param_val;
+                case (event_spi_param_id)
+                    `PARAM_ID_MACRO1:       val_macro1       <= event_spi_param_val;
+                    `PARAM_ID_MACRO2:       val_macro2       <= event_spi_param_val;
+                    `PARAM_ID_MACRO3:       val_macro3       <= event_spi_param_val;
+                    `PARAM_ID_MACRO4:       val_macro4       <= event_spi_param_val;
+                    `PARAM_ID_MASTER_VOL:   val_master_vol   <= event_spi_param_val;
 
                     `PARAM_ID_OSCA_UNISON:  begin
-                        val_osca_unison <= clamp_unison({3'b000, spi_param_val});
-                        midi_cc_val     <= clamp_unison({3'b000, spi_param_val});
+                        val_osca_unison <= clamp_unison({3'b000, event_spi_param_val});
+                        midi_cc_val     <= clamp_unison({3'b000, event_spi_param_val});
                     end
-                    `PARAM_ID_OSCA_DETUNE:  val_osca_detune  <= spi_param_val;
-                    `PARAM_ID_OSCA_FINE:    val_osca_fine    <= spi_param_val;
-                    `PARAM_ID_OSCA_BLEND:   val_osca_blend   <= spi_param_val;
-                    `PARAM_ID_OSCA_PHASE:   val_osca_phase   <= spi_param_val;
-                    `PARAM_ID_OSCA_RAND:    val_osca_rand    <= spi_param_val;
-                    `PARAM_ID_OSCA_WT_POS:  val_osca_wt_pos  <= spi_param_val;
-                    `PARAM_ID_OSCA_WARP:    val_osca_warp    <= spi_param_val;
-                    `PARAM_ID_OSCA_PAN:     val_osca_pan     <= spi_param_val;
-                    `PARAM_ID_OSCA_VOL:     val_osca_vol     <= spi_param_val;
+                    `PARAM_ID_OSCA_DETUNE:  val_osca_detune  <= event_spi_param_val;
+                    `PARAM_ID_OSCA_FINE:    val_osca_fine    <= event_spi_param_val;
+                    `PARAM_ID_OSCA_BLEND:   val_osca_blend   <= event_spi_param_val;
+                    `PARAM_ID_OSCA_PHASE:   val_osca_phase   <= event_spi_param_val;
+                    `PARAM_ID_OSCA_RAND:    val_osca_rand    <= event_spi_param_val;
+                    `PARAM_ID_OSCA_WT_POS:  val_osca_wt_pos  <= event_spi_param_val;
+                    `PARAM_ID_OSCA_WARP:    val_osca_warp    <= event_spi_param_val;
+                    `PARAM_ID_OSCA_PAN:     val_osca_pan     <= event_spi_param_val;
+                    `PARAM_ID_OSCA_VOL:     val_osca_vol     <= event_spi_param_val;
 
                     `PARAM_ID_OSCB_UNISON:  begin
-                        val_oscb_unison <= clamp_unison({3'b000, spi_param_val});
-                        midi_cc_val     <= clamp_unison({3'b000, spi_param_val});
+                        val_oscb_unison <= clamp_unison({3'b000, event_spi_param_val});
+                        midi_cc_val     <= clamp_unison({3'b000, event_spi_param_val});
                     end
-                    `PARAM_ID_OSCB_DETUNE:  val_oscb_detune  <= spi_param_val;
-                    `PARAM_ID_OSCB_FINE:    val_oscb_fine    <= spi_param_val;
-                    `PARAM_ID_OSCB_BLEND:   val_oscb_blend   <= spi_param_val;
-                    `PARAM_ID_OSCB_PHASE:   val_oscb_phase   <= spi_param_val;
-                    `PARAM_ID_OSCB_RAND:    val_oscb_rand    <= spi_param_val;
-                    `PARAM_ID_OSCB_WT_POS:  val_oscb_wt_pos  <= spi_param_val;
-                    `PARAM_ID_OSCB_WARP:    val_oscb_warp    <= spi_param_val;
-                    `PARAM_ID_OSCB_PAN:     val_oscb_pan     <= spi_param_val;
-                    `PARAM_ID_OSCB_VOL:     val_oscb_vol     <= spi_param_val;
+                    `PARAM_ID_OSCB_DETUNE:  val_oscb_detune  <= event_spi_param_val;
+                    `PARAM_ID_OSCB_FINE:    val_oscb_fine    <= event_spi_param_val;
+                    `PARAM_ID_OSCB_BLEND:   val_oscb_blend   <= event_spi_param_val;
+                    `PARAM_ID_OSCB_PHASE:   val_oscb_phase   <= event_spi_param_val;
+                    `PARAM_ID_OSCB_RAND:    val_oscb_rand    <= event_spi_param_val;
+                    `PARAM_ID_OSCB_WT_POS:  val_oscb_wt_pos  <= event_spi_param_val;
+                    `PARAM_ID_OSCB_WARP:    val_oscb_warp    <= event_spi_param_val;
+                    `PARAM_ID_OSCB_PAN:     val_oscb_pan     <= event_spi_param_val;
+                    `PARAM_ID_OSCB_VOL:     val_oscb_vol     <= event_spi_param_val;
 
-                    `PARAM_ID_FLT_CUTOFF:   val_flt_cutoff   <= spi_param_val;
-                    `PARAM_ID_FLT_RES:      val_flt_res      <= spi_param_val;
-                    `PARAM_ID_FLT_PAN:      val_flt_pan      <= spi_param_val;
-                    `PARAM_ID_FLT_DRIVE:    val_flt_drive    <= spi_param_val;
-                    `PARAM_ID_FLT_FAT:      val_flt_fat      <= spi_param_val;
-                    `PARAM_ID_FLT_MIX:      val_flt_mix      <= spi_param_val;
+                    `PARAM_ID_FLT_CUTOFF:   val_flt_cutoff   <= event_spi_param_val;
+                    `PARAM_ID_FLT_RES:      val_flt_res      <= event_spi_param_val;
+                    `PARAM_ID_FLT_PAN:      val_flt_pan      <= event_spi_param_val;
+                    `PARAM_ID_FLT_DRIVE:    val_flt_drive    <= event_spi_param_val;
+                    `PARAM_ID_FLT_FAT:      val_flt_fat      <= event_spi_param_val;
+                    `PARAM_ID_FLT_MIX:      val_flt_mix      <= event_spi_param_val;
 
-                    `PARAM_ID_ENV1_ATTACK:  env_a[val_env_tab]   <= spi_param_val;
-                    `PARAM_ID_ENV1_HOLD:    env_h[val_env_tab]     <= spi_param_val;
-                    `PARAM_ID_ENV1_DECAY:   env_d[val_env_tab]    <= spi_param_val;
-                    `PARAM_ID_ENV1_SUSTAIN: env_s[val_env_tab]  <= spi_param_val;
-                    `PARAM_ID_ENV1_RELEASE: env_r[val_env_tab]  <= spi_param_val;
+                    `PARAM_ID_ENV1_ATTACK:  env_a[val_env_tab]   <= event_spi_param_val;
+                    `PARAM_ID_ENV1_HOLD:    env_h[val_env_tab]     <= event_spi_param_val;
+                    `PARAM_ID_ENV1_DECAY:   env_d[val_env_tab]    <= event_spi_param_val;
+                    `PARAM_ID_ENV1_SUSTAIN: env_s[val_env_tab]  <= event_spi_param_val;
+                    `PARAM_ID_ENV1_RELEASE: env_r[val_env_tab]  <= event_spi_param_val;
 
-                    `PARAM_ID_FX_REVERB:    val_fx_reverb    <= spi_param_val;
-                    `PARAM_ID_FX_DELAY:     val_fx_delay     <= spi_param_val;
-                    `PARAM_ID_FX_CHORUS:    val_fx_chorus    <= spi_param_val;
-                    `PARAM_ID_PORTAMENTO:   val_portamento   <= spi_param_val;
+                    `PARAM_ID_FX_REVERB:    val_fx_reverb    <= event_spi_param_val;
+                    `PARAM_ID_FX_DELAY:     val_fx_delay     <= event_spi_param_val;
+                    `PARAM_ID_FX_CHORUS:    val_fx_chorus    <= event_spi_param_val;
+                    `PARAM_ID_PORTAMENTO:   val_portamento   <= event_spi_param_val;
 
                     default: midi_cc_req <= 1'b0;
                 endcase
@@ -493,7 +551,7 @@ module param_merger (
             // Their edits must never overwrite the audio engine's ENV1.
             // ------------------------------------------------------------------
             else if(curve_pending) begin
-                curve_pending<=curve_update_valid;
+                curve_pending<=event_curve_update_valid;
                 if(curve_filter) begin
                     if(curve_mask[0] && val_flt_cutoff!=curve_values[6:0]) begin
                         val_flt_cutoff<=curve_values[6:0];curve_midi_pending[0]<=1;
@@ -528,182 +586,182 @@ module param_merger (
             // ------------------------------------------------------------------
             // 4. Process Incremental Delta from Screen Touch Drag (All 32 Knobs)
             // ------------------------------------------------------------------
-            else if (touch_delta_valid && (touch_selected_id != `PARAM_ID_NONE)) begin
+            else if (event_touch_delta_valid && (event_touch_selected_id != `PARAM_ID_NONE)) begin
                 midi_cc_req      <= 1'b1;
-                midi_cc_param_id <= touch_selected_id;
-                if(val_env_tab!=0 && touch_selected_id>=`PARAM_ID_ENV1_ATTACK && touch_selected_id<=`PARAM_ID_ENV1_RELEASE)
+                midi_cc_param_id <= event_touch_selected_id;
+                if(val_env_tab!=0 && event_touch_selected_id>=`PARAM_ID_ENV1_ATTACK && event_touch_selected_id<=`PARAM_ID_ENV1_RELEASE)
                     midi_cc_req<=0;
 
-                case (touch_selected_id)
+                case (event_touch_selected_id)
                     // Top Deck
                     `PARAM_ID_MACRO1: begin
-                        new_v = clamp7($signed({3'b000, val_macro1}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_macro1}) + event_touch_delta_val);
                         val_macro1 <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_MACRO2: begin
-                        new_v = clamp7($signed({3'b000, val_macro2}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_macro2}) + event_touch_delta_val);
                         val_macro2 <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_MACRO3: begin
-                        new_v = clamp7($signed({3'b000, val_macro3}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_macro3}) + event_touch_delta_val);
                         val_macro3 <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_MACRO4: begin
-                        new_v = clamp7($signed({3'b000, val_macro4}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_macro4}) + event_touch_delta_val);
                         val_macro4 <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_MASTER_VOL: begin
-                        new_v = clamp7($signed({3'b000, val_master_vol}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_master_vol}) + event_touch_delta_val);
                         val_master_vol <= new_v; midi_cc_val <= new_v;
                     end
 
                     // OSC A
                     `PARAM_ID_OSCA_UNISON: begin
-                        new_v = clamp_unison($signed({3'b000, val_osca_unison}) + touch_delta_val);
+                        new_v = clamp_unison($signed({3'b000, val_osca_unison}) + event_touch_delta_val);
                         val_osca_unison <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_DETUNE: begin
-                        new_v = clamp7($signed({3'b000, val_osca_detune}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_detune}) + event_touch_delta_val);
                         val_osca_detune <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_FINE: begin
-                        new_v = clamp7($signed({3'b000, val_osca_fine}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_fine}) + event_touch_delta_val);
                         val_osca_fine <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_BLEND: begin
-                        new_v = clamp7($signed({3'b000, val_osca_blend}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_blend}) + event_touch_delta_val);
                         val_osca_blend <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_PHASE: begin
-                        new_v = clamp7($signed({3'b000, val_osca_phase}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_phase}) + event_touch_delta_val);
                         val_osca_phase <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_RAND: begin
-                        new_v = clamp7($signed({3'b000, val_osca_rand}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_rand}) + event_touch_delta_val);
                         val_osca_rand <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_WT_POS: begin
-                        new_v = clamp7($signed({3'b000, val_osca_wt_pos}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_wt_pos}) + event_touch_delta_val);
                         val_osca_wt_pos <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_WARP: begin
-                        new_v = clamp7($signed({3'b000, val_osca_warp}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_warp}) + event_touch_delta_val);
                         val_osca_warp <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_PAN: begin
-                        new_v = clamp7($signed({3'b000, val_osca_pan}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_pan}) + event_touch_delta_val);
                         val_osca_pan <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCA_VOL: begin
-                        new_v = clamp7($signed({3'b000, val_osca_vol}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_osca_vol}) + event_touch_delta_val);
                         val_osca_vol <= new_v; midi_cc_val <= new_v;
                     end
 
                     // OSC B
                     `PARAM_ID_OSCB_UNISON: begin
-                        new_v = clamp_unison($signed({3'b000, val_oscb_unison}) + touch_delta_val);
+                        new_v = clamp_unison($signed({3'b000, val_oscb_unison}) + event_touch_delta_val);
                         val_oscb_unison <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_DETUNE: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_detune}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_detune}) + event_touch_delta_val);
                         val_oscb_detune <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_FINE: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_fine}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_fine}) + event_touch_delta_val);
                         val_oscb_fine <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_BLEND: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_blend}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_blend}) + event_touch_delta_val);
                         val_oscb_blend <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_PHASE: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_phase}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_phase}) + event_touch_delta_val);
                         val_oscb_phase <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_RAND: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_rand}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_rand}) + event_touch_delta_val);
                         val_oscb_rand <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_WT_POS: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_wt_pos}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_wt_pos}) + event_touch_delta_val);
                         val_oscb_wt_pos <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_WARP: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_warp}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_warp}) + event_touch_delta_val);
                         val_oscb_warp <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_PAN: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_pan}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_pan}) + event_touch_delta_val);
                         val_oscb_pan <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_OSCB_VOL: begin
-                        new_v = clamp7($signed({3'b000, val_oscb_vol}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_oscb_vol}) + event_touch_delta_val);
                         val_oscb_vol <= new_v; midi_cc_val <= new_v;
                     end
 
                     // Filter
                     `PARAM_ID_FLT_CUTOFF: begin
-                        new_v = clamp7($signed({3'b000, val_flt_cutoff}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_flt_cutoff}) + event_touch_delta_val);
                         val_flt_cutoff <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_FLT_RES: begin
-                        new_v = clamp7($signed({3'b000, val_flt_res}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_flt_res}) + event_touch_delta_val);
                         val_flt_res <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_FLT_PAN: begin
-                        new_v = clamp7($signed({3'b000, val_flt_pan}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_flt_pan}) + event_touch_delta_val);
                         val_flt_pan <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_FLT_DRIVE: begin
-                        new_v = clamp7($signed({3'b000, val_flt_drive}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_flt_drive}) + event_touch_delta_val);
                         val_flt_drive <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_FLT_FAT: begin
-                        new_v = clamp7($signed({3'b000, val_flt_fat}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_flt_fat}) + event_touch_delta_val);
                         val_flt_fat <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_FLT_MIX: begin
-                        new_v = clamp7($signed({3'b000, val_flt_mix}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_flt_mix}) + event_touch_delta_val);
                         val_flt_mix <= new_v; midi_cc_val <= new_v;
                     end
 
                     // Envelope 1
                     `PARAM_ID_ENV1_ATTACK: begin
-                        new_v = clamp7($signed({3'b000, val_env_attack}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_env_attack}) + event_touch_delta_val);
                         env_a[val_env_tab] <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_ENV1_HOLD: begin
-                        new_v = clamp7($signed({3'b000, val_env_hold}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_env_hold}) + event_touch_delta_val);
                         env_h[val_env_tab] <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_ENV1_DECAY: begin
-                        new_v = clamp7($signed({3'b000, val_env_decay}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_env_decay}) + event_touch_delta_val);
                         env_d[val_env_tab] <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_ENV1_SUSTAIN: begin
-                        new_v = clamp7($signed({3'b000, val_env_sustain}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_env_sustain}) + event_touch_delta_val);
                         env_s[val_env_tab] <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_ENV1_RELEASE: begin
-                        new_v = clamp7($signed({3'b000, val_env_release}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_env_release}) + event_touch_delta_val);
                         env_r[val_env_tab] <= new_v; midi_cc_val <= new_v;
                     end
 
                     // Master FX
                     `PARAM_ID_FX_REVERB: begin
-                        new_v = clamp7($signed({3'b000, val_fx_reverb}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_fx_reverb}) + event_touch_delta_val);
                         val_fx_reverb <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_FX_DELAY: begin
-                        new_v = clamp7($signed({3'b000, val_fx_delay}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_fx_delay}) + event_touch_delta_val);
                         val_fx_delay <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_FX_CHORUS: begin
-                        new_v = clamp7($signed({3'b000, val_fx_chorus}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_fx_chorus}) + event_touch_delta_val);
                         val_fx_chorus <= new_v; midi_cc_val <= new_v;
                     end
                     `PARAM_ID_PORTAMENTO: begin
-                        new_v = clamp7($signed({3'b000, val_portamento}) + touch_delta_val);
+                        new_v = clamp7($signed({3'b000, val_portamento}) + event_touch_delta_val);
                         val_portamento <= new_v; midi_cc_val <= new_v;
                     end
 

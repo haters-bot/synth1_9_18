@@ -116,18 +116,23 @@ module button_vector_unit (
         end
     endfunction
 
+    // Every caller is already guarded by its in_box wire, so the range
+    // comparisons are redundant. Equality-only borders shorten the pixel-Y
+    // path while preserving the exact raster result.
     function on_box_border;
         input [13:0] px, py, x0, x1, y0, y1;
         begin
-            on_box_border = (((px == x0) || (px == x1)) && (py >= y0 && py <= y1)) ||
-                            (((py == y0) || (py == y1)) && (px >= x0 && px <= x1));
+            on_box_border = (px == x0) || (px == x1) ||
+                            (py == y0) || (py == y1);
         end
     endfunction
 
     // --------------------------------------------------------------------------
     // Stage 0: Spatial Box Identification & Border Detection (Cycle 1)
     // --------------------------------------------------------------------------
-    reg [13:0] s0_x, s0_y;
+    // Local geometry should not share a distant register with every panel.
+    reg [13:0] s0_x /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [13:0] s0_y /* synthesis syn_preserve=1 syn_maxfan=32 */;
     reg [5:0]  s0_elem;
     reg        s0_hit;
     reg        s0_border;
@@ -189,191 +194,156 @@ module button_vector_unit (
     wire in_slot4_pwr = in_box(in_x, in_y, 14'd808, 14'd824, 14'd514, 14'd530);
 
     wire in_top_hud = in_box(in_x, in_y, 14'd520, 14'd760, 14'd10, 14'd32);
+    wire y_top_hud = (in_y >= 14'd10 && in_y <= 14'd32);
+    wire y_band2 = (in_y >= 14'd52 && in_y <= 14'd68);
+    wire y_band3 = (in_y >= 14'd74 && in_y <= 14'd96);
+    wire y_band4 = (in_y >= 14'd248 && in_y <= 14'd352);
+    wire y_band5 = (in_y >= 14'd372 && in_y <= 14'd396);
+    wire y_band6 = (in_y >= 14'd412 && in_y <= 14'd530);
 
+    // Mutually exclusive button rectangles: parallel hit/border decode.
+    // No priority mux is needed because none of the 42 boxes overlap.
+    wire [41:0] button_hits;
+    wire [41:0] button_borders;
+    wire [5:0] button_ids[0:41];
+    assign button_hits[0]=in_osca_pwr;
+    assign button_borders[0]=in_osca_pwr && on_box_border(in_x, in_y, 14'd36, 14'd52, 14'd52, 14'd68);
+    assign button_ids[0]=in_osca_pwr ? ELEM_OSCA_PWR : ELEM_NONE;
+    assign button_hits[1]=in_osca_prev;
+    assign button_borders[1]=in_osca_prev && on_box_border(in_x, in_y, 14'd372, 14'd386, 14'd52, 14'd68);
+    assign button_ids[1]=in_osca_prev ? ELEM_OSCA_PREV : ELEM_NONE;
+    assign button_hits[2]=in_osca_next;
+    assign button_borders[2]=in_osca_next && on_box_border(in_x, in_y, 14'd394, 14'd408, 14'd52, 14'd68);
+    assign button_ids[2]=in_osca_next ? ELEM_OSCA_NEXT : ELEM_NONE;
+    assign button_hits[3]=in_osca_bar;
+    assign button_borders[3]=in_osca_bar && on_box_border(in_x, in_y, 14'd58, 14'd366, 14'd52, 14'd68);
+    assign button_ids[3]=in_osca_bar ? ELEM_OSCA_BAR : ELEM_NONE;
+    assign button_hits[4]=in_oscb_pwr;
+    assign button_borders[4]=in_oscb_pwr && on_box_border(in_x, in_y, 14'd452, 14'd468, 14'd52, 14'd68);
+    assign button_ids[4]=in_oscb_pwr ? ELEM_OSCB_PWR : ELEM_NONE;
+    assign button_hits[5]=in_oscb_prev;
+    assign button_borders[5]=in_oscb_prev && on_box_border(in_x, in_y, 14'd788, 14'd802, 14'd52, 14'd68);
+    assign button_ids[5]=in_oscb_prev ? ELEM_OSCB_PREV : ELEM_NONE;
+    assign button_hits[6]=in_oscb_next;
+    assign button_borders[6]=in_oscb_next && on_box_border(in_x, in_y, 14'd810, 14'd824, 14'd52, 14'd68);
+    assign button_ids[6]=in_oscb_next ? ELEM_OSCB_NEXT : ELEM_NONE;
+    assign button_hits[7]=in_oscb_bar;
+    assign button_borders[7]=in_oscb_bar && on_box_border(in_x, in_y, 14'd474, 14'd782, 14'd52, 14'd68);
+    assign button_ids[7]=in_oscb_bar ? ELEM_OSCB_BAR : ELEM_NONE;
+    assign button_hits[8]=in_flt_pwr;
+    assign button_borders[8]=in_flt_pwr && on_box_border(in_x, in_y, 14'd868, 14'd884, 14'd52, 14'd68);
+    assign button_ids[8]=in_flt_pwr ? ELEM_FLT_PWR : ELEM_NONE;
+    assign button_hits[9]=in_flt_prev;
+    assign button_borders[9]=in_flt_prev && on_box_border(in_x, in_y, 14'd1204, 14'd1218, 14'd52, 14'd68);
+    assign button_ids[9]=in_flt_prev ? ELEM_FLT_PREV : ELEM_NONE;
+    assign button_hits[10]=in_flt_next;
+    assign button_borders[10]=in_flt_next && on_box_border(in_x, in_y, 14'd1226, 14'd1240, 14'd52, 14'd68);
+    assign button_ids[10]=in_flt_next ? ELEM_FLT_NEXT : ELEM_NONE;
+    assign button_hits[11]=in_flt_bar;
+    assign button_borders[11]=in_flt_bar && on_box_border(in_x, in_y, 14'd890, 14'd1198, 14'd52, 14'd68);
+    assign button_ids[11]=in_flt_bar ? ELEM_FLT_BAR : ELEM_NONE;
+    assign button_hits[12]=in_osca_oct_m;
+    assign button_borders[12]=in_osca_oct_m && on_box_border(in_x, in_y, 14'd36, 14'd52, 14'd74, 14'd96);
+    assign button_ids[12]=in_osca_oct_m ? ELEM_OSCA_OCT_M : ELEM_NONE;
+    assign button_hits[13]=in_osca_oct_p;
+    assign button_borders[13]=in_osca_oct_p && on_box_border(in_x, in_y, 14'd104, 14'd120, 14'd74, 14'd96);
+    assign button_ids[13]=in_osca_oct_p ? ELEM_OSCA_OCT_P : ELEM_NONE;
+    assign button_hits[14]=in_osca_oct_b;
+    assign button_borders[14]=in_osca_oct_b && on_box_border(in_x, in_y, 14'd54, 14'd102, 14'd74, 14'd96);
+    assign button_ids[14]=in_osca_oct_b ? ELEM_OSCA_OCT_B : ELEM_NONE;
+    assign button_hits[15]=in_osca_sem_m;
+    assign button_borders[15]=in_osca_sem_m && on_box_border(in_x, in_y, 14'd130, 14'd146, 14'd74, 14'd96);
+    assign button_ids[15]=in_osca_sem_m ? ELEM_OSCA_SEM_M : ELEM_NONE;
+    assign button_hits[16]=in_osca_sem_p;
+    assign button_borders[16]=in_osca_sem_p && on_box_border(in_x, in_y, 14'd198, 14'd214, 14'd74, 14'd96);
+    assign button_ids[16]=in_osca_sem_p ? ELEM_OSCA_SEM_P : ELEM_NONE;
+    assign button_hits[17]=in_osca_sem_b;
+    assign button_borders[17]=in_osca_sem_b && on_box_border(in_x, in_y, 14'd148, 14'd196, 14'd74, 14'd96);
+    assign button_ids[17]=in_osca_sem_b ? ELEM_OSCA_SEM_B : ELEM_NONE;
+    assign button_hits[18]=in_osca_fin_m;
+    assign button_borders[18]=in_osca_fin_m && on_box_border(in_x, in_y, 14'd224, 14'd240, 14'd74, 14'd96);
+    assign button_ids[18]=in_osca_fin_m ? ELEM_OSCA_FIN_M : ELEM_NONE;
+    assign button_hits[19]=in_osca_fin_p;
+    assign button_borders[19]=in_osca_fin_p && on_box_border(in_x, in_y, 14'd292, 14'd308, 14'd74, 14'd96);
+    assign button_ids[19]=in_osca_fin_p ? ELEM_OSCA_FIN_P : ELEM_NONE;
+    assign button_hits[20]=in_osca_fin_b;
+    assign button_borders[20]=in_osca_fin_b && on_box_border(in_x, in_y, 14'd242, 14'd290, 14'd74, 14'd96);
+    assign button_ids[20]=in_osca_fin_b ? ELEM_OSCA_FIN_B : ELEM_NONE;
+    assign button_hits[21]=in_oscb_oct_m;
+    assign button_borders[21]=in_oscb_oct_m && on_box_border(in_x, in_y, 14'd452, 14'd468, 14'd74, 14'd96);
+    assign button_ids[21]=in_oscb_oct_m ? ELEM_OSCB_OCT_M : ELEM_NONE;
+    assign button_hits[22]=in_oscb_oct_p;
+    assign button_borders[22]=in_oscb_oct_p && on_box_border(in_x, in_y, 14'd520, 14'd536, 14'd74, 14'd96);
+    assign button_ids[22]=in_oscb_oct_p ? ELEM_OSCB_OCT_P : ELEM_NONE;
+    assign button_hits[23]=in_oscb_oct_b;
+    assign button_borders[23]=in_oscb_oct_b && on_box_border(in_x, in_y, 14'd470, 14'd518, 14'd74, 14'd96);
+    assign button_ids[23]=in_oscb_oct_b ? ELEM_OSCB_OCT_B : ELEM_NONE;
+    assign button_hits[24]=in_oscb_sem_m;
+    assign button_borders[24]=in_oscb_sem_m && on_box_border(in_x, in_y, 14'd546, 14'd562, 14'd74, 14'd96);
+    assign button_ids[24]=in_oscb_sem_m ? ELEM_OSCB_SEM_M : ELEM_NONE;
+    assign button_hits[25]=in_oscb_sem_p;
+    assign button_borders[25]=in_oscb_sem_p && on_box_border(in_x, in_y, 14'd614, 14'd630, 14'd74, 14'd96);
+    assign button_ids[25]=in_oscb_sem_p ? ELEM_OSCB_SEM_P : ELEM_NONE;
+    assign button_hits[26]=in_oscb_sem_b;
+    assign button_borders[26]=in_oscb_sem_b && on_box_border(in_x, in_y, 14'd564, 14'd612, 14'd74, 14'd96);
+    assign button_ids[26]=in_oscb_sem_b ? ELEM_OSCB_SEM_B : ELEM_NONE;
+    assign button_hits[27]=in_oscb_fin_m;
+    assign button_borders[27]=in_oscb_fin_m && on_box_border(in_x, in_y, 14'd640, 14'd656, 14'd74, 14'd96);
+    assign button_ids[27]=in_oscb_fin_m ? ELEM_OSCB_FIN_M : ELEM_NONE;
+    assign button_hits[28]=in_oscb_fin_p;
+    assign button_borders[28]=in_oscb_fin_p && on_box_border(in_x, in_y, 14'd708, 14'd724, 14'd74, 14'd96);
+    assign button_ids[28]=in_oscb_fin_p ? ELEM_OSCB_FIN_P : ELEM_NONE;
+    assign button_hits[29]=in_oscb_fin_b;
+    assign button_borders[29]=in_oscb_fin_b && on_box_border(in_x, in_y, 14'd658, 14'd706, 14'd74, 14'd96);
+    assign button_ids[29]=in_oscb_fin_b ? ELEM_OSCB_FIN_B : ELEM_NONE;
+    assign button_hits[30]=in_flt_chk_a;
+    assign button_borders[30]=in_flt_chk_a && on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd248, 14'd264);
+    assign button_ids[30]=in_flt_chk_a ? ELEM_FLT_CHK_A : ELEM_NONE;
+    assign button_hits[31]=in_flt_chk_b;
+    assign button_borders[31]=in_flt_chk_b && on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd270, 14'd286);
+    assign button_ids[31]=in_flt_chk_b ? ELEM_FLT_CHK_B : ELEM_NONE;
+    assign button_hits[32]=in_flt_chk_n;
+    assign button_borders[32]=in_flt_chk_n && on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd292, 14'd308);
+    assign button_ids[32]=in_flt_chk_n ? ELEM_FLT_CHK_N : ELEM_NONE;
+    assign button_hits[33]=in_flt_chk_s;
+    assign button_borders[33]=in_flt_chk_s && on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd314, 14'd330);
+    assign button_ids[33]=in_flt_chk_s ? ELEM_FLT_CHK_S : ELEM_NONE;
+    assign button_hits[34]=in_flt_chk_k;
+    assign button_borders[34]=in_flt_chk_k && on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd336, 14'd352);
+    assign button_ids[34]=in_flt_chk_k ? ELEM_FLT_CHK_K : ELEM_NONE;
+    assign button_hits[35]=in_env_tab1;
+    assign button_borders[35]=in_env_tab1 && on_box_border(in_x, in_y, 14'd36, 14'd120, 14'd372, 14'd396);
+    assign button_ids[35]=in_env_tab1 ? ELEM_ENV_TAB1 : ELEM_NONE;
+    assign button_hits[36]=in_env_tab2;
+    assign button_borders[36]=in_env_tab2 && on_box_border(in_x, in_y, 14'd126, 14'd210, 14'd372, 14'd396);
+    assign button_ids[36]=in_env_tab2 ? ELEM_ENV_TAB2 : ELEM_NONE;
+    assign button_hits[37]=in_env_tab3;
+    assign button_borders[37]=in_env_tab3 && on_box_border(in_x, in_y, 14'd216, 14'd300, 14'd372, 14'd396);
+    assign button_ids[37]=in_env_tab3 ? ELEM_ENV_TAB3 : ELEM_NONE;
+    assign button_hits[38]=in_slot1_pwr;
+    assign button_borders[38]=in_slot1_pwr && on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd412, 14'd428);
+    assign button_ids[38]=in_slot1_pwr ? ELEM_SLOT1_PWR : ELEM_NONE;
+    assign button_hits[39]=in_slot2_pwr;
+    assign button_borders[39]=in_slot2_pwr && on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd446, 14'd462);
+    assign button_ids[39]=in_slot2_pwr ? ELEM_SLOT2_PWR : ELEM_NONE;
+    assign button_hits[40]=in_slot3_pwr;
+    assign button_borders[40]=in_slot3_pwr && on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd480, 14'd496);
+    assign button_ids[40]=in_slot3_pwr ? ELEM_SLOT3_PWR : ELEM_NONE;
+    assign button_hits[41]=in_slot4_pwr;
+    assign button_borders[41]=in_slot4_pwr && on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd514, 14'd530);
+    assign button_ids[41]=in_slot4_pwr ? ELEM_SLOT4_PWR : ELEM_NONE;
+    integer button_i;
+    reg [5:0] button_id;
+    always @(*) begin
+        button_id=ELEM_NONE;
+        for(button_i=0;button_i<42;button_i=button_i+1)
+            button_id=button_id|button_ids[button_i];
+    end
     always @(posedge clk) begin
-        s0_x      <= in_x;
-        s0_y      <= in_y;
-        s0_hit    <= 1'b1;
-        s0_border <= 1'b0;
-        s0_elem   <= ELEM_NONE;
-
-        // Band 1: Top HUD (Y: 10..32) - Passthrough to ui_top_renderer for live dynamic value HUD meter
-        if (in_y >= 14'd10 && in_y <= 14'd32) begin
-            s0_hit <= 1'b0;
-        end
-
-        // Band 2: Power Buttons, Wave Bars & Preset Arrows (Y: 52..68)
-        else if (in_y >= 14'd52 && in_y <= 14'd68) begin
-            // OSC A
-            if (in_osca_pwr) begin
-                s0_elem   <= ELEM_OSCA_PWR;
-                s0_border <= on_box_border(in_x, in_y, 14'd36, 14'd52, 14'd52, 14'd68);
-            end else if (in_osca_prev) begin
-                s0_elem   <= ELEM_OSCA_PREV;
-                s0_border <= on_box_border(in_x, in_y, 14'd372, 14'd386, 14'd52, 14'd68);
-            end else if (in_osca_next) begin
-                s0_elem   <= ELEM_OSCA_NEXT;
-                s0_border <= on_box_border(in_x, in_y, 14'd394, 14'd408, 14'd52, 14'd68);
-            end else if (in_osca_bar) begin
-                s0_elem   <= ELEM_OSCA_BAR;
-                s0_border <= on_box_border(in_x, in_y, 14'd58, 14'd366, 14'd52, 14'd68);
-            end
-            // OSC B
-            else if (in_oscb_pwr) begin
-                s0_elem   <= ELEM_OSCB_PWR;
-                s0_border <= on_box_border(in_x, in_y, 14'd452, 14'd468, 14'd52, 14'd68);
-            end else if (in_oscb_prev) begin
-                s0_elem   <= ELEM_OSCB_PREV;
-                s0_border <= on_box_border(in_x, in_y, 14'd788, 14'd802, 14'd52, 14'd68);
-            end else if (in_oscb_next) begin
-                s0_elem   <= ELEM_OSCB_NEXT;
-                s0_border <= on_box_border(in_x, in_y, 14'd810, 14'd824, 14'd52, 14'd68);
-            end else if (in_oscb_bar) begin
-                s0_elem   <= ELEM_OSCB_BAR;
-                s0_border <= on_box_border(in_x, in_y, 14'd474, 14'd782, 14'd52, 14'd68);
-            end
-            // Filter
-            else if (in_flt_pwr) begin
-                s0_elem   <= ELEM_FLT_PWR;
-                s0_border <= on_box_border(in_x, in_y, 14'd868, 14'd884, 14'd52, 14'd68);
-            end else if (in_flt_prev) begin
-                s0_elem   <= ELEM_FLT_PREV;
-                s0_border <= on_box_border(in_x, in_y, 14'd1204, 14'd1218, 14'd52, 14'd68);
-            end else if (in_flt_next) begin
-                s0_elem   <= ELEM_FLT_NEXT;
-                s0_border <= on_box_border(in_x, in_y, 14'd1226, 14'd1240, 14'd52, 14'd68);
-            end else if (in_flt_bar) begin
-                s0_elem   <= ELEM_FLT_BAR;
-                s0_border <= on_box_border(in_x, in_y, 14'd890, 14'd1198, 14'd52, 14'd68);
-            end else begin
-                s0_hit <= 1'b0;
-            end
-        end
-
-        // Band 3: Steppers (OCT, SEMI, FINE) (Y: 74..96)
-        else if (in_y >= 14'd74 && in_y <= 14'd96) begin
-            // OSC A
-            if (in_osca_oct_m) begin
-                s0_elem   <= ELEM_OSCA_OCT_M;
-                s0_border <= on_box_border(in_x, in_y, 14'd36, 14'd52, 14'd74, 14'd96);
-            end else if (in_osca_oct_p) begin
-                s0_elem   <= ELEM_OSCA_OCT_P;
-                s0_border <= on_box_border(in_x, in_y, 14'd104, 14'd120, 14'd74, 14'd96);
-            end else if (in_osca_oct_b) begin
-                s0_elem   <= ELEM_OSCA_OCT_B;
-                s0_border <= on_box_border(in_x, in_y, 14'd54, 14'd102, 14'd74, 14'd96);
-            end else if (in_osca_sem_m) begin
-                s0_elem   <= ELEM_OSCA_SEM_M;
-                s0_border <= on_box_border(in_x, in_y, 14'd130, 14'd146, 14'd74, 14'd96);
-            end else if (in_osca_sem_p) begin
-                s0_elem   <= ELEM_OSCA_SEM_P;
-                s0_border <= on_box_border(in_x, in_y, 14'd198, 14'd214, 14'd74, 14'd96);
-            end else if (in_osca_sem_b) begin
-                s0_elem   <= ELEM_OSCA_SEM_B;
-                s0_border <= on_box_border(in_x, in_y, 14'd148, 14'd196, 14'd74, 14'd96);
-            end else if (in_osca_fin_m) begin
-                s0_elem   <= ELEM_OSCA_FIN_M;
-                s0_border <= on_box_border(in_x, in_y, 14'd224, 14'd240, 14'd74, 14'd96);
-            end else if (in_osca_fin_p) begin
-                s0_elem   <= ELEM_OSCA_FIN_P;
-                s0_border <= on_box_border(in_x, in_y, 14'd292, 14'd308, 14'd74, 14'd96);
-            end else if (in_osca_fin_b) begin
-                s0_elem   <= ELEM_OSCA_FIN_B;
-                s0_border <= on_box_border(in_x, in_y, 14'd242, 14'd290, 14'd74, 14'd96);
-            end
-            // OSC B
-            else if (in_oscb_oct_m) begin
-                s0_elem   <= ELEM_OSCB_OCT_M;
-                s0_border <= on_box_border(in_x, in_y, 14'd452, 14'd468, 14'd74, 14'd96);
-            end else if (in_oscb_oct_p) begin
-                s0_elem   <= ELEM_OSCB_OCT_P;
-                s0_border <= on_box_border(in_x, in_y, 14'd520, 14'd536, 14'd74, 14'd96);
-            end else if (in_oscb_oct_b) begin
-                s0_elem   <= ELEM_OSCB_OCT_B;
-                s0_border <= on_box_border(in_x, in_y, 14'd470, 14'd518, 14'd74, 14'd96);
-            end else if (in_oscb_sem_m) begin
-                s0_elem   <= ELEM_OSCB_SEM_M;
-                s0_border <= on_box_border(in_x, in_y, 14'd546, 14'd562, 14'd74, 14'd96);
-            end else if (in_oscb_sem_p) begin
-                s0_elem   <= ELEM_OSCB_SEM_P;
-                s0_border <= on_box_border(in_x, in_y, 14'd614, 14'd630, 14'd74, 14'd96);
-            end else if (in_oscb_sem_b) begin
-                s0_elem   <= ELEM_OSCB_SEM_B;
-                s0_border <= on_box_border(in_x, in_y, 14'd564, 14'd612, 14'd74, 14'd96);
-            end else if (in_oscb_fin_m) begin
-                s0_elem   <= ELEM_OSCB_FIN_M;
-                s0_border <= on_box_border(in_x, in_y, 14'd640, 14'd656, 14'd74, 14'd96);
-            end else if (in_oscb_fin_p) begin
-                s0_elem   <= ELEM_OSCB_FIN_P;
-                s0_border <= on_box_border(in_x, in_y, 14'd708, 14'd724, 14'd74, 14'd96);
-            end else if (in_oscb_fin_b) begin
-                s0_elem   <= ELEM_OSCB_FIN_B;
-                s0_border <= on_box_border(in_x, in_y, 14'd658, 14'd706, 14'd74, 14'd96);
-            end else begin
-                s0_hit <= 1'b0;
-            end
-        end
-
-        // Band 4: Filter Checkboxes [A], [B], [N], [S], [K] (Y: 248..352)
-        else if (in_y >= 14'd248 && in_y <= 14'd352) begin
-            if (in_flt_chk_a) begin
-                s0_elem   <= ELEM_FLT_CHK_A;
-                s0_border <= on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd248, 14'd264);
-            end else if (in_flt_chk_b) begin
-                s0_elem   <= ELEM_FLT_CHK_B;
-                s0_border <= on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd270, 14'd286);
-            end else if (in_flt_chk_n) begin
-                s0_elem   <= ELEM_FLT_CHK_N;
-                s0_border <= on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd292, 14'd308);
-            end else if (in_flt_chk_s) begin
-                s0_elem   <= ELEM_FLT_CHK_S;
-                s0_border <= on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd314, 14'd330);
-            end else if (in_flt_chk_k) begin
-                s0_elem   <= ELEM_FLT_CHK_K;
-                s0_border <= on_box_border(in_x, in_y, 14'd868, 14'd896, 14'd336, 14'd352);
-            end else begin
-                s0_hit <= 1'b0;
-            end
-        end
-
-        // Band 5: Envelope Tabs (Y: 372..396)
-        else if (in_y >= 14'd372 && in_y <= 14'd396) begin
-            if (in_env_tab1) begin
-                s0_elem   <= ELEM_ENV_TAB1;
-                s0_border <= on_box_border(in_x, in_y, 14'd36, 14'd120, 14'd372, 14'd396);
-            end else if (in_env_tab2) begin
-                s0_elem   <= ELEM_ENV_TAB2;
-                s0_border <= on_box_border(in_x, in_y, 14'd126, 14'd210, 14'd372, 14'd396);
-            end else if (in_env_tab3) begin
-                s0_elem   <= ELEM_ENV_TAB3;
-                s0_border <= on_box_border(in_x, in_y, 14'd216, 14'd300, 14'd372, 14'd396);
-            end else begin
-                s0_hit <= 1'b0;
-            end
-        end
-
-        // Band 6: Modulation Matrix Slot Bypass Buttons (Y: 412..530)
-        else if (in_y >= 14'd412 && in_y <= 14'd530) begin
-            if (in_slot1_pwr) begin
-                s0_elem   <= ELEM_SLOT1_PWR;
-                s0_border <= on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd412, 14'd428);
-            end else if (in_slot2_pwr) begin
-                s0_elem   <= ELEM_SLOT2_PWR;
-                s0_border <= on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd446, 14'd462);
-            end else if (in_slot3_pwr) begin
-                s0_elem   <= ELEM_SLOT3_PWR;
-                s0_border <= on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd480, 14'd496);
-            end else if (in_slot4_pwr) begin
-                s0_elem   <= ELEM_SLOT4_PWR;
-                s0_border <= on_box_border(in_x, in_y, 14'd808, 14'd824, 14'd514, 14'd530);
-            end else begin
-                s0_hit <= 1'b0;
-            end
-        end
-
-        else begin
-            s0_hit <= 1'b0;
-        end
+        s0_x<=in_x;s0_y<=in_y;
+        s0_hit<=|button_hits;
+        s0_elem<=button_id;
+        s0_border<=|button_borders;
     end
 
     // --------------------------------------------------------------------------
@@ -382,13 +352,13 @@ module button_vector_unit (
     // Multiplier-free geometric power icon centered at (xc, yc=60)
     function is_power_glyph;
         input [13:0] px, py, xc;
-        reg [13:0] dx_raw, dy_raw;
-        reg [3:0] dx, dy;
+        reg signed [4:0] local_x,local_y;
+        reg [4:0] dx, dy;
         begin
-            dx_raw = (px >= xc) ? (px - xc) : (xc - px);
-            dy_raw = (py >= 14'd60) ? (py - 14'd60) : (14'd60 - py);
-            dx = (dx_raw > 14'd8) ? 4'd8 : dx_raw[3:0];
-            dy = (dy_raw > 14'd8) ? 4'd8 : dy_raw[3:0];
+            // Called only inside the matching 17x17 power-button cell.
+            local_x=px[4:0]-xc[4:0];local_y=py[4:0]-5'd28;
+            dx=local_x[4] ? -local_x : local_x;
+            dy=local_y[4] ? -local_y : local_y;
             is_power_glyph = ((dx <= 4'd4) && (dy <= 4'd4) &&
                               ((dx + dy) >= 4'd3) && ((dx + dy) <= 4'd5) &&
                               ((py > 14'd58) || (dx > 4'd1))) ||
@@ -399,22 +369,24 @@ module button_vector_unit (
     // Chevron arrow <
     function is_arrow_left;
         input [13:0] px, py, xc;
-        reg [13:0] dx, dy;
+        reg signed [4:0] dx,local_y;
+        reg [4:0] dy;
         begin
-            dx = (xc >= px) ? (xc - px) : 14'd99;
-            dy = (py >= 14'd60) ? (py - 14'd60) : (14'd60 - py);
-            is_arrow_left = ((dx == dy) || (dx == (dy + 14'd1))) && (dx >= 14'd1) && (dx <= 14'd5);
+            dx=xc[4:0]-px[4:0];local_y=py[4:0]-5'd28;
+            dy=local_y[4] ? -local_y : local_y;
+            is_arrow_left = ((dx == dy) || (dx == (dy + 5'd1))) && (dx >= 5'sd1) && (dx <= 5'sd5);
         end
     endfunction
 
     // Chevron arrow >
     function is_arrow_right;
         input [13:0] px, py, xc;
-        reg [13:0] dx, dy;
+        reg signed [4:0] dx,local_y;
+        reg [4:0] dy;
         begin
-            dx = (px >= xc) ? (px - xc) : 14'd99;
-            dy = (py >= 14'd60) ? (py - 14'd60) : (14'd60 - py);
-            is_arrow_right = ((dx == dy) || (dx == (dy + 14'd1))) && (dx >= 14'd1) && (dx <= 14'd5);
+            dx=px[4:0]-xc[4:0];local_y=py[4:0]-5'd28;
+            dy=local_y[4] ? -local_y : local_y;
+            is_arrow_right = ((dx == dy) || (dx == (dy + 5'd1))) && (dx >= 5'sd1) && (dx <= 5'sd5);
         end
     endfunction
 
@@ -449,476 +421,478 @@ module button_vector_unit (
         fin_b_hi <= meter_fin_b > 682 ? meter_fin_b : 14'd682;
     end
 
-    // Readable text in the existing hit boxes; interaction geometry is unchanged.
-    wire [5:0] caption_elem = in_env_tab1 ? ELEM_ENV_TAB1 :
-        in_env_tab2 ? ELEM_ENV_TAB2 : in_env_tab3 ? ELEM_ENV_TAB3 :
-        in_osca_bar ? ELEM_OSCA_BAR : in_oscb_bar ? ELEM_OSCB_BAR :
-        in_flt_bar ? ELEM_FLT_BAR : in_flt_chk_a ? ELEM_FLT_CHK_A :
-        in_flt_chk_b ? ELEM_FLT_CHK_B : in_flt_chk_n ? ELEM_FLT_CHK_N :
-        in_flt_chk_s ? ELEM_FLT_CHK_S : in_flt_chk_k ? ELEM_FLT_CHK_K : ELEM_NONE;
-    reg [47:0] caption;
-    reg [13:0] caption_x, caption_y;
-    reg caption_on;
+    // Captions occupy disjoint constant boxes. Decode their glyph columns in
+    // parallel instead of selecting an origin from Y and then subtracting it
+    // from X before another string/column mux in the same clock.
+    function [47:0] wave_caption;
+        input [1:0] wave;
+        begin case(wave)
+            0:wave_caption={`CH_S,`CH_I,`CH_N,`CH_E,24'd0};
+            1:wave_caption={`CH_S,`CH_A,`CH_W,30'd0};
+            2:wave_caption={`CH_P,`CH_U,`CH_L,`CH_S,`CH_E,18'd0};
+            3:wave_caption={`CH_T,`CH_R,`CH_I,`CH_A,`CH_N,`CH_G,`CH_L,`CH_E};
+        endcase end
+    endfunction
+    function [47:0] filter_caption;
+        input [1:0] mode;
+        begin case(mode)
+            0:filter_caption={`CH_L,`CH_O,`CH_W,`CH_P,`CH_A,`CH_S,`CH_S,6'd0};
+            1:filter_caption={`CH_H,`CH_I,`CH_G,`CH_H,`CH_P,`CH_A,`CH_S,`CH_S};
+            2:filter_caption={`CH_B,`CH_A,`CH_N,`CH_D,`CH_P,`CH_A,`CH_S,`CH_S};
+            3:filter_caption={`CH_N,`CH_O,`CH_T,`CH_C,`CH_H,18'd0};
+        endcase end
+    endfunction
+    function [5:0] caption_char_at;
+        input [47:0] text;
+        input [2:0] column;
+        begin case(column)
+            0:caption_char_at=text[47:42];1:caption_char_at=text[41:36];
+            2:caption_char_at=text[35:30];3:caption_char_at=text[29:24];
+            4:caption_char_at=text[23:18];5:caption_char_at=text[17:12];
+            6:caption_char_at=text[11:6];7:caption_char_at=text[5:0];
+        endcase end
+    endfunction
+    wire [10:0] cap_hits;
+    wire [5:0] cap_chars[0:10];
+    wire [2:0] cap_rxs[0:10];
+    wire [3:0] cap_rys[0:10];
+    genvar cap;
+    generate for(cap=0;cap<11;cap=cap+1) begin: captions
+        localparam [13:0] X0=cap==0 ? 52 : cap==1 ? 142 : cap==2 ? 232 :
+            cap==3 ? 70 : cap==4 ? 486 : cap==5 ? 902 : 886;
+        localparam [13:0] Y0=cap<3 ? 380 : cap<6 ? 56 : 252+(cap-6)*22;
+        localparam [13:0] X1=cap<6 ? X0+63 : 896;
+        localparam [5:0] CHECK_CHAR=cap==6 ? `CH_A : cap==7 ? `CH_B :
+            cap==8 ? `CH_N : cap==9 ? `CH_S : `CH_K;
+        localparam [5:0] ENV_DIGIT=`CH_1+cap;
+        wire [5:0] dx=in_x[5:0]-X0[5:0];
+        wire [3:0] dy=in_y[3:0]-Y0[3:0];
+        wire [47:0] text=cap<3 ? {`CH_E,`CH_N,`CH_V,`CH_SPACE,ENV_DIGIT,18'd0} :
+            cap==3 ? wave_caption(val_osca_wave) : cap==4 ? wave_caption(val_oscb_wave) :
+            cap==5 ? filter_caption(val_flt_type) : {CHECK_CHAR,42'd0};
+        wire active=in_x>=X0 && in_x<=X1 && in_y>=Y0 && in_y<Y0+14'd10 && dx[2:0]<7;
+        assign cap_hits[cap]=active;
+        assign cap_chars[cap]=active ? caption_char_at(text,dx[5:3]) : 6'd0;
+        assign cap_rxs[cap]=active ? dx[2:0] : 3'd0;
+        assign cap_rys[cap]=active ? dy : 4'd0;
+    end endgenerate
+    integer cap_i;
     reg [5:0] caption_ch;
-    // Constant bounding boxes below guard these modular glyph coordinates.
-    // No full-width subtract/compare chain is needed at the pixel rate.
-    wire [5:0] caption_dx = in_x[5:0]-caption_x[5:0];
-    wire [3:0] caption_dy = in_y[3:0]-caption_y[3:0];
-    reg caption_area;
+    reg [2:0] caption_rx;
+    reg [3:0] caption_ry;
     always @(*) begin
-        caption_area=0;
-        case(caption_elem)
-            ELEM_ENV_TAB1: caption_area=in_x>=52 && in_x<116 && in_y>=380 && in_y<390;
-            ELEM_ENV_TAB2: caption_area=in_x>=142 && in_x<206 && in_y>=380 && in_y<390;
-            ELEM_ENV_TAB3: caption_area=in_x>=232 && in_x<296 && in_y>=380 && in_y<390;
-            ELEM_OSCA_BAR: caption_area=in_x>=70 && in_x<134 && in_y>=56 && in_y<66;
-            ELEM_OSCB_BAR: caption_area=in_x>=486 && in_x<550 && in_y>=56 && in_y<66;
-            ELEM_FLT_BAR: caption_area=in_x>=902 && in_x<966 && in_y>=56 && in_y<66;
-            ELEM_FLT_CHK_A: caption_area=in_x>=886 && in_x<950 && in_y>=252 && in_y<262;
-            ELEM_FLT_CHK_B: caption_area=in_x>=886 && in_x<950 && in_y>=274 && in_y<284;
-            ELEM_FLT_CHK_N: caption_area=in_x>=886 && in_x<950 && in_y>=296 && in_y<306;
-            ELEM_FLT_CHK_S: caption_area=in_x>=886 && in_x<950 && in_y>=318 && in_y<328;
-            ELEM_FLT_CHK_K: caption_area=in_x>=886 && in_x<950 && in_y>=340 && in_y<350;
-        endcase
+        caption_ch=0;caption_rx=0;caption_ry=0;
+        for(cap_i=0;cap_i<11;cap_i=cap_i+1) begin
+            caption_ch=caption_ch|cap_chars[cap_i];
+            caption_rx=caption_rx|cap_rxs[cap_i];caption_ry=caption_ry|cap_rys[cap_i];
+        end
     end
-    always @(*) begin
-        caption=48'd0; caption_x=0; caption_y=0; caption_on=1'b1;
-        case(caption_elem)
-            ELEM_ENV_TAB1, ELEM_ENV_TAB2, ELEM_ENV_TAB3: begin
-                caption_x = caption_elem==ELEM_ENV_TAB1 ? 14'd52 : caption_elem==ELEM_ENV_TAB2 ? 14'd142 : 14'd232;
-                caption_y = 14'd380;
-                caption = {`CH_E,`CH_N,`CH_V,`CH_SPACE,
-                    (caption_elem==ELEM_ENV_TAB1 ? `CH_1 : caption_elem==ELEM_ENV_TAB2 ? `CH_2 : `CH_3),18'd0};
-            end
-            ELEM_OSCA_BAR, ELEM_OSCB_BAR: begin
-                caption_x = caption_elem==ELEM_OSCA_BAR ? 14'd70 : 14'd486;
-                caption_y = 14'd56;
-                case(caption_elem==ELEM_OSCA_BAR ? val_osca_wave : val_oscb_wave)
-                    0: caption={`CH_S,`CH_I,`CH_N,`CH_E,24'd0};
-                    1: caption={`CH_S,`CH_A,`CH_W,30'd0};
-                    2: caption={`CH_P,`CH_U,`CH_L,`CH_S,`CH_E,18'd0};
-                    3: caption={`CH_T,`CH_R,`CH_I,`CH_A,`CH_N,`CH_G,`CH_L,`CH_E};
-                endcase
-            end
-            ELEM_FLT_BAR: begin
-                caption_x=14'd902; caption_y=14'd56;
-                case(val_flt_type)
-                    0: caption={`CH_L,`CH_O,`CH_W,`CH_P,`CH_A,`CH_S,`CH_S,6'd0};
-                    1: caption={`CH_H,`CH_I,`CH_G,`CH_H,`CH_P,`CH_A,`CH_S,`CH_S};
-                    2: caption={`CH_B,`CH_A,`CH_N,`CH_D,`CH_P,`CH_A,`CH_S,`CH_S};
-                    3: caption={`CH_N,`CH_O,`CH_T,`CH_C,`CH_H,18'd0};
-                endcase
-            end
-            ELEM_FLT_CHK_A, ELEM_FLT_CHK_B, ELEM_FLT_CHK_N, ELEM_FLT_CHK_S, ELEM_FLT_CHK_K: begin
-                caption_x=14'd886;
-                case(caption_elem)
-                    ELEM_FLT_CHK_A: begin caption={`CH_A,42'd0}; caption_y=14'd252; end
-                    ELEM_FLT_CHK_B: begin caption={`CH_B,42'd0}; caption_y=14'd274; end
-                    ELEM_FLT_CHK_N: begin caption={`CH_N,42'd0}; caption_y=14'd296; end
-                    ELEM_FLT_CHK_S: begin caption={`CH_S,42'd0}; caption_y=14'd318; end
-                    ELEM_FLT_CHK_K: begin caption={`CH_K,42'd0}; caption_y=14'd340; end
-                endcase
-            end
-            default: caption_on=1'b0;
-        endcase
-        case(caption_dx[5:3])
-            0: caption_ch=caption[47:42];
-            1: caption_ch=caption[41:36];
-            2: caption_ch=caption[35:30];
-            3: caption_ch=caption[29:24];
-            4: caption_ch=caption[23:18];
-            5: caption_ch=caption[17:12];
-            6: caption_ch=caption[11:6];
-            7: caption_ch=caption[5:0];
-        endcase
-    end
-    wire caption_valid_raw = caption_on && caption_area && caption_dx[2:0]<3'd7;
     reg caption_valid;
     reg [5:0] caption_ch_reg;
     reg [2:0] caption_rx_reg;
     reg [3:0] caption_ry_reg;
     always @(posedge clk) begin
-        caption_valid <= caption_valid_raw;
+        caption_valid <= |cap_hits;
         caption_ch_reg <= caption_ch;
-        caption_rx_reg <= caption_dx[2:0];
-        caption_ry_reg <= caption_dy;
+        caption_rx_reg <= caption_rx;
+        caption_ry_reg <= caption_ry;
     end
     wire [1:0] caption_coverage = caption_valid ?
         get_font_7x10(caption_ch_reg, caption_rx_reg, caption_ry_reg) : 2'd0;
 
-    always @(*) begin
-        rgb_out = 24'h0;
+    // Specialize each element at elaboration, so grouped badge/icon cases
+    // cannot retain a serial element selector inside the pixel color logic.
+    function [23:0] element_rgb;
+        input [5:0] element;
+        input [13:0] px,py;
+        input border;
+        begin
+        element_rgb = 24'h0;
 
-        case (s0_elem)
+        case (element)
             // Power Buttons
             ELEM_OSCA_PWR: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_OSCA_POWER) ? 24'hFFFFFF :
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_OSCA_POWER) ? 24'hFFFFFF :
                               (val_osca_power ? `COLOR_TEXT_ACCENT : `COLOR_BTN_BORDER);
-                else if (is_power_glyph(s0_x, s0_y, 14'd44))
-                    rgb_out = val_osca_power ? 24'hFFFFFF : `COLOR_BTN_IDLE_ICON;
+                else if (is_power_glyph(px, py, 14'd44))
+                    element_rgb = val_osca_power ? 24'hFFFFFF : `COLOR_BTN_IDLE_ICON;
                 else
-                    rgb_out = val_osca_power ? `COLOR_BTN_ACTIVE_BG : `COLOR_BTN_IDLE_BG;
+                    element_rgb = val_osca_power ? `COLOR_BTN_ACTIVE_BG : `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_OSCB_PWR: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_OSCB_POWER) ? 24'hFFFFFF :
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_OSCB_POWER) ? 24'hFFFFFF :
                               (val_oscb_power ? `COLOR_OSCB_LINE : `COLOR_BTN_BORDER);
-                else if (is_power_glyph(s0_x, s0_y, 14'd460))
-                    rgb_out = val_oscb_power ? 24'hFFFFFF : `COLOR_BTN_IDLE_ICON;
+                else if (is_power_glyph(px, py, 14'd460))
+                    element_rgb = val_oscb_power ? 24'hFFFFFF : `COLOR_BTN_IDLE_ICON;
                 else
-                    rgb_out = val_oscb_power ? `COLOR_BTN_ACTIVE_BG : `COLOR_BTN_IDLE_BG;
+                    element_rgb = val_oscb_power ? `COLOR_BTN_ACTIVE_BG : `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_FLT_PWR: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_POWER) ? 24'hFFFFFF :
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_POWER) ? 24'hFFFFFF :
                               (val_flt_power ? `COLOR_FLT_LINE : `COLOR_BTN_BORDER);
-                else if (is_power_glyph(s0_x, s0_y, 14'd876))
-                    rgb_out = val_flt_power ? 24'hFFFFFF : `COLOR_BTN_IDLE_ICON;
+                else if (is_power_glyph(px, py, 14'd876))
+                    element_rgb = val_flt_power ? 24'hFFFFFF : `COLOR_BTN_IDLE_ICON;
                 else
-                    rgb_out = val_flt_power ? `COLOR_BTN_ACTIVE_BG : `COLOR_BTN_IDLE_BG;
+                    element_rgb = val_flt_power ? `COLOR_BTN_ACTIVE_BG : `COLOR_BTN_IDLE_BG;
             end
 
             // Preset Selectors & Waves
             ELEM_OSCA_PREV: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_OSCA_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (is_arrow_left(s0_x, s0_y, 14'd380))
-                    rgb_out = `COLOR_TEXT_ACCENT;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_OSCA_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (is_arrow_left(px, py, 14'd380))
+                    element_rgb = `COLOR_TEXT_ACCENT;
                 else
-                    rgb_out = `COLOR_BTN_IDLE_BG;
+                    element_rgb = `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_OSCA_NEXT: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_OSCA_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (is_arrow_right(s0_x, s0_y, 14'd400))
-                    rgb_out = `COLOR_TEXT_ACCENT;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_OSCA_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (is_arrow_right(px, py, 14'd400))
+                    element_rgb = `COLOR_TEXT_ACCENT;
                 else
-                    rgb_out = `COLOR_BTN_IDLE_BG;
+                    element_rgb = `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_OSCA_BAR: begin
-                if (s0_border)
-                    rgb_out = `COLOR_BTN_BORDER;
-                else if (s0_y >= 14'd58 && s0_y <= 14'd62 &&
-                         ((s0_x >= 14'd278 && s0_x <= 14'd282) ||
-                          (s0_x >= 14'd290 && s0_x <= 14'd294) ||
-                          (s0_x >= 14'd302 && s0_x <= 14'd306) ||
-                          (s0_x >= 14'd314 && s0_x <= 14'd318))) begin
-                    if ((val_osca_wave == 2'd0 && s0_x <= 14'd282) ||
-                        (val_osca_wave == 2'd1 && s0_x >= 14'd290 && s0_x <= 14'd294) ||
-                        (val_osca_wave == 2'd2 && s0_x >= 14'd302 && s0_x <= 14'd306) ||
-                        (val_osca_wave == 2'd3 && s0_x >= 14'd314))
-                        rgb_out = `COLOR_TEXT_ACCENT;
+                if (border)
+                    element_rgb = `COLOR_BTN_BORDER;
+                else if (py >= 14'd58 && py <= 14'd62 &&
+                         ((px >= 14'd278 && px <= 14'd282) ||
+                          (px >= 14'd290 && px <= 14'd294) ||
+                          (px >= 14'd302 && px <= 14'd306) ||
+                          (px >= 14'd314 && px <= 14'd318))) begin
+                    if ((val_osca_wave == 2'd0 && px <= 14'd282) ||
+                        (val_osca_wave == 2'd1 && px >= 14'd290 && px <= 14'd294) ||
+                        (val_osca_wave == 2'd2 && px >= 14'd302 && px <= 14'd306) ||
+                        (val_osca_wave == 2'd3 && px >= 14'd314))
+                        element_rgb = `COLOR_TEXT_ACCENT;
                     else
-                        rgb_out = 24'h323E50;
+                        element_rgb = 24'h323E50;
                 end else
-                    rgb_out = `COLOR_BADGE_BG;
+                    element_rgb = `COLOR_BADGE_BG;
             end
 
             ELEM_OSCB_PREV: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_OSCB_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (is_arrow_left(s0_x, s0_y, 14'd796))
-                    rgb_out = `COLOR_OSCB_LINE;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_OSCB_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (is_arrow_left(px, py, 14'd796))
+                    element_rgb = `COLOR_OSCB_LINE;
                 else
-                    rgb_out = `COLOR_BTN_IDLE_BG;
+                    element_rgb = `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_OSCB_NEXT: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_OSCB_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (is_arrow_right(s0_x, s0_y, 14'd816))
-                    rgb_out = `COLOR_OSCB_LINE;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_OSCB_WAVE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (is_arrow_right(px, py, 14'd816))
+                    element_rgb = `COLOR_OSCB_LINE;
                 else
-                    rgb_out = `COLOR_BTN_IDLE_BG;
+                    element_rgb = `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_OSCB_BAR: begin
-                if (s0_border)
-                    rgb_out = `COLOR_BTN_BORDER;
-                else if (s0_y >= 14'd58 && s0_y <= 14'd62 &&
-                         ((s0_x >= 14'd696 && s0_x <= 14'd700) ||
-                          (s0_x >= 14'd708 && s0_x <= 14'd712) ||
-                          (s0_x >= 14'd720 && s0_x <= 14'd724) ||
-                          (s0_x >= 14'd732 && s0_x <= 14'd736))) begin
-                    if ((val_oscb_wave == 2'd0 && s0_x <= 14'd700) ||
-                        (val_oscb_wave == 2'd1 && s0_x >= 14'd708 && s0_x <= 14'd712) ||
-                        (val_oscb_wave == 2'd2 && s0_x >= 14'd720 && s0_x <= 14'd724) ||
-                        (val_oscb_wave == 2'd3 && s0_x >= 14'd732))
-                        rgb_out = `COLOR_OSCB_LINE;
+                if (border)
+                    element_rgb = `COLOR_BTN_BORDER;
+                else if (py >= 14'd58 && py <= 14'd62 &&
+                         ((px >= 14'd696 && px <= 14'd700) ||
+                          (px >= 14'd708 && px <= 14'd712) ||
+                          (px >= 14'd720 && px <= 14'd724) ||
+                          (px >= 14'd732 && px <= 14'd736))) begin
+                    if ((val_oscb_wave == 2'd0 && px <= 14'd700) ||
+                        (val_oscb_wave == 2'd1 && px >= 14'd708 && px <= 14'd712) ||
+                        (val_oscb_wave == 2'd2 && px >= 14'd720 && px <= 14'd724) ||
+                        (val_oscb_wave == 2'd3 && px >= 14'd732))
+                        element_rgb = `COLOR_OSCB_LINE;
                     else
-                        rgb_out = 24'h323E50;
+                        element_rgb = 24'h323E50;
                 end else
-                    rgb_out = `COLOR_BADGE_BG;
+                    element_rgb = `COLOR_BADGE_BG;
             end
 
             ELEM_FLT_PREV: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_TYPE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (is_arrow_left(s0_x, s0_y, 14'd1212))
-                    rgb_out = `COLOR_FLT_LINE;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_TYPE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (is_arrow_left(px, py, 14'd1212))
+                    element_rgb = `COLOR_FLT_LINE;
                 else
-                    rgb_out = `COLOR_BTN_IDLE_BG;
+                    element_rgb = `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_FLT_NEXT: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_TYPE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (is_arrow_right(s0_x, s0_y, 14'd1232))
-                    rgb_out = `COLOR_FLT_LINE;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_TYPE) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (is_arrow_right(px, py, 14'd1232))
+                    element_rgb = `COLOR_FLT_LINE;
                 else
-                    rgb_out = `COLOR_BTN_IDLE_BG;
+                    element_rgb = `COLOR_BTN_IDLE_BG;
             end
 
             ELEM_FLT_BAR: begin
-                if (s0_border)
-                    rgb_out = `COLOR_BTN_BORDER;
-                else if (s0_y >= 14'd58 && s0_y <= 14'd62 &&
-                         ((s0_x >= 14'd1112 && s0_x <= 14'd1116) ||
-                          (s0_x >= 14'd1124 && s0_x <= 14'd1128) ||
-                          (s0_x >= 14'd1136 && s0_x <= 14'd1140) ||
-                          (s0_x >= 14'd1148 && s0_x <= 14'd1152))) begin
-                    if ((val_flt_type == 2'd0 && s0_x <= 14'd1116) ||
-                        (val_flt_type == 2'd1 && s0_x >= 14'd1124 && s0_x <= 14'd1128) ||
-                        (val_flt_type == 2'd2 && s0_x >= 14'd1136 && s0_x <= 14'd1140) ||
-                        (val_flt_type == 2'd3 && s0_x >= 14'd1148))
-                        rgb_out = `COLOR_FLT_LINE;
+                if (border)
+                    element_rgb = `COLOR_BTN_BORDER;
+                else if (py >= 14'd58 && py <= 14'd62 &&
+                         ((px >= 14'd1112 && px <= 14'd1116) ||
+                          (px >= 14'd1124 && px <= 14'd1128) ||
+                          (px >= 14'd1136 && px <= 14'd1140) ||
+                          (px >= 14'd1148 && px <= 14'd1152))) begin
+                    if ((val_flt_type == 2'd0 && px <= 14'd1116) ||
+                        (val_flt_type == 2'd1 && px >= 14'd1124 && px <= 14'd1128) ||
+                        (val_flt_type == 2'd2 && px >= 14'd1136 && px <= 14'd1140) ||
+                        (val_flt_type == 2'd3 && px >= 14'd1148))
+                        element_rgb = `COLOR_FLT_LINE;
                     else
-                        rgb_out = 24'h323E50;
+                        element_rgb = 24'h323E50;
                 end else
-                    rgb_out = `COLOR_BADGE_BG;
+                    element_rgb = `COLOR_BADGE_BG;
             end
 
             // Stepper Minus Buttons [-]
             ELEM_OSCA_OCT_M, ELEM_OSCA_SEM_M, ELEM_OSCA_FIN_M,
             ELEM_OSCB_OCT_M, ELEM_OSCB_SEM_M, ELEM_OSCB_FIN_M: begin
-                if (s0_border) begin
+                if (border) begin
                     if (btn_flash_active &&
-                        ((s0_elem == ELEM_OSCA_OCT_M && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
-                         (s0_elem == ELEM_OSCA_SEM_M && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
-                         (s0_elem == ELEM_OSCA_FIN_M && active_btn_id == `PARAM_ID_OSCA_FINE) ||
-                         (s0_elem == ELEM_OSCB_OCT_M && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
-                         (s0_elem == ELEM_OSCB_SEM_M && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
-                         (s0_elem == ELEM_OSCB_FIN_M && active_btn_id == `PARAM_ID_OSCB_FINE)))
-                        rgb_out = 24'hFFFFFF;
+                        ((element == ELEM_OSCA_OCT_M && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
+                         (element == ELEM_OSCA_SEM_M && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
+                         (element == ELEM_OSCA_FIN_M && active_btn_id == `PARAM_ID_OSCA_FINE) ||
+                         (element == ELEM_OSCB_OCT_M && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
+                         (element == ELEM_OSCB_SEM_M && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
+                         (element == ELEM_OSCB_FIN_M && active_btn_id == `PARAM_ID_OSCB_FINE)))
+                        element_rgb = 24'hFFFFFF;
                     else
-                        rgb_out = `COLOR_BTN_BORDER;
-                end else if (s0_y >= 14'd84 && s0_y <= 14'd86 &&
-                    ((s0_elem == ELEM_OSCA_OCT_M && s0_x >= 14'd40  && s0_x <= 14'd48)  ||
-                     (s0_elem == ELEM_OSCA_SEM_M && s0_x >= 14'd134 && s0_x <= 14'd142) ||
-                     (s0_elem == ELEM_OSCA_FIN_M && s0_x >= 14'd228 && s0_x <= 14'd236) ||
-                     (s0_elem == ELEM_OSCB_OCT_M && s0_x >= 14'd456 && s0_x <= 14'd464) ||
-                     (s0_elem == ELEM_OSCB_SEM_M && s0_x >= 14'd550 && s0_x <= 14'd558) ||
-                     (s0_elem == ELEM_OSCB_FIN_M && s0_x >= 14'd644 && s0_x <= 14'd652)))
-                    rgb_out = 24'hFFFFFF;
+                        element_rgb = `COLOR_BTN_BORDER;
+                end else if (py >= 14'd84 && py <= 14'd86 &&
+                    ((element == ELEM_OSCA_OCT_M && px >= 14'd40  && px <= 14'd48)  ||
+                     (element == ELEM_OSCA_SEM_M && px >= 14'd134 && px <= 14'd142) ||
+                     (element == ELEM_OSCA_FIN_M && px >= 14'd228 && px <= 14'd236) ||
+                     (element == ELEM_OSCB_OCT_M && px >= 14'd456 && px <= 14'd464) ||
+                     (element == ELEM_OSCB_SEM_M && px >= 14'd550 && px <= 14'd558) ||
+                     (element == ELEM_OSCB_FIN_M && px >= 14'd644 && px <= 14'd652)))
+                    element_rgb = 24'hFFFFFF;
                 else
-                    rgb_out = (btn_flash_active &&
-                        ((s0_elem == ELEM_OSCA_OCT_M && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
-                         (s0_elem == ELEM_OSCA_SEM_M && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
-                         (s0_elem == ELEM_OSCA_FIN_M && active_btn_id == `PARAM_ID_OSCA_FINE) ||
-                         (s0_elem == ELEM_OSCB_OCT_M && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
-                         (s0_elem == ELEM_OSCB_SEM_M && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
-                         (s0_elem == ELEM_OSCB_FIN_M && active_btn_id == `PARAM_ID_OSCB_FINE))) ? `COLOR_BTN_ACTIVE_BG : 24'h222A38;
+                    element_rgb = (btn_flash_active &&
+                        ((element == ELEM_OSCA_OCT_M && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
+                         (element == ELEM_OSCA_SEM_M && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
+                         (element == ELEM_OSCA_FIN_M && active_btn_id == `PARAM_ID_OSCA_FINE) ||
+                         (element == ELEM_OSCB_OCT_M && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
+                         (element == ELEM_OSCB_SEM_M && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
+                         (element == ELEM_OSCB_FIN_M && active_btn_id == `PARAM_ID_OSCB_FINE))) ? `COLOR_BTN_ACTIVE_BG : 24'h222A38;
             end
 
             // Stepper Plus Buttons [+]
             ELEM_OSCA_OCT_P, ELEM_OSCA_SEM_P, ELEM_OSCA_FIN_P,
             ELEM_OSCB_OCT_P, ELEM_OSCB_SEM_P, ELEM_OSCB_FIN_P: begin
-                if (s0_border) begin
+                if (border) begin
                     if (btn_flash_active &&
-                        ((s0_elem == ELEM_OSCA_OCT_P && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
-                         (s0_elem == ELEM_OSCA_SEM_P && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
-                         (s0_elem == ELEM_OSCA_FIN_P && active_btn_id == `PARAM_ID_OSCA_FINE) ||
-                         (s0_elem == ELEM_OSCB_OCT_P && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
-                         (s0_elem == ELEM_OSCB_SEM_P && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
-                         (s0_elem == ELEM_OSCB_FIN_P && active_btn_id == `PARAM_ID_OSCB_FINE)))
-                        rgb_out = 24'hFFFFFF;
+                        ((element == ELEM_OSCA_OCT_P && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
+                         (element == ELEM_OSCA_SEM_P && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
+                         (element == ELEM_OSCA_FIN_P && active_btn_id == `PARAM_ID_OSCA_FINE) ||
+                         (element == ELEM_OSCB_OCT_P && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
+                         (element == ELEM_OSCB_SEM_P && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
+                         (element == ELEM_OSCB_FIN_P && active_btn_id == `PARAM_ID_OSCB_FINE)))
+                        element_rgb = 24'hFFFFFF;
                     else
-                        rgb_out = `COLOR_BTN_BORDER;
-                end else if ((s0_y >= 14'd84 && s0_y <= 14'd86 &&
-                     ((s0_elem == ELEM_OSCA_OCT_P && s0_x >= 14'd108 && s0_x <= 14'd116) ||
-                      (s0_elem == ELEM_OSCA_SEM_P && s0_x >= 14'd202 && s0_x <= 14'd210) ||
-                      (s0_elem == ELEM_OSCA_FIN_P && s0_x >= 14'd296 && s0_x <= 14'd304) ||
-                      (s0_elem == ELEM_OSCB_OCT_P && s0_x >= 14'd524 && s0_x <= 14'd532) ||
-                      (s0_elem == ELEM_OSCB_SEM_P && s0_x >= 14'd618 && s0_x <= 14'd626) ||
-                      (s0_elem == ELEM_OSCB_FIN_P && s0_x >= 14'd712 && s0_x <= 14'd720))) ||
-                    (s0_y >= 14'd80 && s0_y <= 14'd90 &&
-                     ((s0_elem == ELEM_OSCA_OCT_P && s0_x >= 14'd111 && s0_x <= 14'd113) ||
-                      (s0_elem == ELEM_OSCA_SEM_P && s0_x >= 14'd205 && s0_x <= 14'd207) ||
-                      (s0_elem == ELEM_OSCA_FIN_P && s0_x >= 14'd299 && s0_x <= 14'd301) ||
-                      (s0_elem == ELEM_OSCB_OCT_P && s0_x >= 14'd527 && s0_x <= 14'd529) ||
-                      (s0_elem == ELEM_OSCB_SEM_P && s0_x >= 14'd621 && s0_x <= 14'd623) ||
-                      (s0_elem == ELEM_OSCB_FIN_P && s0_x >= 14'd715 && s0_x <= 14'd717))))
-                    rgb_out = 24'hFFFFFF;
+                        element_rgb = `COLOR_BTN_BORDER;
+                end else if ((py >= 14'd84 && py <= 14'd86 &&
+                     ((element == ELEM_OSCA_OCT_P && px >= 14'd108 && px <= 14'd116) ||
+                      (element == ELEM_OSCA_SEM_P && px >= 14'd202 && px <= 14'd210) ||
+                      (element == ELEM_OSCA_FIN_P && px >= 14'd296 && px <= 14'd304) ||
+                      (element == ELEM_OSCB_OCT_P && px >= 14'd524 && px <= 14'd532) ||
+                      (element == ELEM_OSCB_SEM_P && px >= 14'd618 && px <= 14'd626) ||
+                      (element == ELEM_OSCB_FIN_P && px >= 14'd712 && px <= 14'd720))) ||
+                    (py >= 14'd80 && py <= 14'd90 &&
+                     ((element == ELEM_OSCA_OCT_P && px >= 14'd111 && px <= 14'd113) ||
+                      (element == ELEM_OSCA_SEM_P && px >= 14'd205 && px <= 14'd207) ||
+                      (element == ELEM_OSCA_FIN_P && px >= 14'd299 && px <= 14'd301) ||
+                      (element == ELEM_OSCB_OCT_P && px >= 14'd527 && px <= 14'd529) ||
+                      (element == ELEM_OSCB_SEM_P && px >= 14'd621 && px <= 14'd623) ||
+                      (element == ELEM_OSCB_FIN_P && px >= 14'd715 && px <= 14'd717))))
+                    element_rgb = 24'hFFFFFF;
                 else
-                    rgb_out = (btn_flash_active &&
-                        ((s0_elem == ELEM_OSCA_OCT_P && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
-                         (s0_elem == ELEM_OSCA_SEM_P && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
-                         (s0_elem == ELEM_OSCA_FIN_P && active_btn_id == `PARAM_ID_OSCA_FINE) ||
-                         (s0_elem == ELEM_OSCB_OCT_P && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
-                         (s0_elem == ELEM_OSCB_SEM_P && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
-                         (s0_elem == ELEM_OSCB_FIN_P && active_btn_id == `PARAM_ID_OSCB_FINE))) ? `COLOR_BTN_ACTIVE_BG : 24'h222A38;
+                    element_rgb = (btn_flash_active &&
+                        ((element == ELEM_OSCA_OCT_P && active_btn_id == `PARAM_ID_OSCA_OCT)  ||
+                         (element == ELEM_OSCA_SEM_P && active_btn_id == `PARAM_ID_OSCA_SEMI) ||
+                         (element == ELEM_OSCA_FIN_P && active_btn_id == `PARAM_ID_OSCA_FINE) ||
+                         (element == ELEM_OSCB_OCT_P && active_btn_id == `PARAM_ID_OSCB_OCT)  ||
+                         (element == ELEM_OSCB_SEM_P && active_btn_id == `PARAM_ID_OSCB_SEMI) ||
+                         (element == ELEM_OSCB_FIN_P && active_btn_id == `PARAM_ID_OSCB_FINE))) ? `COLOR_BTN_ACTIVE_BG : 24'h222A38;
             end
 
             // Stepper Value Display Badges (Middle with Bipolar Level Meters)
             ELEM_OSCA_OCT_B, ELEM_OSCA_SEM_B, ELEM_OSCA_FIN_B,
             ELEM_OSCB_OCT_B, ELEM_OSCB_SEM_B, ELEM_OSCB_FIN_B: begin
-                if (s0_border)
-                    rgb_out = `COLOR_BTN_BORDER;
-                else if (s0_y >= 14'd78 && s0_y <= 14'd92 &&
-                    (s0_x == 14'd78 || s0_x == 14'd172 || s0_x == 14'd266 ||
-                     s0_x == 14'd494 || s0_x == 14'd588 || s0_x == 14'd682))
-                    rgb_out = 24'hFFFFFF;
-                else if (s0_y >= 14'd83 && s0_y <= 14'd87) begin
+                if (border)
+                    element_rgb = `COLOR_BTN_BORDER;
+                else if (py >= 14'd78 && py <= 14'd92 &&
+                    (px == 14'd78 || px == 14'd172 || px == 14'd266 ||
+                     px == 14'd494 || px == 14'd588 || px == 14'd682))
+                    element_rgb = 24'hFFFFFF;
+                else if (py >= 14'd83 && py <= 14'd87) begin
                     // OSC A OCT (Center 78)
-                    if (s0_elem == ELEM_OSCA_OCT_B && (s0_x >= oct_a_lo && s0_x <= oct_a_hi))
-                        rgb_out = `COLOR_TEXT_ACCENT;
+                    if (element == ELEM_OSCA_OCT_B && (px >= oct_a_lo && px <= oct_a_hi))
+                        element_rgb = `COLOR_TEXT_ACCENT;
                     // OSC A SEMI (Center 172)
-                    else if (s0_elem == ELEM_OSCA_SEM_B && (s0_x >= sem_a_lo && s0_x <= sem_a_hi))
-                        rgb_out = `COLOR_TEXT_ACCENT;
+                    else if (element == ELEM_OSCA_SEM_B && (px >= sem_a_lo && px <= sem_a_hi))
+                        element_rgb = `COLOR_TEXT_ACCENT;
                     // OSC A FINE (Center 266)
-                    else if (s0_elem == ELEM_OSCA_FIN_B && (s0_x >= fin_a_lo && s0_x <= fin_a_hi))
-                        rgb_out = `COLOR_TEXT_ACCENT;
+                    else if (element == ELEM_OSCA_FIN_B && (px >= fin_a_lo && px <= fin_a_hi))
+                        element_rgb = `COLOR_TEXT_ACCENT;
                     // OSC B OCT (Center 494)
-                    else if (s0_elem == ELEM_OSCB_OCT_B && (s0_x >= oct_b_lo && s0_x <= oct_b_hi))
-                        rgb_out = `COLOR_OSCB_LINE;
+                    else if (element == ELEM_OSCB_OCT_B && (px >= oct_b_lo && px <= oct_b_hi))
+                        element_rgb = `COLOR_OSCB_LINE;
                     // OSC B SEMI (Center 588)
-                    else if (s0_elem == ELEM_OSCB_SEM_B && (s0_x >= sem_b_lo && s0_x <= sem_b_hi))
-                        rgb_out = `COLOR_OSCB_LINE;
+                    else if (element == ELEM_OSCB_SEM_B && (px >= sem_b_lo && px <= sem_b_hi))
+                        element_rgb = `COLOR_OSCB_LINE;
                     // OSC B FINE (Center 682)
-                    else if (s0_elem == ELEM_OSCB_FIN_B && (s0_x >= fin_b_lo && s0_x <= fin_b_hi))
-                        rgb_out = `COLOR_OSCB_LINE;
+                    else if (element == ELEM_OSCB_FIN_B && (px >= fin_b_lo && px <= fin_b_hi))
+                        element_rgb = `COLOR_OSCB_LINE;
                     else
-                        rgb_out = `COLOR_BADGE_BG;
+                        element_rgb = `COLOR_BADGE_BG;
                 end else
-                    rgb_out = `COLOR_BADGE_BG;
+                    element_rgb = `COLOR_BADGE_BG;
             end
 
             // Filter Routing Checkboxes [A], [B], [N], [S], [K]
             ELEM_FLT_CHK_A: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_A) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (s0_x <= 14'd882)
-                    rgb_out = val_flt_route_a ? `COLOR_TEXT_ACCENT : `COLOR_BTN_IDLE_BG;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_A) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (px <= 14'd882)
+                    element_rgb = val_flt_route_a ? `COLOR_TEXT_ACCENT : `COLOR_BTN_IDLE_BG;
                 else
-                    rgb_out = 24'h141E2C;
+                    element_rgb = 24'h141E2C;
             end
 
             ELEM_FLT_CHK_B: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_B) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (s0_x <= 14'd882)
-                    rgb_out = val_flt_route_b ? `COLOR_OSCB_LINE : `COLOR_BTN_IDLE_BG;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_B) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (px <= 14'd882)
+                    element_rgb = val_flt_route_b ? `COLOR_OSCB_LINE : `COLOR_BTN_IDLE_BG;
                 else
-                    rgb_out = 24'h141E2C;
+                    element_rgb = 24'h141E2C;
             end
 
             ELEM_FLT_CHK_N: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_N) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (s0_x <= 14'd882)
-                    rgb_out = val_flt_route_n ? 24'hD0D8E8 : `COLOR_BTN_IDLE_BG;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_N) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (px <= 14'd882)
+                    element_rgb = val_flt_route_n ? 24'hD0D8E8 : `COLOR_BTN_IDLE_BG;
                 else
-                    rgb_out = 24'h141E2C;
+                    element_rgb = 24'h141E2C;
             end
 
             ELEM_FLT_CHK_S: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_S) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (s0_x <= 14'd882)
-                    rgb_out = val_flt_route_s ? 24'hD0D8E8 : `COLOR_BTN_IDLE_BG;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_ROUTE_S) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (px <= 14'd882)
+                    element_rgb = val_flt_route_s ? 24'hD0D8E8 : `COLOR_BTN_IDLE_BG;
                 else
-                    rgb_out = 24'h141E2C;
+                    element_rgb = 24'h141E2C;
             end
 
             ELEM_FLT_CHK_K: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_KEYTRACK) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
-                else if (s0_x <= 14'd882)
-                    rgb_out = val_flt_keytrack ? 24'hD0D8E8 : `COLOR_BTN_IDLE_BG;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_FLT_KEYTRACK) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                else if (px <= 14'd882)
+                    element_rgb = val_flt_keytrack ? 24'hD0D8E8 : `COLOR_BTN_IDLE_BG;
                 else
-                    rgb_out = 24'h141E2C;
+                    element_rgb = 24'h141E2C;
             end
 
             // Envelope Modern Tabs
             ELEM_ENV_TAB1: begin
                 if (btn_flash_active && active_btn_id == `PARAM_ID_ENV_TAB && val_env_tab == 2'd0)
-                    rgb_out = 24'hFFFFFF;
-                else if (val_env_tab == 2'd0 && s0_y <= 14'd374)
-                    rgb_out = `COLOR_TEXT_ACCENT;
-                else if (s0_border)
-                    rgb_out = `COLOR_BTN_BORDER;
+                    element_rgb = 24'hFFFFFF;
+                else if (val_env_tab == 2'd0 && py <= 14'd374)
+                    element_rgb = `COLOR_TEXT_ACCENT;
+                else if (border)
+                    element_rgb = `COLOR_BTN_BORDER;
                 else
-                    rgb_out = (val_env_tab == 2'd0) ? 24'h283850 : 24'h141822;
+                    element_rgb = (val_env_tab == 2'd0) ? 24'h283850 : 24'h141822;
             end
 
             ELEM_ENV_TAB2: begin
                 if (btn_flash_active && active_btn_id == `PARAM_ID_ENV_TAB && val_env_tab == 2'd1)
-                    rgb_out = 24'hFFFFFF;
-                else if (val_env_tab == 2'd1 && s0_y <= 14'd374)
-                    rgb_out = `COLOR_TEXT_ACCENT;
-                else if (s0_border)
-                    rgb_out = `COLOR_BTN_BORDER;
+                    element_rgb = 24'hFFFFFF;
+                else if (val_env_tab == 2'd1 && py <= 14'd374)
+                    element_rgb = `COLOR_TEXT_ACCENT;
+                else if (border)
+                    element_rgb = `COLOR_BTN_BORDER;
                 else
-                    rgb_out = (val_env_tab == 2'd1) ? 24'h283850 : 24'h141822;
+                    element_rgb = (val_env_tab == 2'd1) ? 24'h283850 : 24'h141822;
             end
 
             ELEM_ENV_TAB3: begin
                 if (btn_flash_active && active_btn_id == `PARAM_ID_ENV_TAB && val_env_tab == 2'd2)
-                    rgb_out = 24'hFFFFFF;
-                else if (val_env_tab == 2'd2 && s0_y <= 14'd374)
-                    rgb_out = `COLOR_TEXT_ACCENT;
-                else if (s0_border)
-                    rgb_out = `COLOR_BTN_BORDER;
+                    element_rgb = 24'hFFFFFF;
+                else if (val_env_tab == 2'd2 && py <= 14'd374)
+                    element_rgb = `COLOR_TEXT_ACCENT;
+                else if (border)
+                    element_rgb = `COLOR_BTN_BORDER;
                 else
-                    rgb_out = (val_env_tab == 2'd2) ? 24'h283850 : 24'h141822;
+                    element_rgb = (val_env_tab == 2'd2) ? 24'h283850 : 24'h141822;
             end
 
             // Matrix Slot Bypass LED Switches
             ELEM_SLOT1_PWR: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT1_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT1_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
                 else
-                    rgb_out = !val_slot_bypass[0] ? `COLOR_TEXT_ACCENT : 24'h804020;
+                    element_rgb = !val_slot_bypass[0] ? `COLOR_TEXT_ACCENT : 24'h804020;
             end
 
             ELEM_SLOT2_PWR: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT2_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT2_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
                 else
-                    rgb_out = !val_slot_bypass[1] ? `COLOR_TEXT_ACCENT : 24'h804020;
+                    element_rgb = !val_slot_bypass[1] ? `COLOR_TEXT_ACCENT : 24'h804020;
             end
 
             ELEM_SLOT3_PWR: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT3_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT3_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
                 else
-                    rgb_out = !val_slot_bypass[2] ? `COLOR_TEXT_ACCENT : 24'h804020;
+                    element_rgb = !val_slot_bypass[2] ? `COLOR_TEXT_ACCENT : 24'h804020;
             end
 
             ELEM_SLOT4_PWR: begin
-                if (s0_border)
-                    rgb_out = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT4_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
+                if (border)
+                    element_rgb = (btn_flash_active && active_btn_id == `PARAM_ID_SLOT4_BYPASS) ? 24'hFFFFFF : `COLOR_BTN_BORDER;
                 else
-                    rgb_out = !val_slot_bypass[3] ? `COLOR_TEXT_ACCENT : 24'h804020;
+                    element_rgb = !val_slot_bypass[3] ? `COLOR_TEXT_ACCENT : 24'h804020;
             end
 
             // Top Bar HUD Indicator Banner
             ELEM_TOP_HUD: begin
-                if (s0_border)
-                    rgb_out = (selected_param_id != `PARAM_ID_NONE) ? `COLOR_TEXT_ACCENT : `COLOR_BTN_BORDER;
+                if (border)
+                    element_rgb = (selected_param_id != `PARAM_ID_NONE) ? `COLOR_TEXT_ACCENT : `COLOR_BTN_BORDER;
                 else if (selected_param_id != `PARAM_ID_NONE)
-                    rgb_out = 24'h183454;
+                    element_rgb = 24'h183454;
                 else
-                    rgb_out = `COLOR_BADGE_BG;
+                    element_rgb = `COLOR_BADGE_BG;
             end
 
-            default: rgb_out = 24'h0;
+            default: element_rgb = 24'h0;
         endcase
+        end
+    endfunction
+    wire [23:0] element_colors[1:43];
+    genvar element_index;
+    generate for(element_index=1;element_index<=43;element_index=element_index+1) begin: colors
+        localparam [5:0] ID=element_index;
+        assign element_colors[element_index]=s0_elem==ID ?
+            element_rgb(ID,s0_x,s0_y,s0_border) : 24'd0;
+    end endgenerate
+    integer color_index;
+    always @(*) begin
+        rgb_out=0;
+        for(color_index=1;color_index<=43;color_index=color_index+1)
+            rgb_out=rgb_out|element_colors[color_index];
     end
 
     // Register the background and coverage separately. This removes RGB

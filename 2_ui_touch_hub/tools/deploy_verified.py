@@ -1,6 +1,8 @@
-"""Deploy SRAM firmware to the engineering PC with hashes and unique audit files.
+"""Deploy firmware to the engineering PC with hashes and unique audit files.
 
 Run from any directory: python tools/deploy_verified.py --label C1
+Use --target external-flash only when the board DIP settings are confirmed; this
+erases and programs the external configuration flash, then verifies it.
 No automatic programming retry: an SSH timeout may occur after hardware changed.
 """
 import argparse
@@ -84,17 +86,35 @@ def main():
     parser.add_argument("--label", required=True)
     parser.add_argument("--fs", type=Path,
                         help="Deploy a preserved bitstream directly (default: current impl/pnr output)")
+    parser.add_argument("--target", choices=("sram", "external-flash"), default="sram",
+                        help="sram is volatile (default); external-flash erases, programs and verifies persistent flash")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.label):
         parser.error("Use an ASCII label containing letters, digits, _ or -")
     run = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + args.label
     output = ROOT / "impl" / "deploy_runs" / run
-    output.mkdir(parents=True, exist_ok=False)
     fs = args.fs.resolve() if args.fs else ROOT / "impl" / "pnr" / "2_ui_touch_hub.fs"
     digest = hashlib.sha256(fs.read_bytes()).hexdigest().upper()
-    manifest = {"run": run, "source": str(fs), "sha256": digest,
+    # Re-read STA and source hashes before any remote write. A historical
+    # audit JSON or filename alone is not an authorization to deploy R16.
+    build = fs.parents[2]
+    audit = None
+    if (build / 'source_manifest.json').is_file():
+        from audit_build import inspect_build
+        audit = inspect_build(build)
+        if not audit['timing_closed'] or audit['fs_sha256'] != digest:
+            raise RuntimeError('Build rejected before remote programming: '+
+                               json.dumps(audit,ensure_ascii=True))
+    elif args.label.upper().startswith('R16'):
+        raise RuntimeError('R16 deployment requires an isolated build with source_manifest.json')
+    output.mkdir(parents=True, exist_ok=False)
+    operation = 2 if args.target == "sram" else 69
+    manifest = {"run": run, "target": args.target, "programmer_operation": operation,
+                "source": str(fs), "sha256": digest,
                 "bytes": fs.stat().st_size, "remote": REMOTE_IP,
                 "programming_status": "not_confirmed"}
+    if audit is not None:
+        manifest['build_audit'] = audit
     with (output / "firmware.zip").open("xb") as stream:
         with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as z:
             z.write(fs, "2_ui_touch_hub.fs")
@@ -117,7 +137,7 @@ Expand-Archive -LiteralPath '{remote_dir}/firmware.zip' -DestinationPath '{remot
 $actual=(Get-FileHash -LiteralPath '{remote_dir}/2_ui_touch_hub.fs' -Algorithm SHA256).Hash
 if ($actual -ne '{digest}') {{ throw "Bitstream hash mismatch: $actual" }}
 Write-Output "VERIFIED_SHA256=$actual"
-& 'D:/Gowin/Gowin_V1.9.11.03_Education_x64/Programmer/bin/programmer_cli.exe' --device GW5AST-138B --run 2 --fsFile '{remote_dir}/2_ui_touch_hub.fs' 2>&1 | Tee-Object -FilePath '{remote_dir}/programmer.log'
+& 'D:/Gowin/Gowin_V1.9.11.03_Education_x64/Programmer/bin/programmer_cli.exe' --device GW5AST-138B --run {operation} --fsFile '{remote_dir}/2_ui_touch_hub.fs' 2>&1 | Tee-Object -FilePath '{remote_dir}/programmer.log'
 $programExit=$LASTEXITCODE
 $programExit | Set-Content -LiteralPath '{remote_dir}/programmer_exit.txt'
 Write-Output "PROGRAMMER_EXIT=$programExit"
@@ -130,7 +150,10 @@ Write-Output 'CODEX_PROGRAM_COMPLETE'
         print(data.decode(errors="replace"), flush=True)
         if b"CODEX_PROGRAM_COMPLETE" not in data:
             raise RuntimeError("Programming completion marker missing")
-        manifest["programming_status"] = "verified"
+        manifest["programming_status"] = (
+            "flash_programmed_verified_power_cycle_pending"
+            if args.target == "external-flash" else "sram_programmed"
+        )
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     except Exception as error:
         # An SSH failure can occur after SRAM changed. Preserve available output
@@ -147,7 +170,11 @@ Write-Output 'CODEX_PROGRAM_COMPLETE'
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
-    print(f"[DEPLOY] Programming verified; capturing to {output}", flush=True)
+    if args.target == "external-flash":
+        print(f"[DEPLOY] External flash erase/program/verify passed: {output}", flush=True)
+        print("[DEPLOY] Power-cycle the board, then inspect the display to verify boot from flash.", flush=True)
+        return
+    print(f"[DEPLOY] SRAM programming verified; capturing to {output}", flush=True)
     capture(remote_dir, output)
     print(f"[DEPLOY] Audit files ready: {output}", flush=True)
 

@@ -127,8 +127,8 @@ module touch_event_router (
         input [13:0] px, kx, dy;
         reg [13:0] dx;
         begin
-            dx = (px >= kx) ? (px - kx) : (kx - px);
-            is_knob_x_hit = (dx <= 14'd42) && (dy <= 14'd42);
+            dx = 14'd0; // Retained local declaration; constant boxes need no subtractor.
+            is_knob_x_hit = px>=kx-14'd42 && px<=kx+14'd42 && dy<=14'd42;
         end
     endfunction
 
@@ -158,299 +158,327 @@ module touch_event_router (
     reg [7:0]  comb_btn_id;
     reg [1:0]  comb_btn_act;
 
-    always @(*) begin
-        comb_is_knob = 1'b0;
-        comb_knob_id = `PARAM_ID_NONE;
-        comb_is_btn  = 1'b0;
-        comb_btn_id  = `PARAM_ID_NONE;
-        comb_btn_act = 2'd0;
+    // Parallel disjoint bands preserve the original boundary priority:
+    // presets own Y=70..74, steppers own Y=104, routing checks precede knobs,
+    // and the lower-right region belongs to the dedicated FX/LFO editors.
+    wire owned_lower=s0_tx>=14'd420 && s0_tx<=14'd1256 && s0_ty>=14'd368 && s0_ty<=14'd693;
+    wire filter_checks=s0_tx>=14'd850 && s0_tx<=14'd920 && s0_ty>=14'd244 && s0_ty<=14'd358;
+    function [19:0] decode_region;
+        input [3:0] region;
+        input [13:0] px,py;
+        reg k,b;
+        reg [7:0] kid,bid;
+        reg [1:0] act;
+        begin
+            k=0;b=0;kid=0;bid=0;act=0;
+            case(region)
+                4'd1: begin // header
 
-        // --- ROW 0: Top Deck Header Knobs & Buttons (Y in 4..42) ---
-        if (s0_tx >= 14'd796 && s0_tx <= 14'd1256 &&
-            s0_ty >= 14'd368 && s0_ty <= 14'd693) begin
-            // R15G: this entire area is owned by lfo_editor_state. Legacy
-            // FX hit boxes below remain for history but cannot emit MIDI here.
-        end else if (s0_ty >= 14'd4 && s0_ty <= 14'd42) begin
-            if (is_knob_x_hit(s0_tx, 14'd200, dy_r0)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_MACRO1;
-            end else if (is_knob_x_hit(s0_tx, 14'd260, dy_r0)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_MACRO2;
-            end else if (is_knob_x_hit(s0_tx, 14'd320, dy_r0)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_MACRO3;
-            end else if (is_knob_x_hit(s0_tx, 14'd380, dy_r0)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_MACRO4;
-            end else if (is_knob_x_hit(s0_tx, 14'd1182, dy_r0)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_MASTER_VOL;
+            if (is_knob_x_hit(px, 14'd200, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_MACRO1;
+            end else if (is_knob_x_hit(px, 14'd260, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_MACRO2;
+            end else if (is_knob_x_hit(px, 14'd320, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_MACRO3;
+            end else if (is_knob_x_hit(px, 14'd380, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_MACRO4;
+            end else if (is_knob_x_hit(px, 14'd1182, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_MASTER_VOL;
             end
             // Top Universal HUD Adjustment Bar:
             // [-] Step Dec Button: X in 500..536
-            else if (s0_tx >= 14'd500 && s0_tx <= 14'd536) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_HUD_DEC; comb_btn_act = 2'd2;
+            else if (px >= 14'd500 && px <= 14'd536) begin
+                b = 1'b1; bid = `PARAM_ID_HUD_DEC; act = 2'd2;
             end
             // Slider Track: X in 540..740
-            else if (s0_tx >= 14'd540 && s0_tx <= 14'd740) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_HUD_SLIDER;
+            else if (px >= 14'd540 && px <= 14'd740) begin
+                k = 1'b1; kid = `PARAM_ID_HUD_SLIDER;
             end
             // [+] Step Inc Button: X in 744..780
-            else if (s0_tx >= 14'd744 && s0_tx <= 14'd780) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_HUD_INC; comb_btn_act = 2'd1;
+            else if (px >= 14'd744 && px <= 14'd780) begin
+                b = 1'b1; bid = `PARAM_ID_HUD_INC; act = 2'd1;
             end
-        end
+        
+                end
+                4'd2: begin // presets
 
-        // --- POWER BUTTONS & PRESET ARROWS (Y in 44..74) ---
-        else if (s0_ty >= 14'd44 && s0_ty <= 14'd74) begin
             // OSC A Power (X: 24..60)
-            if (is_box_hit(s0_tx, s0_ty, 14'd24, 14'd60, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCA_POWER; comb_btn_act = 2'd0;
+            if (is_box_hit(px, py, 14'd24, 14'd60, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCA_POWER; act = 2'd0;
             end
             // OSC A Waveform Prev / Next / Bar
-            else if (is_box_hit(s0_tx, s0_ty, 14'd360, 14'd390, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCA_WAVE; comb_btn_act = 2'd2; // prev
-            end else if (is_box_hit(s0_tx, s0_ty, 14'd390, 14'd420, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCA_WAVE; comb_btn_act = 2'd1; // next
-            end else if (is_box_hit(s0_tx, s0_ty, 14'd62, 14'd360, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCA_WAVE; comb_btn_act = 2'd0; // cycle
+            else if (is_box_hit(px, py, 14'd360, 14'd390, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCA_WAVE; act = 2'd2; // prev
+            end else if (is_box_hit(px, py, 14'd390, 14'd420, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCA_WAVE; act = 2'd1; // next
+            end else if (is_box_hit(px, py, 14'd62, 14'd360, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCA_WAVE; act = 2'd0; // cycle
             end
             // OSC B Power (X: 438..474)
-            else if (is_box_hit(s0_tx, s0_ty, 14'd438, 14'd474, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCB_POWER; comb_btn_act = 2'd0;
+            else if (is_box_hit(px, py, 14'd438, 14'd474, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCB_POWER; act = 2'd0;
             end
             // OSC B Waveform Prev / Next / Bar
-            else if (is_box_hit(s0_tx, s0_ty, 14'd776, 14'd806, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCB_WAVE; comb_btn_act = 2'd2;
-            end else if (is_box_hit(s0_tx, s0_ty, 14'd806, 14'd836, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCB_WAVE; comb_btn_act = 2'd1;
-            end else if (is_box_hit(s0_tx, s0_ty, 14'd476, 14'd776, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCB_WAVE; comb_btn_act = 2'd0;
+            else if (is_box_hit(px, py, 14'd776, 14'd806, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCB_WAVE; act = 2'd2;
+            end else if (is_box_hit(px, py, 14'd806, 14'd836, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCB_WAVE; act = 2'd1;
+            end else if (is_box_hit(px, py, 14'd476, 14'd776, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_OSCB_WAVE; act = 2'd0;
             end
             // Filter Power (X: 854..890)
-            else if (is_box_hit(s0_tx, s0_ty, 14'd854, 14'd890, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_FLT_POWER; comb_btn_act = 2'd0;
+            else if (is_box_hit(px, py, 14'd854, 14'd890, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_FLT_POWER; act = 2'd0;
             end
             // Filter Type Prev / Next / Bar
-            else if (is_box_hit(s0_tx, s0_ty, 14'd1194, 14'd1222, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_FLT_TYPE; comb_btn_act = 2'd2;
-            end else if (is_box_hit(s0_tx, s0_ty, 14'd1222, 14'd1250, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_FLT_TYPE; comb_btn_act = 2'd1;
-            end else if (is_box_hit(s0_tx, s0_ty, 14'd892, 14'd1194, 14'd44, 14'd74)) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_FLT_TYPE; comb_btn_act = 2'd0;
+            else if (is_box_hit(px, py, 14'd1194, 14'd1222, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_FLT_TYPE; act = 2'd2;
+            end else if (is_box_hit(px, py, 14'd1222, 14'd1250, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_FLT_TYPE; act = 2'd1;
+            end else if (is_box_hit(px, py, 14'd892, 14'd1194, 14'd44, 14'd74)) begin
+                b = 1'b1; bid = `PARAM_ID_FLT_TYPE; act = 2'd0;
             end
-        end
+        
+                end
+                4'd3: begin // steppers
 
-        // --- STEPPERS: OCT, SEMI & FINE (Y in 70..104) ---
-        else if (s0_ty >= 14'd70 && s0_ty <= 14'd104) begin
             // OSC A OCT (X: 28..126)
-            if (s0_tx >= 14'd28 && s0_tx <= 14'd126) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCA_OCT;
-                comb_btn_act = (s0_tx < 14'd77) ? 2'd2 : 2'd1;
+            if (px >= 14'd28 && px <= 14'd126) begin
+                b = 1'b1; bid = `PARAM_ID_OSCA_OCT;
+                act = (px < 14'd77) ? 2'd2 : 2'd1;
             end
             // OSC A SEMI (X: 124..220)
-            else if (s0_tx >= 14'd124 && s0_tx <= 14'd220) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCA_SEMI;
-                comb_btn_act = (s0_tx < 14'd172) ? 2'd2 : 2'd1;
+            else if (px >= 14'd124 && px <= 14'd220) begin
+                b = 1'b1; bid = `PARAM_ID_OSCA_SEMI;
+                act = (px < 14'd172) ? 2'd2 : 2'd1;
             end
             // OSC A FINE (X: 220..316)
-            else if (s0_tx >= 14'd220 && s0_tx <= 14'd316) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCA_FINE;
-                comb_btn_act = (s0_tx < 14'd268) ? 2'd2 : 2'd1;
+            else if (px >= 14'd220 && px <= 14'd316) begin
+                b = 1'b1; bid = `PARAM_ID_OSCA_FINE;
+                act = (px < 14'd268) ? 2'd2 : 2'd1;
             end
             // OSC B OCT (X: 444..542)
-            else if (s0_tx >= 14'd444 && s0_tx <= 14'd542) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCB_OCT;
-                comb_btn_act = (s0_tx < 14'd493) ? 2'd2 : 2'd1;
+            else if (px >= 14'd444 && px <= 14'd542) begin
+                b = 1'b1; bid = `PARAM_ID_OSCB_OCT;
+                act = (px < 14'd493) ? 2'd2 : 2'd1;
             end
             // OSC B SEMI (X: 540..636)
-            else if (s0_tx >= 14'd540 && s0_tx <= 14'd636) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCB_SEMI;
-                comb_btn_act = (s0_tx < 14'd588) ? 2'd2 : 2'd1;
+            else if (px >= 14'd540 && px <= 14'd636) begin
+                b = 1'b1; bid = `PARAM_ID_OSCB_SEMI;
+                act = (px < 14'd588) ? 2'd2 : 2'd1;
             end
             // OSC B FINE (X: 636..732)
-            else if (s0_tx >= 14'd636 && s0_tx <= 14'd732) begin
-                comb_is_btn = 1'b1; comb_btn_id = `PARAM_ID_OSCB_FINE;
-                comb_btn_act = (s0_tx < 14'd684) ? 2'd2 : 2'd1;
+            else if (px >= 14'd636 && px <= 14'd732) begin
+                b = 1'b1; bid = `PARAM_ID_OSCB_FINE;
+                act = (px < 14'd684) ? 2'd2 : 2'd1;
             end
-        end
+        
+                end
+                4'd4: begin // scopes
 
-        // --- SCOPES & DYNAMIC WINDOWS (Y in 104..240) ---
-        else if (s0_ty >= 14'd104 && s0_ty <= 14'd240) begin
             // OSC A 2D Wavetable Scope (X: 36..412) -> Interactive Touch Scrubs WT POS A
-            if (s0_tx >= 14'd36 && s0_tx <= 14'd412) begin
-                comb_is_knob = 1'b1;
-                comb_knob_id = `PARAM_ID_OSCA_WT_POS;
+            if (px >= 14'd36 && px <= 14'd412) begin
+                k = 1'b1;
+                kid = `PARAM_ID_OSCA_WT_POS;
             end
             // OSC B 2D Wavetable Scope (X: 452..828) -> Interactive Touch Scrubs WT POS B
-            else if (s0_tx >= 14'd452 && s0_tx <= 14'd828) begin
-                comb_is_knob = 1'b1;
-                comb_knob_id = `PARAM_ID_OSCB_WT_POS;
+            else if (px >= 14'd452 && px <= 14'd828) begin
+                k = 1'b1;
+                kid = `PARAM_ID_OSCB_WT_POS;
             end
             // Filter Frequency Response Scope (X: 868..1244) -> Interactive Touch Sweeps Cutoff
-            else if (s0_tx >= 14'd868 && s0_tx <= 14'd1244) begin
+            else if (px >= 14'd868 && px <= 14'd1244) begin
                 // Direct XY manipulation is owned by curve_touch_editor.
             end
-        end
+        
+                end
+                4'd5: begin // checks
 
-        // --- FILTER ROUTING CHECKBOXES [A], [B], [N], [S], [K] (Y in 244..358, X in 850..920) ---
-        else if (s0_tx >= 14'd850 && s0_tx <= 14'd920 && s0_ty >= 14'd244 && s0_ty <= 14'd358) begin
-            comb_is_btn  = 1'b1;
-            comb_btn_act = 2'd0;
-            if (s0_ty < 14'd267)
-                comb_btn_id = `PARAM_ID_FLT_ROUTE_A;
-            else if (s0_ty < 14'd289)
-                comb_btn_id = `PARAM_ID_FLT_ROUTE_B;
-            else if (s0_ty < 14'd311)
-                comb_btn_id = `PARAM_ID_FLT_ROUTE_N;
-            else if (s0_ty < 14'd333)
-                comb_btn_id = `PARAM_ID_FLT_ROUTE_S;
+            b  = 1'b1;
+            act = 2'd0;
+            if (py < 14'd267)
+                bid = `PARAM_ID_FLT_ROUTE_A;
+            else if (py < 14'd289)
+                bid = `PARAM_ID_FLT_ROUTE_B;
+            else if (py < 14'd311)
+                bid = `PARAM_ID_FLT_ROUTE_N;
+            else if (py < 14'd333)
+                bid = `PARAM_ID_FLT_ROUTE_S;
             else
-                comb_btn_id = `PARAM_ID_FLT_KEYTRACK;
-        end
+                bid = `PARAM_ID_FLT_KEYTRACK;
+        
+                end
+                4'd6: begin // row1
 
-        // --- ROW 1: OSC A/B & Filter Knobs Row 1 (Y in 242..294) ---
-        else if (s0_ty >= 14'd242 && s0_ty <= 14'd294) begin
             // OSC A
-            if (is_knob_x_hit(s0_tx, 14'd64, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_UNISON;
-            end else if (is_knob_x_hit(s0_tx, 14'd134, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_DETUNE;
-            end else if (is_knob_x_hit(s0_tx, 14'd204, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_BLEND;
-            end else if (is_knob_x_hit(s0_tx, 14'd274, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_PHASE;
-            end else if (is_knob_x_hit(s0_tx, 14'd344, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_RAND;
+            if (is_knob_x_hit(px, 14'd64, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_UNISON;
+            end else if (is_knob_x_hit(px, 14'd134, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_DETUNE;
+            end else if (is_knob_x_hit(px, 14'd204, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_BLEND;
+            end else if (is_knob_x_hit(px, 14'd274, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_PHASE;
+            end else if (is_knob_x_hit(px, 14'd344, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_RAND;
             end
             // OSC B
-            else if (is_knob_x_hit(s0_tx, 14'd480, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_UNISON;
-            end else if (is_knob_x_hit(s0_tx, 14'd550, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_DETUNE;
-            end else if (is_knob_x_hit(s0_tx, 14'd620, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_BLEND;
-            end else if (is_knob_x_hit(s0_tx, 14'd690, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_PHASE;
-            end else if (is_knob_x_hit(s0_tx, 14'd760, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_RAND;
+            else if (is_knob_x_hit(px, 14'd480, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_UNISON;
+            end else if (is_knob_x_hit(px, 14'd550, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_DETUNE;
+            end else if (is_knob_x_hit(px, 14'd620, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_BLEND;
+            end else if (is_knob_x_hit(px, 14'd690, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_PHASE;
+            end else if (is_knob_x_hit(px, 14'd760, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_RAND;
             end
             // Filter Knobs
-            else if (is_knob_x_hit(s0_tx, 14'd950, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FLT_CUTOFF;
-            end else if (is_knob_x_hit(s0_tx, 14'd1040, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FLT_RES;
-            end else if (is_knob_x_hit(s0_tx, 14'd1130, dy_r1)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FLT_PAN;
+            else if (is_knob_x_hit(px, 14'd950, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FLT_CUTOFF;
+            end else if (is_knob_x_hit(px, 14'd1040, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FLT_RES;
+            end else if (is_knob_x_hit(px, 14'd1130, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FLT_PAN;
             end
-        end
+        
+                end
+                4'd7: begin // row2
 
-        // --- ROW 2: OSC A/B & Filter Knobs Row 2 (Y in 300..356) ---
-        else if (s0_ty >= 14'd300 && s0_ty <= 14'd356) begin
             // OSC A
-            if (is_knob_x_hit(s0_tx, 14'd84, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_WT_POS;
-            end else if (is_knob_x_hit(s0_tx, 14'd164, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_WARP;
-            end else if (is_knob_x_hit(s0_tx, 14'd264, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_PAN;
-            end else if (is_knob_x_hit(s0_tx, 14'd344, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCA_VOL;
+            if (is_knob_x_hit(px, 14'd84, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_WT_POS;
+            end else if (is_knob_x_hit(px, 14'd164, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_WARP;
+            end else if (is_knob_x_hit(px, 14'd264, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_PAN;
+            end else if (is_knob_x_hit(px, 14'd344, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCA_VOL;
             end
             // OSC B
-            else if (is_knob_x_hit(s0_tx, 14'd500, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_WT_POS;
-            end else if (is_knob_x_hit(s0_tx, 14'd580, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_WARP;
-            end else if (is_knob_x_hit(s0_tx, 14'd680, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_PAN;
-            end else if (is_knob_x_hit(s0_tx, 14'd760, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_OSCB_VOL;
+            else if (is_knob_x_hit(px, 14'd500, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_WT_POS;
+            end else if (is_knob_x_hit(px, 14'd580, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_WARP;
+            end else if (is_knob_x_hit(px, 14'd680, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_PAN;
+            end else if (is_knob_x_hit(px, 14'd760, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_OSCB_VOL;
             end
             // Filter Knobs
-            else if (is_knob_x_hit(s0_tx, 14'd950, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FLT_DRIVE;
-            end else if (is_knob_x_hit(s0_tx, 14'd1040, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FLT_FAT;
-            end else if (is_knob_x_hit(s0_tx, 14'd1130, dy_r2)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FLT_MIX;
+            else if (is_knob_x_hit(px, 14'd950, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FLT_DRIVE;
+            end else if (is_knob_x_hit(px, 14'd1040, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FLT_FAT;
+            end else if (is_knob_x_hit(px, 14'd1130, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FLT_MIX;
             end
-        end
+        
+                end
+                4'd8: begin // envtabs
 
-        // --- ENVELOPE TABS (Y in 365..402) ---
-        else if (s0_ty >= 14'd365 && s0_ty <= 14'd402 && s0_tx >= 14'd28 && s0_tx <= 14'd310) begin
-            comb_is_btn = 1'b1;
-            comb_btn_id = `PARAM_ID_ENV_TAB;
-            if (s0_tx < 14'd123)
-                comb_btn_act = 2'd0; // ENV 1
-            else if (s0_tx < 14'd213)
-                comb_btn_act = 2'd1; // ENV 2
+            b = 1'b1;
+            bid = `PARAM_ID_ENV_TAB;
+            if (px < 14'd123)
+                act = 2'd0; // ENV 1
+            else if (px < 14'd213)
+                act = 2'd1; // ENV 2
             else
-                comb_btn_act = 2'd2; // ENV 3
-        end
+                act = 2'd2; // ENV 3
+        
+                end
+                4'd9: begin // retired
 
-        // --- Retired matrix mapping, preserved for historical reference only ---
-        else if (1'b0 && s0_ty >= 14'd404 && s0_ty <= 14'd546 && s0_tx >= 14'd790 && s0_tx <= 14'd1250) begin
-            if (s0_tx <= 14'd840) begin
+            if (px <= 14'd840) begin
                 // Bypass Buttons
-                comb_is_btn  = 1'b1;
-                comb_btn_act = 2'd0;
-                if (s0_ty < 14'd438)
-                    comb_btn_id = `PARAM_ID_SLOT1_BYPASS;
-                else if (s0_ty < 14'd472)
-                    comb_btn_id = `PARAM_ID_SLOT2_BYPASS;
-                else if (s0_ty < 14'd506)
-                    comb_btn_id = `PARAM_ID_SLOT3_BYPASS;
+                b  = 1'b1;
+                act = 2'd0;
+                if (py < 14'd438)
+                    bid = `PARAM_ID_SLOT1_BYPASS;
+                else if (py < 14'd472)
+                    bid = `PARAM_ID_SLOT2_BYPASS;
+                else if (py < 14'd506)
+                    bid = `PARAM_ID_SLOT3_BYPASS;
                 else
-                    comb_btn_id = `PARAM_ID_SLOT4_BYPASS;
+                    bid = `PARAM_ID_SLOT4_BYPASS;
             end else begin
                 // Modulation Amount Knobs / Sliders
-                comb_is_knob = 1'b1;
-                if (s0_ty < 14'd438)
-                    comb_knob_id = `PARAM_ID_FX_REVERB;
-                else if (s0_ty < 14'd472)
-                    comb_knob_id = `PARAM_ID_FX_DELAY;
-                else if (s0_ty < 14'd506)
-                    comb_knob_id = `PARAM_ID_FX_CHORUS;
+                k = 1'b1;
+                if (py < 14'd438)
+                    kid = `PARAM_ID_FX_REVERB;
+                else if (py < 14'd472)
+                    kid = `PARAM_ID_FX_DELAY;
+                else if (py < 14'd506)
+                    kid = `PARAM_ID_FX_CHORUS;
                 else
-                    comb_knob_id = `PARAM_ID_PORTAMENTO;
+                    kid = `PARAM_ID_PORTAMENTO;
             end
-        end
+        
+                end
+                4'd10: begin // envscope
 
-        // --- DYNAMIC ADSR ENVELOPE SCOPE (X in 28..780, Y in 404..610) ---
-        else if (s0_ty >= 14'd404 && s0_ty <= 14'd610 && s0_tx >= 14'd28 && s0_tx <= 14'd780) begin
-            comb_is_knob = 1'b0; // Retired fixed-zone mapping; direct nodes own this scope.
-            if (s0_tx < 14'd210)
-                comb_knob_id = `PARAM_ID_ENV1_ATTACK;
-            else if (s0_tx < 14'd380)
-                comb_knob_id = `PARAM_ID_ENV1_DECAY;
-            else if (s0_tx < 14'd560)
-                comb_knob_id = `PARAM_ID_ENV1_SUSTAIN;
+            k = 1'b0; // Retired fixed-zone mapping; direct nodes own this scope.
+            if (px < 14'd210)
+                kid = `PARAM_ID_ENV1_ATTACK;
+            else if (px < 14'd380)
+                kid = `PARAM_ID_ENV1_DECAY;
+            else if (px < 14'd560)
+                kid = `PARAM_ID_ENV1_SUSTAIN;
             else
-                comb_knob_id = `PARAM_ID_ENV1_RELEASE;
-        end
+                kid = `PARAM_ID_ENV1_RELEASE;
+        
+                end
+                4'd11: begin // row3
 
-        // --- ROW 3: Expanded Lower Deck Knobs (Y in 624..680, CY = 652) ---
-        else if (s0_ty >= 14'd624 && s0_ty <= 14'd680) begin
             // Envelope 1
-            if (is_knob_x_hit(s0_tx, 14'd100, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_ENV1_ATTACK;
-            end else if (is_knob_x_hit(s0_tx, 14'd230, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_ENV1_HOLD;
-            end else if (is_knob_x_hit(s0_tx, 14'd360, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_ENV1_DECAY;
-            end else if (is_knob_x_hit(s0_tx, 14'd490, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_ENV1_SUSTAIN;
-            end else if (is_knob_x_hit(s0_tx, 14'd620, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_ENV1_RELEASE;
+            if ((px >= 14'd34 && px <= 14'd94) && px >= 14'd34 && px <= 14'd358) begin
+                k = 1'b1; kid = `PARAM_ID_ENV1_ATTACK;
+            end else if ((px >= 14'd100 && px <= 14'd160) && px >= 14'd34 && px <= 14'd358) begin
+                k = 1'b1; kid = `PARAM_ID_ENV1_HOLD;
+            end else if ((px >= 14'd166 && px <= 14'd226) && px >= 14'd34 && px <= 14'd358) begin
+                k = 1'b1; kid = `PARAM_ID_ENV1_DECAY;
+            end else if ((px >= 14'd232 && px <= 14'd292) && px >= 14'd34 && px <= 14'd358) begin
+                k = 1'b1; kid = `PARAM_ID_ENV1_SUSTAIN;
+            end else if ((px >= 14'd298 && px <= 14'd358) && px >= 14'd34 && px <= 14'd358) begin
+                k = 1'b1; kid = `PARAM_ID_ENV1_RELEASE;
             end
             // Master FX
-            else if (is_knob_x_hit(s0_tx, 14'd860, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FX_REVERB;
-            end else if (is_knob_x_hit(s0_tx, 14'd960, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FX_DELAY;
-            end else if (is_knob_x_hit(s0_tx, 14'd1060, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_FX_CHORUS;
-            end else if (is_knob_x_hit(s0_tx, 14'd1160, dy_r3)) begin
-                comb_is_knob = 1'b1; comb_knob_id = `PARAM_ID_PORTAMENTO;
+            else if (is_knob_x_hit(px, 14'd860, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FX_REVERB;
+            end else if (is_knob_x_hit(px, 14'd960, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FX_DELAY;
+            end else if (is_knob_x_hit(px, 14'd1060, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_FX_CHORUS;
+            end else if (is_knob_x_hit(px, 14'd1160, 14'd0)) begin
+                k = 1'b1; kid = `PARAM_ID_PORTAMENTO;
             end
+        
+                end
+                default: begin end
+            endcase
+            decode_region={k,kid,b,bid,act};
         end
+    endfunction
+    wire [19:0] region_value[1:11];
+    assign region_value[1]=(s0_ty>=14'd4 && s0_ty<=14'd42) ? decode_region(4'd1,s0_tx,s0_ty) : 20'd0;
+    assign region_value[2]=(s0_ty>=14'd44 && s0_ty<=14'd74) ? decode_region(4'd2,s0_tx,s0_ty) : 20'd0;
+    assign region_value[3]=(s0_ty>=14'd75 && s0_ty<=14'd104) ? decode_region(4'd3,s0_tx,s0_ty) : 20'd0;
+    assign region_value[4]=(s0_ty>=14'd105 && s0_ty<=14'd240) ? decode_region(4'd4,s0_tx,s0_ty) : 20'd0;
+    assign region_value[5]=(filter_checks) ? decode_region(4'd5,s0_tx,s0_ty) : 20'd0;
+    assign region_value[6]=(s0_ty>=14'd242 && s0_ty<=14'd294 && !filter_checks) ? decode_region(4'd6,s0_tx,s0_ty) : 20'd0;
+    assign region_value[7]=(s0_ty>=14'd300 && s0_ty<=14'd356 && !filter_checks) ? decode_region(4'd7,s0_tx,s0_ty) : 20'd0;
+    assign region_value[8]=(s0_ty>=14'd365 && s0_ty<=14'd402 && s0_tx>=14'd28 && s0_tx<=14'd310) ? decode_region(4'd8,s0_tx,s0_ty) : 20'd0;
+    assign region_value[9]=(1'b0) ? decode_region(4'd9,s0_tx,s0_ty) : 20'd0;
+    assign region_value[10]=(s0_ty>=14'd404 && s0_ty<=14'd610 && s0_tx>=14'd28 && s0_tx<=14'd419) ? decode_region(4'd10,s0_tx,s0_ty) : 20'd0;
+    assign region_value[11]=(s0_ty>=14'd624 && s0_ty<=14'd680 && !owned_lower) ? decode_region(4'd11,s0_tx,s0_ty) : 20'd0;
+    reg [19:0] decoded_regions;
+    integer region_index;
+    always @(*) begin
+        decoded_regions=0;
+        for(region_index=1;region_index<=11;region_index=region_index+1)
+            decoded_regions=decoded_regions|region_value[region_index];
+        {comb_is_knob,comb_knob_id,comb_is_btn,comb_btn_id,comb_btn_act}=decoded_regions;
     end
 
     always @(posedge clk or negedge rst_n) begin
@@ -522,7 +550,7 @@ module touch_event_router (
             btn_tap_valid     <= 1'b0;
 
             // Silence watchdog: if no packet arrives for 50ms (3,125,000 cycles), release finger
-            if (silence_watchdog < 24'd3_125_000) begin
+            if (silence_watchdog < 24'd2_500_000) begin
                 silence_watchdog <= silence_watchdog + 24'd1;
             end else begin
                 finger_down      <= 1'b0;
@@ -632,25 +660,25 @@ module touch_event_router (
                             end
                             // 2. Stepper & HUD Button Hold-to-Repeat check
                             else if (s1_btn_id == `PARAM_ID_HUD_DEC || s1_btn_id == `PARAM_ID_HUD_INC) begin
-                                if (btn_repeat_timer >= 26'd18_750_000) begin
+                                if (btn_repeat_timer >= 26'd15_000_000) begin
                                     if (selected_param_id != `PARAM_ID_NONE) begin
                                         param_delta_valid <= 1'b1;
                                         param_delta_val   <= (s1_btn_id == `PARAM_ID_HUD_INC) ? 8'sd1 : -8'sd1;
                                     end
-                                    btn_repeat_timer <= 26'd12_500_000;
+                                    btn_repeat_timer <= 26'd10_000_000;
                                 end else begin
-                                    btn_repeat_timer <= btn_repeat_timer + 26'd625_000;
+                                    btn_repeat_timer <= btn_repeat_timer + 26'd500_000;
                                 end
                             end
                             else if (s1_btn_id == `PARAM_ID_OSCA_OCT  || s1_btn_id == `PARAM_ID_OSCA_SEMI || s1_btn_id == `PARAM_ID_OSCA_FINE ||
                                      s1_btn_id == `PARAM_ID_OSCB_OCT  || s1_btn_id == `PARAM_ID_OSCB_SEMI || s1_btn_id == `PARAM_ID_OSCB_FINE) begin
-                                if (btn_repeat_timer >= 26'd25_000_000) begin
+                                if (btn_repeat_timer >= 26'd20_000_000) begin
                                     btn_tap_valid    <= 1'b1;
                                     btn_tap_id       <= s1_btn_id;
                                     btn_tap_action   <= s1_btn_act;
-                                    btn_repeat_timer <= 26'd18_750_000;
+                                    btn_repeat_timer <= 26'd15_000_000;
                                 end else begin
-                                    btn_repeat_timer <= btn_repeat_timer + 26'd625_000;
+                                    btn_repeat_timer <= btn_repeat_timer + 26'd500_000;
                                 end
                             end
                         end else if (knob_is_dragging && (active_knob_id != `PARAM_ID_NONE)) begin

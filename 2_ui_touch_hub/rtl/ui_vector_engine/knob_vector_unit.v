@@ -46,133 +46,128 @@ module knob_vector_unit (
     reg [4:0]  s0_r;
     reg [6:0]  s0_val;
     reg [7:0]  s0_id;
-    reg [13:0] s0_x, s0_y;
+    // Keep local raster copies from merging into a cross-panel high-fanout net.
+    reg [13:0] s0_x /* synthesis syn_preserve=1 syn_maxfan=32 */;
+    reg [13:0] s0_y /* synthesis syn_preserve=1 syn_maxfan=32 */;
 
+    // Decode Y by its 32-pixel bucket first; only the two edge buckets need
+    // a low-bit boundary compare. This avoids four full-width range
+    // comparators feeding every 49-bit cell record.
+    wire y_hi_valid = (in_y[13:10] == 4'd0);
+    wire [4:0] y_bucket = in_y[9:5];
+    wire knob_row0_y = y_hi_valid &&
+        ((y_bucket == 5'd0 && in_y[4:0] >= 5'd8) ||
+         (y_bucket == 5'd1 && in_y[4:0] <= 5'd10));
+    wire knob_row1_y = y_hi_valid &&
+        ((y_bucket == 5'd7 && in_y[4:0] >= 5'd26) ||
+         (y_bucket == 5'd8) ||
+         (y_bucket == 5'd9 && in_y[4:0] <= 5'd10));
+    wire knob_row2_y = y_hi_valid &&
+        ((y_bucket == 5'd9 && in_y[4:0] >= 5'd20) ||
+         (y_bucket == 5'd10) ||
+         (y_bucket == 5'd11 && in_y[4:0] <= 5'd4));
+    wire knob_row3_y = y_hi_valid &&
+        ((y_bucket == 5'd19 && in_y[4:0] >= 5'd24) ||
+         (y_bucket == 5'd20) ||
+         (y_bucket == 5'd21 && in_y[4:0] <= 5'd10));
+
+    // Disjoint cells decode concurrently. The only shared boundary in row
+    // zero belongs to the left cell, preserving the original priority.
+    wire [48:0] knob_cells[0:37];
+    assign knob_cells[0]=(knob_row0_y && in_x>=14'd170 && in_x<=14'd230) ?
+        {1'b1,14'd200,14'd22,5'd13,val_macro1,`PARAM_ID_MACRO1} : 49'd0;
+    assign knob_cells[1]=(knob_row0_y && in_x>=14'd231 && in_x<=14'd290) ?
+        {1'b1,14'd260,14'd22,5'd13,val_macro2,`PARAM_ID_MACRO2} : 49'd0;
+    assign knob_cells[2]=(knob_row0_y && in_x>=14'd291 && in_x<=14'd350) ?
+        {1'b1,14'd320,14'd22,5'd13,val_macro3,`PARAM_ID_MACRO3} : 49'd0;
+    assign knob_cells[3]=(knob_row0_y && in_x>=14'd351 && in_x<=14'd410) ?
+        {1'b1,14'd380,14'd22,5'd13,val_macro4,`PARAM_ID_MACRO4} : 49'd0;
+    assign knob_cells[4]=(knob_row0_y && in_x>=14'd1152 && in_x<=14'd1212) ?
+        {1'b1,14'd1182,14'd22,5'd16,val_master_vol,`PARAM_ID_MASTER_VOL} : 49'd0;
+    assign knob_cells[5]=(knob_row1_y && in_x>=14'd34 && in_x<=14'd94) ?
+        {1'b1,14'd64,14'd268,5'd14,val_osca_unison,`PARAM_ID_OSCA_UNISON} : 49'd0;
+    assign knob_cells[6]=(knob_row1_y && in_x>=14'd104 && in_x<=14'd164) ?
+        {1'b1,14'd134,14'd268,5'd14,val_osca_detune,`PARAM_ID_OSCA_DETUNE} : 49'd0;
+    assign knob_cells[7]=(knob_row1_y && in_x>=14'd174 && in_x<=14'd234) ?
+        {1'b1,14'd204,14'd268,5'd14,val_osca_blend,`PARAM_ID_OSCA_BLEND} : 49'd0;
+    assign knob_cells[8]=(knob_row1_y && in_x>=14'd244 && in_x<=14'd304) ?
+        {1'b1,14'd274,14'd268,5'd14,val_osca_phase,`PARAM_ID_OSCA_PHASE} : 49'd0;
+    assign knob_cells[9]=(knob_row1_y && in_x>=14'd314 && in_x<=14'd374) ?
+        {1'b1,14'd344,14'd268,5'd14,val_osca_rand,`PARAM_ID_OSCA_RAND} : 49'd0;
+    assign knob_cells[10]=(knob_row1_y && in_x>=14'd450 && in_x<=14'd510) ?
+        {1'b1,14'd480,14'd268,5'd14,val_oscb_unison,`PARAM_ID_OSCB_UNISON} : 49'd0;
+    assign knob_cells[11]=(knob_row1_y && in_x>=14'd520 && in_x<=14'd580) ?
+        {1'b1,14'd550,14'd268,5'd14,val_oscb_detune,`PARAM_ID_OSCB_DETUNE} : 49'd0;
+    assign knob_cells[12]=(knob_row1_y && in_x>=14'd590 && in_x<=14'd650) ?
+        {1'b1,14'd620,14'd268,5'd14,val_oscb_blend,`PARAM_ID_OSCB_BLEND} : 49'd0;
+    assign knob_cells[13]=(knob_row1_y && in_x>=14'd660 && in_x<=14'd720) ?
+        {1'b1,14'd690,14'd268,5'd14,val_oscb_phase,`PARAM_ID_OSCB_PHASE} : 49'd0;
+    assign knob_cells[14]=(knob_row1_y && in_x>=14'd730 && in_x<=14'd790) ?
+        {1'b1,14'd760,14'd268,5'd14,val_oscb_rand,`PARAM_ID_OSCB_RAND} : 49'd0;
+    assign knob_cells[15]=(knob_row1_y && in_x>=14'd920 && in_x<=14'd980) ?
+        {1'b1,14'd950,14'd268,5'd15,val_flt_cutoff,`PARAM_ID_FLT_CUTOFF} : 49'd0;
+    assign knob_cells[16]=(knob_row1_y && in_x>=14'd1010 && in_x<=14'd1070) ?
+        {1'b1,14'd1040,14'd268,5'd15,val_flt_res,`PARAM_ID_FLT_RES} : 49'd0;
+    assign knob_cells[17]=(knob_row1_y && in_x>=14'd1100 && in_x<=14'd1160) ?
+        {1'b1,14'd1130,14'd268,5'd14,val_flt_pan,`PARAM_ID_FLT_PAN} : 49'd0;
+    assign knob_cells[18]=(knob_row2_y && in_x>=14'd54 && in_x<=14'd114) ?
+        {1'b1,14'd84,14'd326,5'd15,val_osca_wt_pos,`PARAM_ID_OSCA_WT_POS} : 49'd0;
+    assign knob_cells[19]=(knob_row2_y && in_x>=14'd134 && in_x<=14'd194) ?
+        {1'b1,14'd164,14'd326,5'd14,val_osca_warp,`PARAM_ID_OSCA_WARP} : 49'd0;
+    assign knob_cells[20]=(knob_row2_y && in_x>=14'd234 && in_x<=14'd294) ?
+        {1'b1,14'd264,14'd326,5'd14,val_osca_pan,`PARAM_ID_OSCA_PAN} : 49'd0;
+    assign knob_cells[21]=(knob_row2_y && in_x>=14'd314 && in_x<=14'd374) ?
+        {1'b1,14'd344,14'd326,5'd15,val_osca_vol,`PARAM_ID_OSCA_VOL} : 49'd0;
+    assign knob_cells[22]=(knob_row2_y && in_x>=14'd470 && in_x<=14'd530) ?
+        {1'b1,14'd500,14'd326,5'd15,val_oscb_wt_pos,`PARAM_ID_OSCB_WT_POS} : 49'd0;
+    assign knob_cells[23]=(knob_row2_y && in_x>=14'd550 && in_x<=14'd610) ?
+        {1'b1,14'd580,14'd326,5'd14,val_oscb_warp,`PARAM_ID_OSCB_WARP} : 49'd0;
+    assign knob_cells[24]=(knob_row2_y && in_x>=14'd650 && in_x<=14'd710) ?
+        {1'b1,14'd680,14'd326,5'd14,val_oscb_pan,`PARAM_ID_OSCB_PAN} : 49'd0;
+    assign knob_cells[25]=(knob_row2_y && in_x>=14'd730 && in_x<=14'd790) ?
+        {1'b1,14'd760,14'd326,5'd15,val_oscb_vol,`PARAM_ID_OSCB_VOL} : 49'd0;
+    assign knob_cells[26]=(knob_row2_y && in_x>=14'd920 && in_x<=14'd980) ?
+        {1'b1,14'd950,14'd326,5'd14,val_flt_drive,`PARAM_ID_FLT_DRIVE} : 49'd0;
+    assign knob_cells[27]=(knob_row2_y && in_x>=14'd1010 && in_x<=14'd1070) ?
+        {1'b1,14'd1040,14'd326,5'd14,val_flt_fat,`PARAM_ID_FLT_FAT} : 49'd0;
+    assign knob_cells[28]=(knob_row2_y && in_x>=14'd1100 && in_x<=14'd1160) ?
+        {1'b1,14'd1130,14'd326,5'd15,val_flt_mix,`PARAM_ID_FLT_MIX} : 49'd0;
+    assign knob_cells[29]=(knob_row3_y && in_x>=14'd34 && in_x<=14'd94) ?
+        {1'b1,14'd64,14'd652,5'd15,val_env_attack,`PARAM_ID_ENV1_ATTACK} : 49'd0;
+    assign knob_cells[30]=(knob_row3_y && in_x>=14'd100 && in_x<=14'd160) ?
+        {1'b1,14'd130,14'd652,5'd15,val_env_hold,`PARAM_ID_ENV1_HOLD} : 49'd0;
+    assign knob_cells[31]=(knob_row3_y && in_x>=14'd166 && in_x<=14'd226) ?
+        {1'b1,14'd196,14'd652,5'd15,val_env_decay,`PARAM_ID_ENV1_DECAY} : 49'd0;
+    assign knob_cells[32]=(knob_row3_y && in_x>=14'd232 && in_x<=14'd292) ?
+        {1'b1,14'd262,14'd652,5'd15,val_env_sustain,`PARAM_ID_ENV1_SUSTAIN} : 49'd0;
+    assign knob_cells[33]=(knob_row3_y && in_x>=14'd298 && in_x<=14'd358) ?
+        {1'b1,14'd328,14'd652,5'd15,val_env_release,`PARAM_ID_ENV1_RELEASE} : 49'd0;
+    assign knob_cells[34]=(knob_row3_y && in_x>=14'd830 && in_x<=14'd890) ?
+        {1'b1,14'd860,14'd652,5'd15,val_fx_reverb,`PARAM_ID_FX_REVERB} : 49'd0;
+    assign knob_cells[35]=(knob_row3_y && in_x>=14'd930 && in_x<=14'd990) ?
+        {1'b1,14'd960,14'd652,5'd15,val_fx_delay,`PARAM_ID_FX_DELAY} : 49'd0;
+    assign knob_cells[36]=(knob_row3_y && in_x>=14'd1030 && in_x<=14'd1090) ?
+        {1'b1,14'd1060,14'd652,5'd15,val_fx_chorus,`PARAM_ID_FX_CHORUS} : 49'd0;
+    assign knob_cells[37]=(knob_row3_y && in_x>=14'd1130 && in_x<=14'd1190) ?
+        {1'b1,14'd1160,14'd652,5'd15,val_portamento,`PARAM_ID_PORTAMENTO} : 49'd0;
+    // The 38 cells occupy four disjoint raster bands. Reduce each band first,
+    // then select one 49-bit record by Y; this avoids a single 38-way wide OR
+    // tree feeding the first registered geometry stage.
+    wire [48:0] knob_row0=knob_cells[0]|knob_cells[1]|knob_cells[2]|knob_cells[3]|knob_cells[4];
+    wire [48:0] knob_row1=knob_cells[5]|knob_cells[6]|knob_cells[7]|knob_cells[8]|knob_cells[9]|
+                              knob_cells[10]|knob_cells[11]|knob_cells[12]|knob_cells[13]|knob_cells[14]|
+                              knob_cells[15]|knob_cells[16]|knob_cells[17];
+    wire [48:0] knob_row2=knob_cells[18]|knob_cells[19]|knob_cells[20]|knob_cells[21]|knob_cells[22]|
+                              knob_cells[23]|knob_cells[24]|knob_cells[25]|knob_cells[26]|knob_cells[27]|
+                              knob_cells[28];
+    wire [48:0] knob_row3=knob_cells[29]|knob_cells[30]|knob_cells[31]|knob_cells[32]|knob_cells[33]|
+                              knob_cells[34]|knob_cells[35]|knob_cells[36]|knob_cells[37];
+    // Each row record is already zero outside its Y band. A flat OR keeps
+    // the four disjoint rows off the timing-critical priority mux.
+    wire [48:0] knob_decode = knob_row0 | knob_row1 | knob_row2 | knob_row3;
     always @(posedge clk) begin
-        s0_x      <= in_x;
-        s0_y      <= in_y;
-        s0_active <= 1'b0;
-        s0_cx     <= 14'd0;
-        s0_cy     <= 14'd0;
-        s0_r      <= 5'd14;
-        s0_val    <= 7'd64;
-        s0_id     <= `PARAM_ID_NONE;
-
-        // --- ROW 0: Top Bar (Y = 8 .. 42, cy = 22) ---
-        if (in_y >= 14'd8 && in_y <= 14'd42) begin
-            s0_cy <= 14'd22;
-            if (in_x >= 14'd170 && in_x <= 14'd230) begin
-                s0_active <= 1'b1; s0_cx <= 14'd200; s0_r <= 5'd13; s0_val <= val_macro1; s0_id <= `PARAM_ID_MACRO1;
-            end else if (in_x >= 14'd230 && in_x <= 14'd290) begin
-                s0_active <= 1'b1; s0_cx <= 14'd260; s0_r <= 5'd13; s0_val <= val_macro2; s0_id <= `PARAM_ID_MACRO2;
-            end else if (in_x >= 14'd290 && in_x <= 14'd350) begin
-                s0_active <= 1'b1; s0_cx <= 14'd320; s0_r <= 5'd13; s0_val <= val_macro3; s0_id <= `PARAM_ID_MACRO3;
-            end else if (in_x >= 14'd350 && in_x <= 14'd410) begin
-                s0_active <= 1'b1; s0_cx <= 14'd380; s0_r <= 5'd13; s0_val <= val_macro4; s0_id <= `PARAM_ID_MACRO4;
-            end else if (in_x >= 14'd1152 && in_x <= 14'd1212) begin
-                s0_active <= 1'b1; s0_cx <= 14'd1182; s0_r <= 5'd16; s0_val <= val_master_vol; s0_id <= `PARAM_ID_MASTER_VOL;
-            end
-        end
-
-        // --- ROW 1: Upper Row 1 (Y = 250 .. 298, cy = 268) ---
-        else if (in_y >= 14'd250 && in_y <= 14'd298) begin
-            s0_cy <= 14'd268;
-            s0_r  <= 5'd14;
-            // OSC A
-            if (in_x >= 14'd34 && in_x <= 14'd94) begin
-                s0_active <= 1'b1; s0_cx <= 14'd64; s0_val <= val_osca_unison; s0_id <= `PARAM_ID_OSCA_UNISON;
-            end else if (in_x >= 14'd104 && in_x <= 14'd164) begin
-                s0_active <= 1'b1; s0_cx <= 14'd134; s0_val <= val_osca_detune; s0_id <= `PARAM_ID_OSCA_DETUNE;
-            end else if (in_x >= 14'd174 && in_x <= 14'd234) begin
-                s0_active <= 1'b1; s0_cx <= 14'd204; s0_val <= val_osca_blend; s0_id <= `PARAM_ID_OSCA_BLEND;
-            end else if (in_x >= 14'd244 && in_x <= 14'd304) begin
-                s0_active <= 1'b1; s0_cx <= 14'd274; s0_val <= val_osca_phase; s0_id <= `PARAM_ID_OSCA_PHASE;
-            end else if (in_x >= 14'd314 && in_x <= 14'd374) begin
-                s0_active <= 1'b1; s0_cx <= 14'd344; s0_val <= val_osca_rand; s0_id <= `PARAM_ID_OSCA_RAND;
-            end
-            // OSC B
-            else if (in_x >= 14'd450 && in_x <= 14'd510) begin
-                s0_active <= 1'b1; s0_cx <= 14'd480; s0_val <= val_oscb_unison; s0_id <= `PARAM_ID_OSCB_UNISON;
-            end else if (in_x >= 14'd520 && in_x <= 14'd580) begin
-                s0_active <= 1'b1; s0_cx <= 14'd550; s0_val <= val_oscb_detune; s0_id <= `PARAM_ID_OSCB_DETUNE;
-            end else if (in_x >= 14'd590 && in_x <= 14'd650) begin
-                s0_active <= 1'b1; s0_cx <= 14'd620; s0_val <= val_oscb_blend; s0_id <= `PARAM_ID_OSCB_BLEND;
-            end else if (in_x >= 14'd660 && in_x <= 14'd720) begin
-                s0_active <= 1'b1; s0_cx <= 14'd690; s0_val <= val_oscb_phase; s0_id <= `PARAM_ID_OSCB_PHASE;
-            end else if (in_x >= 14'd730 && in_x <= 14'd790) begin
-                s0_active <= 1'b1; s0_cx <= 14'd760; s0_val <= val_oscb_rand; s0_id <= `PARAM_ID_OSCB_RAND;
-            end
-            // Filter
-            else if (in_x >= 14'd920 && in_x <= 14'd980) begin
-                s0_active <= 1'b1; s0_cx <= 14'd950; s0_r <= 5'd15; s0_val <= val_flt_cutoff; s0_id <= `PARAM_ID_FLT_CUTOFF;
-            end else if (in_x >= 14'd1010 && in_x <= 14'd1070) begin
-                s0_active <= 1'b1; s0_cx <= 14'd1040; s0_r <= 5'd15; s0_val <= val_flt_res; s0_id <= `PARAM_ID_FLT_RES;
-            end else if (in_x >= 14'd1100 && in_x <= 14'd1160) begin
-                s0_active <= 1'b1; s0_cx <= 14'd1130; s0_val <= val_flt_pan; s0_id <= `PARAM_ID_FLT_PAN;
-            end
-        end
-
-        // --- ROW 2: Upper Row 2 (Y = 308 .. 356, cy = 326) ---
-        else if (in_y >= 14'd308 && in_y <= 14'd356) begin
-            s0_cy <= 14'd326;
-            s0_r  <= 5'd14;
-            // OSC A
-            if (in_x >= 14'd54 && in_x <= 14'd114) begin
-                s0_active <= 1'b1; s0_cx <= 14'd84; s0_r <= 5'd15; s0_val <= val_osca_wt_pos; s0_id <= `PARAM_ID_OSCA_WT_POS;
-            end else if (in_x >= 14'd134 && in_x <= 14'd194) begin
-                s0_active <= 1'b1; s0_cx <= 14'd164; s0_val <= val_osca_warp; s0_id <= `PARAM_ID_OSCA_WARP;
-            end else if (in_x >= 14'd234 && in_x <= 14'd294) begin
-                s0_active <= 1'b1; s0_cx <= 14'd264; s0_val <= val_osca_pan; s0_id <= `PARAM_ID_OSCA_PAN;
-            end else if (in_x >= 14'd314 && in_x <= 14'd374) begin
-                s0_active <= 1'b1; s0_cx <= 14'd344; s0_r <= 5'd15; s0_val <= val_osca_vol; s0_id <= `PARAM_ID_OSCA_VOL;
-            end
-            // OSC B
-            else if (in_x >= 14'd470 && in_x <= 14'd530) begin
-                s0_active <= 1'b1; s0_cx <= 14'd500; s0_r <= 5'd15; s0_val <= val_oscb_wt_pos; s0_id <= `PARAM_ID_OSCB_WT_POS;
-            end else if (in_x >= 14'd550 && in_x <= 14'd610) begin
-                s0_active <= 1'b1; s0_cx <= 14'd580; s0_val <= val_oscb_warp; s0_id <= `PARAM_ID_OSCB_WARP;
-            end else if (in_x >= 14'd650 && in_x <= 14'd710) begin
-                s0_active <= 1'b1; s0_cx <= 14'd680; s0_val <= val_oscb_pan; s0_id <= `PARAM_ID_OSCB_PAN;
-            end else if (in_x >= 14'd730 && in_x <= 14'd790) begin
-                s0_active <= 1'b1; s0_cx <= 14'd760; s0_r <= 5'd15; s0_val <= val_oscb_vol; s0_id <= `PARAM_ID_OSCB_VOL;
-            end
-            // Filter
-            else if (in_x >= 14'd920 && in_x <= 14'd980) begin
-                s0_active <= 1'b1; s0_cx <= 14'd950; s0_val <= val_flt_drive; s0_id <= `PARAM_ID_FLT_DRIVE;
-            end else if (in_x >= 14'd1010 && in_x <= 14'd1070) begin
-                s0_active <= 1'b1; s0_cx <= 14'd1040; s0_val <= val_flt_fat; s0_id <= `PARAM_ID_FLT_FAT;
-            end else if (in_x >= 14'd1100 && in_x <= 14'd1160) begin
-                s0_active <= 1'b1; s0_cx <= 14'd1130; s0_r <= 5'd15; s0_val <= val_flt_mix; s0_id <= `PARAM_ID_FLT_MIX;
-            end
-        end
-
-        // --- ROW 3: Expanded Lower Deck (Envelope & FX Knobs, Y = 632 .. 682, cy = 652) ---
-        else if (in_y >= 14'd632 && in_y <= 14'd682) begin
-            s0_cy <= 14'd652;
-            s0_r  <= 5'd15;
-            // Envelope 1 (Attack, Hold, Decay, Sustain, Release)
-            if (in_x >= 14'd70 && in_x <= 14'd130) begin
-                s0_active <= 1'b1; s0_cx <= 14'd100; s0_val <= val_env_attack; s0_id <= `PARAM_ID_ENV1_ATTACK;
-            end else if (in_x >= 14'd200 && in_x <= 14'd260) begin
-                s0_active <= 1'b1; s0_cx <= 14'd230; s0_val <= val_env_hold; s0_id <= `PARAM_ID_ENV1_HOLD;
-            end else if (in_x >= 14'd330 && in_x <= 14'd390) begin
-                s0_active <= 1'b1; s0_cx <= 14'd360; s0_val <= val_env_decay; s0_id <= `PARAM_ID_ENV1_DECAY;
-            end else if (in_x >= 14'd460 && in_x <= 14'd520) begin
-                s0_active <= 1'b1; s0_cx <= 14'd490; s0_val <= val_env_sustain; s0_id <= `PARAM_ID_ENV1_SUSTAIN;
-            end else if (in_x >= 14'd590 && in_x <= 14'd650) begin
-                s0_active <= 1'b1; s0_cx <= 14'd620; s0_val <= val_env_release; s0_id <= `PARAM_ID_ENV1_RELEASE;
-            end
-            // Master FX & Voicing (Reverb, Delay, Chorus, Portamento)
-            else if (in_x >= 14'd830 && in_x <= 14'd890) begin
-                s0_active <= 1'b1; s0_cx <= 14'd860; s0_val <= val_fx_reverb; s0_id <= `PARAM_ID_FX_REVERB;
-            end else if (in_x >= 14'd930 && in_x <= 14'd990) begin
-                s0_active <= 1'b1; s0_cx <= 14'd960; s0_val <= val_fx_delay; s0_id <= `PARAM_ID_FX_DELAY;
-            end else if (in_x >= 14'd1030 && in_x <= 14'd1090) begin
-                s0_active <= 1'b1; s0_cx <= 14'd1060; s0_val <= val_fx_chorus; s0_id <= `PARAM_ID_FX_CHORUS;
-            end else if (in_x >= 14'd1130 && in_x <= 14'd1190) begin
-                s0_active <= 1'b1; s0_cx <= 14'd1160; s0_val <= val_portamento; s0_id <= `PARAM_ID_PORTAMENTO;
-            end
-        end
+        s0_x<=in_x;s0_y<=in_y;
+        {s0_active,s0_cx,s0_cy,s0_r,s0_val,s0_id}<=knob_decode;
     end
 
     // --------------------------------------------------------------------------
@@ -216,12 +211,14 @@ module knob_vector_unit (
         end
     endfunction
 
-    // Subtract full raster coordinates before narrowing. Subtracting only low
-    // bits under a widened multiply corrupts distances at every 64px boundary.
-    wire [13:0] dx_full = (s0_x >= s0_cx) ? s0_x-s0_cx : s0_cx-s0_x;
-    wire [13:0] dy_full = (s0_y >= s0_cy) ? s0_y-s0_cy : s0_cy-s0_y;
-    wire [12:0] dx_square = {7'd0,dx_full[5:0]} * {7'd0,dx_full[5:0]};
-    wire [12:0] dy_square = {7'd0,dy_full[5:0]} * {7'd0,dy_full[5:0]};
+    // Active knob boxes are at most +/-30px, so signed low-six-bit deltas
+    // preserve the exact local coordinate without a full 14-bit subtractor.
+    wire signed [5:0] dx_local = $signed(s0_x[5:0]-s0_cx[5:0]);
+    wire signed [5:0] dy_local = $signed(s0_y[5:0]-s0_cy[5:0]);
+    wire [5:0] dx_abs_local = dx_local[5] ? -dx_local : dx_local;
+    wire [5:0] dy_abs_local = dy_local[5] ? -dy_local : dy_local;
+    wire [12:0] dx_square = {7'd0,dx_abs_local} * {7'd0,dx_abs_local};
+    wire [12:0] dy_square = {7'd0,dy_abs_local} * {7'd0,dy_abs_local};
 
     always @(posedge clk) begin
         s1_active   <= s0_active;
@@ -236,10 +233,10 @@ module knob_vector_unit (
         s1_ones     <= `CH_0 + (s0_val % 10);
 
         if (s0_active) begin
-            s1_dx     <= $signed(s0_x - s0_cx);
-            s1_dy     <= $signed(s0_y - s0_cy);
-            s1_dx_abs <= dx_full[5:0];
-            s1_dy_abs <= dy_full[5:0];
+            s1_dx     <= dx_local;
+            s1_dy     <= dy_local;
+            s1_dx_abs <= dx_abs_local;
+            s1_dy_abs <= dy_abs_local;
             s1_r2     <= dx_square + dy_square;
             {s1_ux, s1_uy} <= get_needle_vector(s0_val[6:3]);
         end else begin
@@ -367,65 +364,55 @@ module knob_vector_unit (
         ((s1_dy == -6'sd18 && s1_dx >= -6'sd1 && s1_dx <= 6'sd1) ||
          (s1_dy == 6'sd12 && (s1_dx == -6'sd17 || s1_dx == 6'sd17)));
 
+    // Stage three captures font coverage and geometric classification.
+    // RGB blending is isolated in stage four, matching the ENV layer.
+    reg body_hit;
+    reg [23:0] body_rgb;
+    always @(*) begin
+        body_hit=1;body_rgb=`COLOR_PANEL_BG;
+        if(hit_tick) body_rgb=24'h9FAEC2;
+        else if(hit_needle && !(is_row0 ?
+            (s1_dy>=6'sd2 && s1_dy<=6'sd8 && s1_dx_abs<=6'd6) : value_area))
+            body_rgb=`COLOR_KNOB_NEEDLE;
+        else if(hit_halo || hit_arc) body_rgb=`COLOR_KNOB_ARC;
+        else if(s1_r2<=r_limit2 && s1_r2>=bezel_inner2) body_rgb=`COLOR_KNOB_BEZEL;
+        else if(s1_r2<bezel_inner2) body_rgb=`COLOR_KNOB_BODY;
+        else body_hit=0;
+    end
+    reg active2,selected2,label_border2,label_box2,body_hit2;
+    reg [1:0] font_coverage2,value_coverage2;
+    reg [23:0] body_rgb2;
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            out_hit_knob <= 1'b0;
-            out_knob_rgb <= 24'h0;
+        if(!rst_n) begin
+            active2<=0;selected2<=0;label_border2<=0;label_box2<=0;body_hit2<=0;
+            font_coverage2<=0;value_coverage2<=0;body_rgb2<=0;
         end else begin
-            out_hit_knob <= 1'b0;
-            out_knob_rgb <= `COLOR_PANEL_BG;
-
-            if (s1_active) begin
-                // Priority 1: Parameter caption
-                if (font_coverage!=0) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= blend_rgb_q4(s1_selected ? 24'h00FFFF : 24'hFFFFFF,
-                        24'h101720,font_alpha_q4(font_coverage));
-                end
-                // Priority 2: Label Box Border
-                else if (on_lbl_border) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= s1_selected ? 24'h00D0FF : 24'h2E3D4E;
-                end
-                // Priority 3: Label Box Background Pill
-                else if (in_lbl_box) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= 24'h101720;
-                end
-                // Priority 4: Glowing Pointer Needle
-                else if (value_coverage!=0) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= blend_rgb_q4(24'hF0F4FF,`COLOR_KNOB_BODY,font_alpha_q4(value_coverage));
-                end else if (hit_tick) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= 24'h9FAEC2;
-                end else if (hit_needle && !(is_row0 ?
-                    (s1_dy >= 6'sd2 && s1_dy <= 6'sd8 && s1_dx_abs <= 6'd6) : value_area)) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= `COLOR_KNOB_NEEDLE;
-                end
-                // Priority 5: Selection Active Halo
-                else if (hit_halo) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= `COLOR_KNOB_ARC;
-                end
-                // Priority 6: 270-degree Arc Gauge
-                else if (hit_arc) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= `COLOR_KNOB_ARC;
-                end
-                // Priority 7: Metallic Bezel Rim
-                else if (s1_r2 <= r_limit2 && s1_r2 >= bezel_inner2) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= `COLOR_KNOB_BEZEL;
-                end
-                // Priority 8: Dark Knob Inner Cap
-                else if (s1_r2 < bezel_inner2) begin
-                    out_hit_knob <= 1'b1;
-                    out_knob_rgb <= `COLOR_KNOB_BODY;
+            active2<=s1_active;selected2<=s1_selected;
+            label_border2<=on_lbl_border;label_box2<=in_lbl_box;
+            body_hit2<=body_hit;body_rgb2<=body_rgb;
+            font_coverage2<=font_coverage;value_coverage2<=value_coverage;
+        end
+    end
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) begin out_hit_knob<=0;out_knob_rgb<=0;end
+        else begin
+            out_hit_knob<=0;out_knob_rgb<=`COLOR_PANEL_BG;
+            if(active2) begin
+                if(font_coverage2!=0) begin
+                    out_hit_knob<=1;
+                    out_knob_rgb<=blend_rgb_q4(selected2 ? 24'h00FFFF : 24'hFFFFFF,
+                        24'h101720,font_alpha_q4(font_coverage2));
+                end else if(label_border2) begin
+                    out_hit_knob<=1;out_knob_rgb<=selected2 ? 24'h00D0FF : 24'h2E3D4E;
+                end else if(label_box2) begin
+                    out_hit_knob<=1;out_knob_rgb<=24'h101720;
+                end else if(value_coverage2!=0) begin
+                    out_hit_knob<=1;
+                    out_knob_rgb<=blend_rgb_q4(24'hF0F4FF,`COLOR_KNOB_BODY,font_alpha_q4(value_coverage2));
+                end else if(body_hit2) begin
+                    out_hit_knob<=1;out_knob_rgb<=body_rgb2;
                 end
             end
         end
     end
-
 endmodule

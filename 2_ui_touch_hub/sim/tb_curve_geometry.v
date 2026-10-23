@@ -19,8 +19,8 @@ module tb_curve_geometry;
             // Integer references use full precision, independent of RTL widths.
             if(flt.calc_x_cut !== 898+n*280/128 || flt.calc_h_peak !== n*44/128)
                 $fatal(1,"FILTER coordinate overflow at value %0d: x=%0d h=%0d",n,flt.calc_x_cut,flt.calc_h_peak);
-            if(env.len_a !== 20+n*130/128 || env.len_h !== n*60/128 ||
-               env.len_d !== 24+n*160/128 || env.len_r !== 24+n*160/128 ||
+            if(env.len_a !== 10+n*65/128 || env.len_h !== n*30/128 ||
+               env.len_d !== 12+n*80/128 || env.len_r !== 12+n*80/128 ||
                env.calc_y_sus !== 568-n*144/128)
                 $fatal(1,"ENV coordinate overflow at value %0d",n);
             if(flt.calc_x_cut<prev_x || env.len_a<prev_a || env.len_r<prev_r || env.calc_y_sus>prev_y)
