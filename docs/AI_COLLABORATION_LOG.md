@@ -4,7 +4,7 @@ Purpose: durable handoff record for AI-assisted changes made on the shared UI/au
 
 ## 2026-10-23 — Phase 1 UART integration baseline
 
-Status: RTL implementation and simulation passed. UI source snapshot: `0dfae7c995bc7029f1253c8c4843a10eb3d4376f`; source archive SHA256: `A5D30CBDA828C9B19CEAE0D8E26802D0E3999D3B71EC211F8038D57F421FA9B1`. Shared implementation commit: `db851cd` on `integration/dual-138k-uart-phase1`; GitHub push is pending.
+Status: RTL implementation and simulation passed. UI source snapshot: `0dfae7c995bc7029f1253c8c4843a10eb3d4376f`; source archive SHA256: `A5D30CBDA828C9B19CEAE0D8E26802D0E3999D3B71EC211F8038D57F421FA9B1`. Shared implementation commits: `db851cd` and `bf896e4` on `integration/dual-138k-uart-phase1`; branch pushed to `origin/integration/dual-138k-uart-phase1` on 2026-10-24.
 
 ### Branch synchronization
 
