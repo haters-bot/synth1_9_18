@@ -129,6 +129,9 @@ New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
 $tclProjectPath = $projectPath.Replace("\", "/")
 @(
     "open_project {$tclProjectPath}"
+    # impl/ is intentionally not versioned, so make the required HDL dialect
+    # explicit for clean clones and remote build machines.
+    "set_option -verilog_std sysv2017"
     "run all"
     "run close"
     "exit"
