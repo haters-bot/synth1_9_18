@@ -132,6 +132,7 @@ $tclProjectPath = $projectPath.Replace("\", "/")
     # impl/ is intentionally not versioned, so make the required HDL dialect
     # explicit for clean clones and remote build machines.
     "set_option -verilog_std sysv2017"
+    "set_option -top_module top"
     "run all"
     "run close"
     "exit"
