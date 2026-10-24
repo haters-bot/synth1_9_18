@@ -20,8 +20,20 @@ if (-not $ProjectRoot) {
 function Invoke-Git {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 
-    $result = & git -C $ProjectRoot @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    # Windows PowerShell 5.1 turns native stderr redirected with 2>&1 into
+    # ErrorRecord objects. Git writes normal progress messages to stderr, so
+    # temporarily keep those records non-terminating and judge by the exit code.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $result = & git -C $ProjectRoot @Arguments 2>&1
+        $gitExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    $result = @($result | ForEach-Object { $_.ToString() })
+    if ($gitExitCode -ne 0) {
         throw "git $($Arguments -join ' ') failed:`n$($result -join [Environment]::NewLine)"
     }
     return $result
@@ -126,8 +138,14 @@ Write-Host "[2/4] Building commit $commit with $gowinShell ..."
 try {
     Push-Location $ProjectRoot
     try {
-        & $gowinShell $tclPath 2>&1 | Tee-Object -FilePath $consoleLog
-        $gowinExitCode = $LASTEXITCODE
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $gowinShell $tclPath 2>&1 | Tee-Object -FilePath $consoleLog
+            $gowinExitCode = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
     } finally {
         Pop-Location
     }

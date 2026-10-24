@@ -21,8 +21,19 @@ if (-not $RemoteShare) {
 function Invoke-LocalGit {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 
-    $result = & git -C $projectRoot @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    # Git reports normal fetch/push progress on stderr. Under Windows
+    # PowerShell 5.1, redirected native stderr becomes ErrorRecord objects.
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $result = & git -C $projectRoot @Arguments 2>&1
+        $gitExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    $result = @($result | ForEach-Object { $_.ToString() })
+    if ($gitExitCode -ne 0) {
         throw "git $($Arguments -join ' ') failed:`n$($result -join [Environment]::NewLine)"
     }
     return $result
