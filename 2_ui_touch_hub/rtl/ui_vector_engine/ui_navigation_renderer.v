@@ -145,12 +145,12 @@ module ui_navigation_renderer(
    if(in_y==119)bg=24'h347B90;
   end
   macro_row=(in_y-248)>>6;
-  macro_number=view==2 && settings_section_id==8'd1 && in_y>=248 && in_y<460 && ((in_y-248)&63)<16 && in_x>=416 && in_x<452;
+  macro_number=view==2 && settings_section_id==8'd1 && in_y>=248 && in_y<460 && ((in_y-248)&63)<16 && in_x>=416 && in_x<464;
   case(macro_row)
    0:number=macro_values[0+:7];1:number=macro_values[7+:7];
    2:number=macro_values[14+:7];default:number=macro_values[21+:7];
   endcase
-  case((in_x-416)/12)
+  case((in_x-416)>>4)
    0:number_char=number>=100 ? `CH_1 : `CH_SPACE;
    1:number_char=`CH_0+bcd[macro_row][7:4];
    default:number_char=`CH_0+bcd[macro_row][3:0];
@@ -175,7 +175,7 @@ module ui_navigation_renderer(
   else begin
    h0<=hit;b0<=bg;fg0<=text_color;id0<=text_id;col0<=text_col;
    tv0<=text_valid||macro_number;number0<=macro_number;digit0<=number_char;
-   rx0<=macro_number ? ((in_x-416)%12) : text_rx;ry0<=macro_number ? ((in_y-248)&63) : text_ry;
+   rx0<=macro_number ? in_x[3:0] : text_rx;ry0<=macro_number ? ((in_y-248)&63) : text_ry;
    large0<=!macro_number && text_large;
    h1<=h0;b1<=b0;fg1<=fg0;tv1<=tv0;
    ch1<=number0 ? digit0 : navigation_char(id0,col0);rx1<=rx0;ry1<=ry0;large1<=large0;
