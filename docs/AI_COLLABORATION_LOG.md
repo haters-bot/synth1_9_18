@@ -2,6 +2,13 @@
 
 Purpose: durable handoff record for AI-assisted changes made on the shared UI/audio integration branch. Each entry records touched files, verification, limits, and the associated commit once pushed.
 
+## 2026-10-26 03:18 — LFO SysEx V2 UI bitstream programmed to SRAM
+
+- First deployment attempt at `2026-10-25 23:04` transferred and hash-verified the final bitstream but Gowin Programmer returned `PROGRAMMER_EXIT=50` before progress; the failure is preserved in `2_ui_touch_hub/impl/deploy_runs/20261025_230403_LFO_SYSEX_V2_TIMING_CLOSED/`.
+- After the UI board and Gowin USB cable were reconnected, read-only JTAG identification returned ID `0x0001081B`, then `tools/deploy_verified.py --target sram` completed run `impl/deploy_runs/20261026_031805_LFO_SYSEX_V2_TIMING_CLOSED_RETRY/`: 100% SRAM programming, status `0x00026230`, `PROGRAMMER_EXIT=0`, remote SHA256 matched `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`.
+- `preview.jpg` and `telemetry.png` were returned by the engineering-host camera, proving the camera path ran; the captured monitor is black, so physical display/HDMI acceptance is still pending. The deployment is recorded as SRAM programmed, with Flash untouched.
+- The board-visible behavior is not yet accepted from this capture. Audio-side SysEx V2 receive and modulation computation remain unimplemented, so this deployment only validates the UI transmitter bitstream and its outgoing UART behavior.
+
 ## 2026-10-25 23:00 — UI LFO SysEx timing closed; SRAM deployment candidate (ZCode + Codex)
 
 - ZCode's uncommitted UI LFO SysEx V2 implementation and protocol document were preserved unchanged in function: `lfo_sysex_tx.v`, MIDI SysEx injection ports, top-level `u_lfo_sysex` wiring, project registration, and `tb_lfo_sysex_tx.v`. The audio board still has no SysEx receiver; unsupported IDs are ignored, so this build does not claim audio-side modulation.

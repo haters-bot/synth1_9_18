@@ -1,5 +1,11 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 03:18：LFO SysEx V2 位流已烧录 SRAM，实屏黑屏待排查
+
+- `b10e365` 已推送到 `origin/integration/dual-138k-uart-phase1`。最终候选 `impl/R16A_build_20261025_224744/` 已通过五类时序门禁，位流 SHA256 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`。
+- 工程机重连后，`tools/deploy_verified.py --target sram` 在 `impl/deploy_runs/20261026_031805_LFO_SYSEX_V2_TIMING_CLOSED_RETRY/` 完成 100% SRAM 编程，`PROGRAMMER_EXIT=0`、状态码 `0x00026230`、远端哈希一致。Flash 未操作。
+- 工程机摄像头调用成功并返回 `preview.jpg`/`telemetry.png`，但屏幕画面为全黑，因此当前只确认“位流已写入 SRAM”，不确认 UI 实屏运行。下一步先检查板卡复位/HDMI 链路和显示器输入，再决定是否需要重新部署；不要把黑屏当作 UI 验收通过。
+
 ## 2026-10-25 23:00：LFO SysEx 发送器时序已收口（Codex，待提交/部署）
 
 - 在保留 ZCode 实现和协议文档的基础上，Codex 对 `constraints/ui_touch_hub.cst` 采用最小物理约束：`INS_LOC "u_render/u_navigation_render/ch1_0_s0" R35C151[0][A];`。尝试过的发射端/参数端锚点导致全局布局回归，已撤掉；没有降频、没有时序豁免。
