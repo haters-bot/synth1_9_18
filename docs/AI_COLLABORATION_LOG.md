@@ -2,6 +2,12 @@
 
 Purpose: durable handoff record for AI-assisted changes made on the shared UI/audio integration branch. Each entry records touched files, verification, limits, and the associated commit once pushed.
 
+## 2026-10-26 03:24 — Black-screen A/B check after LFO SysEx deployment
+
+- The current LFO SysEx bitstream was first confirmed in SRAM (`User Code 0x000030AF`), but the engineering-host camera captured a black monitor with only intermittent visible output.
+- As an A/B check, the previously accepted R17B HD-font bitstream (`C82CFF39CFE71C53619A7706B918F3CDD58C0D9E1772795C12C3D5B5AA9E7EF`, prior deployment `20261025_192830_R17B_HD_FONT`) was written to SRAM using run `20261026_032317_R17B_HD_FONT_RECHECK`; it also completed with `PROGRAMMER_EXIT=0`, yet the returned camera frame remained black.
+- The current LFO SysEx bitstream was restored in run `20261026_032427_LFO_SYSEX_V2_RESTORE_CURRENT`, again with `PROGRAMMER_EXIT=0` and the expected hash. This A/B result does not support attributing the black screen to the LFO SysEx RTL; HDMI/display input, board reset state, or the display link still requires physical inspection.
+
 ## 2026-10-26 03:18 — LFO SysEx V2 UI bitstream programmed to SRAM
 
 - First deployment attempt at `2026-10-25 23:04` transferred and hash-verified the final bitstream but Gowin Programmer returned `PROGRAMMER_EXIT=50` before progress; the failure is preserved in `2_ui_touch_hub/impl/deploy_runs/20261025_230403_LFO_SYSEX_V2_TIMING_CLOSED/`.

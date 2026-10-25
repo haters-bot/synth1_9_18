@@ -1,5 +1,11 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 03:24：黑屏 A/B 对照未指向 LFO SysEx 位流
+
+- 当前 LFO 位流已写入 SRAM（User Code `0x000030AF`），但摄像头画面为黑屏/偶闪。随后把已验收的 R17B HD-font 位流写回 SRAM，运行 `20261026_032317_R17B_HD_FONT_RECHECK` 同样成功，但摄像头仍为黑屏。
+- 已将当前 LFO 位流恢复到 SRAM，运行 `20261026_032427_LFO_SYSEX_V2_RESTORE_CURRENT`，哈希 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`、`PROGRAMMER_EXIT=0`。
+- 现有证据不支持把黑屏归因于 LFO SysEx RTL；下一步应现场检查 HDMI 线、显示器输入源、板卡复位/供电和显示链路。当前不标记 UI 实屏验收通过。
+
 ## 2026-10-26 03:18：LFO SysEx V2 位流已烧录 SRAM，实屏黑屏待排查
 
 - `b10e365` 已推送到 `origin/integration/dual-138k-uart-phase1`。最终候选 `impl/R16A_build_20261025_224744/` 已通过五类时序门禁，位流 SHA256 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`。
