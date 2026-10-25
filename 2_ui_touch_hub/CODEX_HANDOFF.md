@@ -1,5 +1,12 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 04:48：TXE8148 32 路旋钮版本已烧录 SRAM
+
+- 使用提交 `76a7fb9` 对应位流 `impl/pnr/2_ui_touch_hub.fs` 执行 `tools/deploy_verified.py --target sram`。
+- 工程机 `10.136.125.157` 识别 `GW5AST-138B (0x0001081B)`；SRAM 编程 100%，`PROGRAMMER_EXIT=0`，状态码 `0x00026230`，User Code `0x000014A6`，用时 22.68 s。
+- 部署审计目录：`impl/deploy_runs/20261026_044804_TXE8148_EC11_SPI_76A7FB9/`；远端 SHA256 与本地一致：`E0246684F67C3D155519FCA57182DD2619F45E2F2D482269FDFCCF6F7FCDF54F`。
+- `preview.jpg` 已抓到正常 UI 六窗画面，说明该位流已在板上运行。当前只完成画面和编程链路确认，32 个 EC11 的每个旋钮、按键和方向尚未做逐项物理输入验收。Flash 未操作。
+
 ## 2026-10-26 04:32：TXE8148 双芯片 32 路 EC11 SPI 接收器已综合通过
 
 - 当前工作区把旧的 16 通道 ADC SPI 接收器替换为双 TXE8148 轮询接收器：两路独立 `CS#`、共享 `SCLK/SDI/SDO`，连续读取两颗芯片的 `0x20..0x25` 输入端口寄存器。

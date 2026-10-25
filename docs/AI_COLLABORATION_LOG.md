@@ -2,6 +2,13 @@
 
 Purpose: durable handoff record for AI-assisted changes made on the shared UI/audio integration branch. Each entry records touched files, verification, limits, and the associated commit once pushed.
 
+## 2026-10-26 04:48 — TXE8148 32-encoder SRAM deployment
+
+- Deployed commit `76a7fb9` with `tools/deploy_verified.py --target sram` to engineering host `10.136.125.157`.
+- Gowin Programmer identified `GW5AST-138B (0x0001081B)`, completed SRAM programming at 100%, returned `PROGRAMMER_EXIT=0`, status `0x00026230`, User Code `0x000014A6`, and 22.68 s elapsed.
+- Deployment run `2_ui_touch_hub/impl/deploy_runs/20261026_044804_TXE8148_EC11_SPI_76A7FB9/` contains the manifest, programmer log, preview and telemetry. Local/remote bitstream SHA256 is `E0246684F67C3D155519FCA57182DD2619F45E2F2D482269FDFCCF6F7FCDF54F`.
+- Camera preview shows the normal six-window UI. This confirms SRAM programming and video output; physical validation of each of the 32 encoder A/B/SW inputs remains pending. Flash was not touched.
+
 ## 2026-10-26 04:32 — TXE8148 dual-chip / 32-EC11 SPI intake implemented
 
 - Replaced `2_ui_touch_hub/rtl/knob_spi_intake/knob_spi_rx.v` with a TXE8148 SPI mode-0 polling master. It reads both chips independently, decodes the `A/B/SW` triplets for 32 EC11 encoders, emits absolute 0..127 parameter events, and routes the first six push switches to existing UI buttons.
