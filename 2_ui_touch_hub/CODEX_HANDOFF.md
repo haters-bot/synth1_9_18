@@ -1,5 +1,10 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 03:30：最新 LFO SysEx 位流已恢复并实屏确认
+
+- 显示器电源接好后，最终 LFO SysEx 位流在 `impl/deploy_runs/20261026_033031_LFO_SYSEX_V2_CURRENT_AFTER_POWER_FIX/` 重新烧录成功：`PROGRAMMER_EXIT=0`、状态码 `0x00026230`、User Code `0x000030AF`、SHA256 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`。
+- `preview.jpg` 已看到正常的 UI 六窗可视化页面；此前黑屏来自显示器电源连接问题，当前最新版本已在板上运行。Flash 未操作。
+
 ## 2026-10-26 03:24：黑屏 A/B 对照未指向 LFO SysEx 位流
 
 - 当前 LFO 位流已写入 SRAM（User Code `0x000030AF`），但摄像头画面为黑屏/偶闪。随后把已验收的 R17B HD-font 位流写回 SRAM，运行 `20261026_032317_R17B_HD_FONT_RECHECK` 同样成功，但摄像头仍为黑屏。

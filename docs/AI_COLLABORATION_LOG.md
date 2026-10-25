@@ -2,6 +2,12 @@
 
 Purpose: durable handoff record for AI-assisted changes made on the shared UI/audio integration branch. Each entry records touched files, verification, limits, and the associated commit once pushed.
 
+## 2026-10-26 03:30 — Latest LFO SysEx UI confirmed on screen after power fix
+
+- After the UI display power connection was corrected, the final LFO SysEx bitstream was written again in run `impl/deploy_runs/20261026_033031_LFO_SYSEX_V2_CURRENT_AFTER_POWER_FIX/`.
+- SRAM programming completed with `PROGRAMMER_EXIT=0`, status `0x00026230`, User Code `0x000030AF`, and SHA256 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`.
+- The returned `preview.jpg` now shows the expected UI six-window visualization page. The earlier black-screen A/B result was caused by the display power connection; the LFO SysEx bitstream is currently restored and visibly running. Flash remains untouched.
+
 ## 2026-10-26 03:24 — Black-screen A/B check after LFO SysEx deployment
 
 - The current LFO SysEx bitstream was first confirmed in SRAM (`User Code 0x000030AF`), but the engineering-host camera captured a black monitor with only intermittent visible output.
