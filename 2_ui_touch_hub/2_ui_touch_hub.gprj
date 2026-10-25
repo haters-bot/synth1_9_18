@@ -46,6 +46,7 @@
         <File path="rtl/knob_spi_intake/knob_spi_rx.v" type="file.verilog" enable="1"/>
         <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
         <File path="rtl/midi_uart_tx/midi_uart_tx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/lfo_sysex_tx.v" type="file.verilog" enable="1"/>
         <File path="rtl/debug/ui_debug_trace.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_touch_hub_top.v" type="file.verilog" enable="1"/>
         <File path="constraints/ui_touch_hub.cst" type="file.cst" enable="1"/>

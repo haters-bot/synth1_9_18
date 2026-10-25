@@ -38,6 +38,9 @@ module tb_midi_uart_tx;
         .cc_req        (cc_req),
         .cc_param_id   (cc_param_id),
         .cc_val        (cc_val),
+        .sysex_req     (1'b0),      // SysEx path idle; covered by tb_lfo_sysex_tx
+        .sysex_msgs    (48'd0),
+        .sysex_accept  (),
         .uart_tx       (uart_tx),
         .tx_busy       (tx_busy)
     );

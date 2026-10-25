@@ -1,5 +1,26 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-25 23:00：LFO SysEx 发送器时序已收口（Codex，待提交/部署）
+
+- 在保留 ZCode 实现和协议文档的基础上，Codex 对 `constraints/ui_touch_hub.cst` 采用最小物理约束：`INS_LOC "u_render/u_navigation_render/ch1_0_s0" R35C151[0][A];`。尝试过的发射端/参数端锚点导致全局布局回归，已撤掉；没有降频、没有时序豁免。
+- 最终候选 `impl/R16A_build_20261025_224744/`，审计 `audit_20261025_225837_331586.json`：setup/hold/recovery/removal/pulse 全部零违例，余量分别 `+0.171/+0.196/+0.100/+0.497/+0.453 ns`，`timing_closed=true`，位流 SHA256 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`。
+- `tb_lfo_sysex_tx` 94 项全过，`tb_midi_uart_tx` 100% 全过。下一步是把工作区改动（含本条约束、协议文档、回归测试和协同日志）提交并推送集成分支，然后只用 `tools/deploy_verified.py --target sram` 烧录。Flash 继续暂停。
+- 验收边界：音频板当前尚未实现 SysEx V2 接收/调制计算，因此烧录后 UI 画面应与 R17B_HD_FONT 一致，音频板暂时只会忽略这些未知 SysEx ID；不能把这次 UI 发送器上板称为音频调制已联调。
+
+## 2026-10-25 20:45：LFO SysEx 发送器已实现（ZCode，未提交，时序门禁未过，待 Codex 收尾）
+
+- 工作区未提交改动实现了 UI LFO 协议 V2（`docs/UI_LFO_MODULATION_PROTOCOL_V2.md` §7 全部四项）：新增 `rtl/midi_uart_tx/lfo_sysex_tx.v`（静默快照→diff→SysEx 流式发送→原子 commit，ID72 相位同步）；`midi_uart_tx.v` 增 sysex 注入端口（Note/CC 同拍优先、组合 accept 防双推）；顶层接线 `u_lfo_sysex`；gprj 已登记。
+- 仿真证据：`sim/tb_lfo_sysex_tx.v` 94 项全过（全量 81 帧、点/路由/模式编辑、CC 抢占）；`tb_midi_uart_tx` 原回归 100%；全顶层 `-sv` 编译 0 错。命令：`cd sim && D:/altera/modelsim_ase/win32aloem/vsim.exe -c -do "vlog +incdir+../rtl/ui_vector_engine ../rtl/midi_uart_tx/*.v tb_lfo_sysex_tx.v; vsim work.tb_lfo_sysex_tx; run -all; quit -f"`。
+- 时序：三轮构建收敛 setup −3.685→−2.933→**−0.056ns**，唯一剩余违例 `u_navigation_render/id0_5_s0→ch1_0_s0` 为既有路径被布局挤占（非 LFO 逻辑），Gowin 布局确定性重跑无效。**timing_closed=false，禁止烧录。**
+- 给 Codex 的收尾建议：参照 `a276b9b`（serializer 复位 INS_LOC 先例）锚定上述两 FF；构建目录 `impl/R16A_build_20261025_202146`（=203946 同结果）含审计 JSON。改动未 commit（Mimosa 拦截与本次无关的历史脚本告警），`git diff` 可见全部。
+- 详细过程与协议背景见 `docs/AI_COLLABORATION_LOG.md` 2026-10-25 两条目。Flash 暂停不变；本改动不影响 CC/Note 行为（回归已证）。
+
+## 2026-10-25 19:28：高分辨率字体位流已由 ZCode 烧录上板（R17B_HD_FONT）
+
+- 当前板上为 `impl/deploy_runs/20261025_192830_R17B_HD_FONT/`，即 Codex 构建审计的 `b8b7efd`（`navigation_font_hd.vh` 高分辨率导航字体，7×10 映射 12×16 框、标题 2× 放大、旧 4×6 保留回退）。位流 SHA256 `C82CFF39CFE71C53619A7706B918F3CDD58C0D9E1772795C12C3D5B5AA9E7EF`，双机哈希一致，GW5AST-138B/operation2 SRAM/23.06s/PROGRAMMER_EXIT=0，Flash 未动。
+- 部署由 ZCode 按用户指令执行（synth1_9_18 侧 tools/deploy_verified.py；gaoyun 侧同名脚本对 b8b7efd 快照审计会报 navigation_font_hd.vh 缺失，勿用）。抓拍 `preview.jpg` 证明新位流运行；**高分辨率字体的实屏可读性与触控验收仍待用户确认**，完成前不设验收标签。
+- 当日工程机网络间歇断连根因：ZeroTier 对端纯 RELAY 海外中继 + 工程机约 19:16 起疑似闲置睡眠失联，恢复后完成烧录。两次失败尝试均未触碰烧录，远端 D:/gaoyun_deploy/ 可能有残留半截 zip（无害）。详细记录见 `docs/AI_COLLABORATION_LOG.md` 2026-10-25 条目。
+
 ## 2026-10-20：R17导航页清晰度和设置扩展位候选（尚未上板）
 
 - 用户已确认VISUALIZATION能切换，但另外两个页面文字小、发虚。当前工作区候选改为导航独立原生字形（正文约11×16、标题约15×22）并提高说明色；合成器原字体不改。

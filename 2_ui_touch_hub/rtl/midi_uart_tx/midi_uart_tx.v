@@ -27,6 +27,17 @@ module midi_uart_tx #(
     input  wire [7:0]  cc_param_id,
     input  wire [6:0]  cc_val,
 
+    // LFO SysEx Frame Input (Priority 3, from lfo_sysex_tx; Protocol V2)
+    //  One request presents two 24-bit FIFO words = F0 7D id | msb lsb F7.
+    //  Note/CC events always win same-cycle conflicts; the request stays
+    //  asserted until sysex_accept pulses.
+    input  wire        sysex_req,
+    input  wire [47:0] sysex_msgs,
+    // Combinational accept: pulses on the exact cycle the two words enter
+    // the FIFO, so the requester can drop its request next cycle without
+    // ever double-pushing one frame.
+    output wire        sysex_accept,
+
     // Hardware UART Serial Output (to Teammate 3 Audio Engine)
     output reg         uart_tx,
     output wire        tx_busy
@@ -139,13 +150,17 @@ module midi_uart_tx #(
                               || (map_id_to_cc(cc_param_id) == 7'd31)) ?
                              ((cc_val == 7'd0) ? 7'd1 : ((cc_val > 7'd8) ? 7'd8 : cc_val)) : cc_val;
 
-    wire        in_push = (note_on_req || note_off_req
-                           || (cc_req && cc_id_supported(cc_param_id)
-                               && fifo_count < 4'd7)) && (fifo_count < 4'd8);
+    wire note_cc_push = (note_on_req || note_off_req
+                        || (cc_req && cc_id_supported(cc_param_id)
+                            && fifo_count < 4'd7)) && (fifo_count < 4'd8);
     wire [23:0] in_msg  = note_on_req  ? {8'h90, 1'b0, note_number, 1'b0, note_velocity} :
                           note_off_req ? {8'h80, 1'b0, note_number, 8'h00} :
                                          {8'hBF, 1'b0, map_id_to_cc(cc_param_id), 1'b0,
                                           map_id_value(cc_param_id, safe_cc_val)};
+
+    // SysEx needs two free FIFO slots and yields to a same-cycle Note/CC.
+    wire sysex_push = sysex_req && !note_cc_push && (fifo_count <= 4'd6);
+    assign sysex_accept = sysex_push;
 
     wire in_pop = (seq_state == SEQ_IDLE) && (fifo_count != 4'd0) && !uart_byte_busy;
 
@@ -163,10 +178,14 @@ module midi_uart_tx #(
         end else begin
             uart_start_byte <= 1'b0;
 
-            // FIFO Push
-            if (in_push) begin
+            // FIFO Push (Note/CC single word, SysEx two words)
+            if (note_cc_push) begin
                 fifo_mem[fifo_wr_ptr] <= in_msg;
                 fifo_wr_ptr <= fifo_wr_ptr + 3'd1;
+            end else if (sysex_push) begin
+                fifo_mem[fifo_wr_ptr]      <= sysex_msgs[47:24];
+                fifo_mem[fifo_wr_ptr+3'd1] <= sysex_msgs[23:0];
+                fifo_wr_ptr <= fifo_wr_ptr + 3'd2;
             end
 
             // FIFO Pop & 3-Byte Sequencer
@@ -204,11 +223,11 @@ module midi_uart_tx #(
                 end
             endcase
 
-            // FIFO Count Tracking
-            if (in_push && !in_pop)
-                fifo_count <= fifo_count + 4'd1;
-            else if (!in_push && in_pop)
-                fifo_count <= fifo_count - 4'd1;
+            // FIFO Count Tracking (Note/CC +1, SysEx +2, pop -1)
+            fifo_count <= fifo_count
+                         + (note_cc_push ? 4'd1 : 4'd0)
+                         + (sysex_push  ? 4'd2 : 4'd0)
+                         - (in_pop      ? 4'd1 : 4'd0);
         end
     end
 

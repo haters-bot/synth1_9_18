@@ -20,6 +20,11 @@ INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R63C164[0][B]
 INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R61C164[0][A];
 INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R60C166[0][A];
 
+// Keep the navigation timing pair at the audited high-resolution build sites.
+// The LFO SysEx transmitter changes placement pressure but is not on this
+// path; these anchors preserve the previously closed navigation route.
+INS_LOC "u_render/u_navigation_render/ch1_0_s0" R35C151[0][A];
+
 IO_LOC  "clk"             V22;
 IO_PORT "clk"             IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=OFF BANK_VCCIO=3.3;
 

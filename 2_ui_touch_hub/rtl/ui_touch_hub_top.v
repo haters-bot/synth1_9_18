@@ -250,6 +250,15 @@ module ui_touch_hub_top #(
     wire [6:0] fx_event_value;
     wire [1:0] route_event_source;
     wire signed [7:0] route_event_depth;
+    // LFO Protocol V2 snapshots and SysEx injection (lfo_sysex_tx <-> midi_uart_tx)
+    wire [146:0] lfo_node_snapshot;
+    wire [8:0]   lfo_rate_snapshot;
+    wire [2:0]   lfo_step_snapshot, lfo_once_snapshot;
+    wire [105:0] route_source_snapshot;
+    wire [423:0] route_depth_snapshot;
+    wire        sysex_req;
+    wire [47:0] sysex_msgs;
+    wire        sysex_accept;
     wire ui_touch_valid, ui_touch_down;
     wire [13:0] ui_touch_x, ui_touch_y;
     wire curve_capture,curve_focus_valid;
@@ -445,6 +454,9 @@ module ui_touch_hub_top #(
         .fx_event_valid(fx_event_valid),.fx_event_id(fx_event_id),.fx_event_value(fx_event_value),
         .route_event_valid(route_event_valid),.route_event_target(route_event_target),
         .route_event_source(route_event_source),.route_event_depth(route_event_depth),
+        .lfo_node_snapshot(lfo_node_snapshot),.lfo_rate_snapshot(lfo_rate_snapshot),
+        .lfo_step_snapshot(lfo_step_snapshot),.lfo_once_snapshot(lfo_once_snapshot),
+        .route_source_snapshot(route_source_snapshot),.route_depth_snapshot(route_depth_snapshot),
         .trace_lfo_state(trace_lfo_state),
         .ui_touch_valid(ui_touch_valid), .ui_touch_down(ui_touch_down),
         .ui_touch_x(ui_touch_x), .ui_touch_y(ui_touch_y),
@@ -555,6 +567,25 @@ module ui_touch_hub_top #(
     // 8. 队友 3 音频引擎 UART MIDI 协议发送器 (31250 baud)
     // --------------------------------------------------------------------------
     wire audio_midi_tx;
+    // LFO Protocol V2: snapshot the LFO UI after it falls quiet and stream the
+    // configuration as 6-byte SysEx frames; static CC values keep flowing as-is.
+    lfo_sysex_tx #(
+        .HOLD_CYCLES       (1_000_000), // 20 ms edit-quiet window @ 50 MHz
+        .FIRST_HOLD_CYCLES (300_000)    // initial full sync after 6 ms
+    ) u_lfo_sysex (
+        .clk         (clk_pixel),
+        .rst_n       (sys_rst_n_sync),
+        .cfg_nodes   (lfo_node_snapshot),
+        .cfg_rates   (lfo_rate_snapshot),
+        .cfg_steps   (lfo_step_snapshot),
+        .cfg_once    (lfo_once_snapshot),
+        .cfg_sources (route_source_snapshot),
+        .cfg_depths  (route_depth_snapshot),
+        .tx_accept   (sysex_accept),
+        .sysex_req   (sysex_req),
+        .sysex_msgs  (sysex_msgs),
+        .busy        ()
+    );
     midi_uart_tx #(
         .CLK_FREQ (50000000),
         .BAUD     (31250)
@@ -568,6 +599,9 @@ module ui_touch_hub_top #(
         .cc_req        (midi_cc_req),
         .cc_param_id   (midi_cc_param_id),
         .cc_val        (midi_cc_val),
+        .sysex_req     (sysex_req),
+        .sysex_msgs    (sysex_msgs),
+        .sysex_accept  (sysex_accept),
         .uart_tx       (audio_midi_tx),
         .tx_busy       (midi_tx_busy)
     );

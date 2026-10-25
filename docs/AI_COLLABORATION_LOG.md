@@ -2,6 +2,14 @@
 
 Purpose: durable handoff record for AI-assisted changes made on the shared UI/audio integration branch. Each entry records touched files, verification, limits, and the associated commit once pushed.
 
+## 2026-10-25 23:00 — UI LFO SysEx timing closed; SRAM deployment candidate (ZCode + Codex)
+
+- ZCode's uncommitted UI LFO SysEx V2 implementation and protocol document were preserved unchanged in function: `lfo_sysex_tx.v`, MIDI SysEx injection ports, top-level `u_lfo_sysex` wiring, project registration, and `tb_lfo_sysex_tx.v`. The audio board still has no SysEx receiver; unsupported IDs are ignored, so this build does not claim audio-side modulation.
+- Codex retained the original failing builds and audits, then added one physical constraint to `2_ui_touch_hub/constraints/ui_touch_hub.cst`: `u_render/u_navigation_render/ch1_0_s0` at `R35C151[0][A]`, taken from the previously timing-closed high-resolution build. The attempted source and parameter anchors were removed after their audits showed placement regression; no timing waiver or frequency reduction was used.
+- Final isolated build: `2_ui_touch_hub/impl/R16A_build_20261025_224744/`; audit `audit_20261025_225837_331586.json`; source/snapshot mismatches empty; setup `+0.171 ns`, hold `+0.196 ns`, recovery `+0.100 ns`, removal `+0.497 ns`, pulse width `+0.453 ns`; all five violation classes zero; `timing_closed=true`; bitstream SHA256 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`.
+- Regression after the constraint: `tb_lfo_sysex_tx` 94 checks PASS and `tb_midi_uart_tx` 100% PASS. ModelSim emits its normal post-`$finish` diagnostic, while both processes exit 0.
+- Deployment boundary: SRAM only after the coordinated commit/push; Flash remains paused. The expected board-visible UI is the already deployed R17B HD-font UI, with additional outgoing SysEx traffic only. Physical audio modulation remains pending the audio-side V2 receiver/core.
+
 ## 2026-10-23 — Phase 1 UART integration baseline
 
 Status: RTL implementation and simulation passed. UI source snapshot: `0dfae7c995bc7029f1253c8c4843a10eb3d4376f`; source archive SHA256: `A5D30CBDA828C9B19CEAE0D8E26802D0E3999D3B71EC211F8038D57F421FA9B1`. Shared implementation commits: `db851cd` and `bf896e4` on `integration/dual-138k-uart-phase1`; branch pushed to `origin/integration/dual-138k-uart-phase1` on 2026-10-24.
@@ -60,3 +68,27 @@ Status: RTL implementation and simulation passed. UI source snapshot: `0dfae7c99
 - `docs/ui_uart_integration_v1.md`
 
 Future entries should append a dated section and never rewrite prior verification results. Distinguish source commit, build result, bitstream hash, board used, UART path, and user acceptance.
+
+## 2026-10-25 19:28 — R17B HD-font bitstream deployed to UI board SRAM (ZCode)
+
+- Operator: ZCode agent, on explicit user instruction. Bitstream built and audited by Codex earlier the same day; ZCode performed deployment only.
+- Source: commit `b8b7efd` isolated build `2_ui_touch_hub/impl/R16A_build_20261025_184819/`, audit `audit_20261025_185815_975286.json` (timing_closed, five violation classes clean, clk_pixel 52.35 MHz). Re-audit inside deploy script passed; input snapshot matched HEAD.
+- Deploy: `tools/deploy_verified.py --label R17B_HD_FONT --target sram`, run `impl/deploy_runs/20261025_192830_R17B_HD_FONT/`. Bitstream SHA256 `C82CFF39CFE71C53619A7706B918F3CDD58C0D9E1772795C12C3D5B5AA9E7EF` matched on both machines. GW5AST-138B, operation 2 SRAM, 23.06 s, Status Code `0x00026230`, PROGRAMMER_EXIT=0. Flash untouched.
+- Camera capture `preview.jpg` shows a lit UI screen with full interface; this proves the board runs the new bitstream, not readability acceptance. User visual/interaction acceptance of the HD navigation font is pending.
+- Two earlier deploy attempts (19:11 TCP unreachable; 19:16 firmware.zip HTTP transfer reset mid-way) reached no programming; leftover half zip may remain under remote `D:/gaoyun_deploy/` timestamped dirs and is harmless. Root cause of the flaky link: ZeroTier peer was RELAY-only (see session records); engineering PC also went unresponsive ~19:16 (suspected idle sleep), recovered before this deploy.
+
+## 2026-10-25 20:05 — LFO modulation protocol V2 drafted (ZCode)
+
+- User decision recorded: UI board is display+control only (LFO modulation shown as visual preview, static CC values transmitted unchanged); all real modulation is computed on the audio board from CC base values + LFO configuration sent as SysEx. The audio-side LFO math must be reworked to match the UI model (7-point C1 monotone cubic Hermite with minmod tangents, 384-phase table, 0.25×2^r Hz, 53 per-target routes, formula `clamp(base + depth×wave/128, 0, 127)`), replacing the current 3-point/two-curvature model.
+- Deliverable: `docs/UI_LFO_MODULATION_PROTOCOL_V2.md` — data model, exact math incl. fixed-point bit widths and a Python golden model, SysEx ID plan 48–126 (no overlap with existing 16–46), phase-sync and commit frames, audio-side rework checklist, and a corrected UI-parameter/destination mapping table (note: `mod_targets.vh` IDs are decimal, first draft of the table misread them as hex — table rewritten against `params.vh`).
+- No RTL changed on either side in this entry; UI transmitter implementation and audio-side core rework are tracked as follow-ups in the protocol §6/§7.
+
+## 2026-10-25 20:45 — UI-side LFO SysEx transmitter implemented (ZCode, uncommitted, timing gate open)
+
+- Implemented protocol §7 items 1–4 in the UI RTL (working tree of `integration/dual-138k-uart-phase1`, NOT committed — Mimosa blocks commits on unrelated legacy findings; `git diff` shows everything):
+  - NEW `2_ui_touch_hub/rtl/midi_uart_tx/lfo_sysex_tx.v`: snapshots the LFO config after a 20 ms quiet window, diffs against the last committed shadow, streams changed 6-byte frames (`F0 7D id msb lsb F7`, IDs 48–126 per protocol V2), phase-sync frame ID72 rides along curve/mode edits, batch ends with atomic commit ID126. Pipelined per-entry change vectors + 77-bit signature edit detection (no wide comparators in one level).
+  - `rtl/midi_uart_tx/midi_uart_tx.v`: added `sysex_req/sysex_msgs[47:0]/sysex_accept` (combinatorial accept prevents double-push). Note/CC keep same-cycle priority; SysEx enters only with ≥2 free FIFO slots.
+  - `rtl/ui_touch_hub_top.v`: wired the renderer snapshot outputs to a new `u_lfo_sysex` instance feeding `u_midi_tx`.
+  - `2_ui_touch_hub.gprj`: registered the new file. `sim/tb_lfo_sysex_tx.v` NEW (94 checks, ALL PASS); `sim/tb_midi_uart_tx.v` port-tied for the new inputs (regression 100% PASS); full top compiles clean under `-sv`, elaborates to the device-primitive boundary.
+- Timing status: three build/audit rounds converged −3.685 → −2.933 → **−0.056 ns** setup (hold/recovery/removal/pulse all positive). The remaining single violation `u_render/u_navigation_render/id0_5_s0 → ch1_0_s0` (−0.056) is a pre-existing path squeezed by placement, not in the LFO logic; Gowin placement is deterministic so re-running reproduces it. **timing_closed = false — deployment is prohibited by the gate.**
+- Handover to Codex: suggest anchoring those two FFs via INS_LOC exactly as commit `a276b9b` did for the serializer resets (site syntax `R##C##[0][A]` from a routed report), or shrinking/relocating `u_lfo_sysex`. Builds: `impl/R16A_build_20261025_200224`, `_201138`, `_202146`/`_203946` (last two identical results). No bitstream programmed.
