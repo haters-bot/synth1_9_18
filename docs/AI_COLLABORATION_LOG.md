@@ -2,6 +2,14 @@
 
 Purpose: durable handoff record for AI-assisted changes made on the shared UI/audio integration branch. Each entry records touched files, verification, limits, and the associated commit once pushed.
 
+## 2026-10-26 04:32 — TXE8148 dual-chip / 32-EC11 SPI intake implemented
+
+- Replaced `2_ui_touch_hub/rtl/knob_spi_intake/knob_spi_rx.v` with a TXE8148 SPI mode-0 polling master. It reads both chips independently, decodes the `A/B/SW` triplets for 32 EC11 encoders, emits absolute 0..127 parameter events, and routes the first six push switches to existing UI buttons.
+- Updated normal/debug top-level ports and `2_ui_touch_hub/constraints/ui_touch_hub.cst` for `2CS# A15`, `1CS# B20`, `SCLK B21`, `SDI B17`, `SDO D17`, `INT# A18`, `RESET D14`. The keyboard panel VCC is documented as a separate 5 V Type-C input; no FPGA I/O is used as a power rail.
+- Added `2_ui_touch_hub/doc/TXE8148_EC11_SPI_INTEGRATION.md` and updated `HARDWARE_WIRING_PINOUT.md` with GPIO order, provisional UI parameter map, button map, and 5 V/3.3 V level boundaries.
+- Gowin local build completed in `2_ui_touch_hub/impl/pnr/`: Setup/Hold violations 0, `clk_pixel` Fmax 50.656 MHz, bitstream SHA256 `E0246684F67C3D155519FCA57182DD2619F45E2F2D482269FDFCCF6F7FCDF54F`.
+- Hardware boundary: no SRAM/Flash deployment was performed. The keyboard board's SDO voltage must be confirmed before connecting it to FPGA input D17. Commit: `4ce34cd`.
+
 ## 2026-10-26 03:30 — Latest LFO SysEx UI confirmed on screen after power fix
 
 - After the UI display power connection was corrected, the final LFO SysEx bitstream was written again in run `impl/deploy_runs/20261026_033031_LFO_SYSEX_V2_CURRENT_AFTER_POWER_FIX/`.

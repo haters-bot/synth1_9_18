@@ -19,10 +19,14 @@ module ui_touch_hub_debug_top (
     output wire        ch569_htrdy,       // J22: CH569 HSPI 接收就绪
     input  wire [15:0] hspi_hd,           // G17..L16: CH569 HSPI 16位并行数据
 
-    // 队友 1 (硬件面板组) 物理旋钮 SPI 接口
-    input  wire        knob_spi_cs_n,   // U14 (LVCMOS33)
-    input  wire        knob_spi_sclk,   // U15 (LVCMOS33)
-    input  wire        knob_spi_mosi,   // V15 (LVCMOS33)
+    // 队友 1 (硬件面板组) 双 TXE8148 / 32 个 EC11 接口
+    output wire        knob_2cs_n,
+    output wire        knob_1cs_n,
+    output wire        knob_sclk,
+    output wire        knob_sdi,
+    input  wire        knob_sdo,
+    input  wire        knob_int_n,
+    output wire        knob_reset_n,
 
     // U15: normal build MIDI 31250; diagnostic build trace 115200.
     output wire        midi_uart_tx,
@@ -50,9 +54,13 @@ ui_touch_hub_top #(.DEBUG_TOUCH_LOG(1)) u_hub(
     .ch569_htvld(ch569_htvld),
     .ch569_htrdy(ch569_htrdy),
     .hspi_hd(hspi_hd),
-    .knob_spi_cs_n(knob_spi_cs_n),
-    .knob_spi_sclk(knob_spi_sclk),
-    .knob_spi_mosi(knob_spi_mosi),
+    .knob_2cs_n(knob_2cs_n),
+    .knob_1cs_n(knob_1cs_n),
+    .knob_sclk(knob_sclk),
+    .knob_sdi(knob_sdi),
+    .knob_sdo(knob_sdo),
+    .knob_int_n(knob_int_n),
+    .knob_reset_n(knob_reset_n),
     .midi_uart_tx(midi_uart_tx),
     .audio_link_tx(audio_link_tx),
     .led(led),

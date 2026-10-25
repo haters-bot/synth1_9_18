@@ -37,10 +37,14 @@ module ui_touch_hub_top #(
     output wire        ch569_htrdy,       // J22: CH569 HSPI 接收就绪
     input  wire [15:0] hspi_hd,           // G17..L16: CH569 HSPI 16位并行数据
 
-    // 队友 1 (硬件面板组) 物理旋钮 SPI 接口
-    input  wire        knob_spi_cs_n,   // U14 (LVCMOS33)
-    input  wire        knob_spi_sclk,   // U15 (LVCMOS33)
-    input  wire        knob_spi_mosi,   // V15 (LVCMOS33)
+    // 队友 1 (硬件面板组) 双 TXE8148 / 32 个 EC11 接口
+    output wire        knob_2cs_n,
+    output wire        knob_1cs_n,
+    output wire        knob_sclk,
+    output wire        knob_sdi,
+    input  wire        knob_sdo,
+    input  wire        knob_int_n,
+    output wire        knob_reset_n,
 
     // U15: board USB-UART monitor output (normal MIDI or diagnostic trace).
     output wire        midi_uart_tx,
@@ -306,15 +310,26 @@ module ui_touch_hub_top #(
     wire [7:0]  spi_param_id;
     wire [6:0]  spi_param_val;
 
+    wire        knob_button_valid;
+    wire [7:0]  knob_button_id;
+    wire [1:0]  knob_button_action;
+
     knob_spi_rx u_knob_spi (
-        .clk         (clk_pixel),
-        .rst_n       (sys_rst_n_sync),
-        .spi_cs_n    (knob_spi_cs_n),
-        .spi_sclk    (knob_spi_sclk),
-        .spi_mosi    (knob_spi_mosi),
-        .param_valid (spi_param_valid),
-        .param_id    (spi_param_id),
-        .param_val   (spi_param_val)
+        .clk          (clk_pixel),
+        .rst_n        (sys_rst_n_sync),
+        .spi_sdo      (knob_sdo),
+        .spi_int_n    (knob_int_n),
+        .spi_2cs_n    (knob_2cs_n),
+        .spi_1cs_n    (knob_1cs_n),
+        .spi_sclk     (knob_sclk),
+        .spi_sdi      (knob_sdi),
+        .panel_reset_n(knob_reset_n),
+        .param_valid  (spi_param_valid),
+        .param_id     (spi_param_id),
+        .param_val    (spi_param_val),
+        .button_valid (knob_button_valid),
+        .button_id    (knob_button_id),
+        .button_action(knob_button_action)
     );
 
     // --------------------------------------------------------------------------
@@ -366,9 +381,9 @@ module ui_touch_hub_top #(
         .touch_delta_valid (navigation_delta_valid | touch_delta_valid),
         .touch_selected_id (navigation_delta_valid ? navigation_delta_id : selected_param_id),
         .touch_delta_val   (navigation_delta_valid ? navigation_delta_value : touch_delta_val),
-        .btn_tap_valid     (btn_tap_valid),
-        .btn_tap_id        (btn_tap_id),
-        .btn_tap_action    (btn_tap_action),
+        .btn_tap_valid     (btn_tap_valid | knob_button_valid),
+        .btn_tap_id        (knob_button_valid ? knob_button_id : btn_tap_id),
+        .btn_tap_action    (knob_button_valid ? knob_button_action : btn_tap_action),
         .spi_param_valid   (spi_param_valid && spi_param_id < 8'h60),
         .spi_param_id      (spi_param_id),
         .spi_param_val     (spi_param_val),

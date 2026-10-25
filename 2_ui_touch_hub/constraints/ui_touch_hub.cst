@@ -65,15 +65,30 @@ IO_PORT "touch_uart_rx"       IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 IO_LOC  "touch_uart_rx_y14"   Y14;
 IO_PORT "touch_uart_rx_y14"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 
-// Teammate 1 (Hardware Panel) Physical Knobs SPI (W16/U16/T16 on Header)
-IO_LOC  "knob_spi_cs_n"   W16;
-IO_PORT "knob_spi_cs_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+// Teammate 1: dual TXE8148 / 32 EC11 panel.
+// Header order: GND, 2CS#, 1CS#, SCLK, SDI, SDO, INT#, RESET.
+// The panel VCC is supplied through its separate 5V Type-C input; E16 is not
+// driven by the FPGA and is deliberately absent from this constraint file.
+IO_LOC  "knob_2cs_n"   A15;
+IO_PORT "knob_2cs_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 
-IO_LOC  "knob_spi_sclk"   U16;
-IO_PORT "knob_spi_sclk"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+IO_LOC  "knob_1cs_n"   B20;
+IO_PORT "knob_1cs_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 
-IO_LOC  "knob_spi_mosi"   T16;
-IO_PORT "knob_spi_mosi"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+IO_LOC  "knob_sclk"    B21;
+IO_PORT "knob_sclk"    IO_TYPE=LVCMOS33 PULL_MODE=DOWN DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "knob_sdi"     B17;
+IO_PORT "knob_sdi"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "knob_sdo"     D17;
+IO_PORT "knob_sdo"     IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "knob_int_n"   A18;
+IO_PORT "knob_int_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "knob_reset_n" D14;
+IO_PORT "knob_reset_n" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 
 // Audio-engine UART MIDI output to PMOD1 IO2 (J8 pin 9, 3.3V GPIO).
 IO_LOC  "audio_link_tx"   AB21;

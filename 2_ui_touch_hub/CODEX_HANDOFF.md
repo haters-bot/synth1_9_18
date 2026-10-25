@@ -1,5 +1,13 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 04:32：TXE8148 双芯片 32 路 EC11 SPI 接收器已综合通过
+
+- 当前工作区把旧的 16 通道 ADC SPI 接收器替换为双 TXE8148 轮询接收器：两路独立 `CS#`、共享 `SCLK/SDI/SDO`，连续读取两颗芯片的 `0x20..0x25` 输入端口寄存器。
+- 32 个 EC11 按每三个 GPIO 的 `A/B/SW` 顺序解码：第一颗芯片从 `P0.0/P0.1/P0.2` 对应旋钮 1 开始，第二颗芯片从 `P0.0` 对应旋钮 17 开始。旋钮值为 0..127，初值 64；首次扫描仅建立基线。
+- 新引脚约束为 `2CS#=A15`、`1CS#=B20`、`SCLK=B21`、`SDI=B17`、`SDO=D17`、`INT#=A18`、`RESET=D14`。键盘板 VCC 走独立 Type-C 5 V 入口，FPGA 不驱动 E16。
+- 本地 Gowin 构建 `2_ui_touch_hub/impl/pnr/` 完成综合、布局、布线、时序和位流生成；Setup/Hold 违例均为 0，`clk_pixel` Fmax 50.656 MHz，位流 `2_ui_touch_hub.fs` SHA256 `E0246684F67C3D155519FCA57182DD2619F45E2F2D482269FDFCCF6F7FCDF54F`，长度 35,627,521 bytes。
+- 这只是源码构建证据，尚未烧录；5 V 键盘板的 TXE8148 与 FPGA 之间的电平适配仍需硬件侧实测确认。
+
 ## 2026-10-26 03:30：最新 LFO SysEx 位流已恢复并实屏确认
 
 - 显示器电源接好后，最终 LFO SysEx 位流在 `impl/deploy_runs/20261026_033031_LFO_SYSEX_V2_CURRENT_AFTER_POWER_FIX/` 重新烧录成功：`PROGRAMMER_EXIT=0`、状态码 `0x00026230`、User Code `0x000030AF`、SHA256 `01724C38F29E3C4C40729BFDA7C634451052DB99F0E87855C9B2302EBBBB9EC2`。
