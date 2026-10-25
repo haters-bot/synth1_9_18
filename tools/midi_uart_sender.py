@@ -111,6 +111,18 @@ LFO_DESTINATIONS = {
     "Filter Cutoff": 8,
     "Filter Resonance": 9,
     "Filter Mix": 10,
+    "OSC A Detune": 11,
+    "OSC B Detune": 12,
+    "Master Level": 13,
+    "Distortion Drive": 14,
+    "Distortion Mix": 15,
+    "Chorus Depth": 16,
+    "Chorus Mix": 17,
+    "Phaser Depth": 18,
+    "Phaser Mix": 19,
+    "Reverb Mix": 20,
+    "Delay Mix": 21,
+
 }
 LFO_SOURCES = {"LFO 1": 0, "LFO 2": 1, "LFO 3": 2}
 OSC_A_CC = {

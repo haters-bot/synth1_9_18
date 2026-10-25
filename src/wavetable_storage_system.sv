@@ -121,7 +121,8 @@ module wavetable_storage_system(
     ) u_sd_file_reader (
         .rstn(sd_reader_rst_n), .clk(sys_clk),
         .sdclk(sd_clk), .sdcmd(sd_cmd), .sddat0(sd_dat0),
-        .op(1'b1), .read_file(12'd0), .done(sd_done),
+        // 该读取器在发现首个有效目录项后才比较编号，因此首个文件编号为1。
+        .op(1'b1), .read_file(12'd1), .done(sd_done),
         .card_stat(), .card_type(sd_card_type),
         .filesystem_type(sd_filesystem_type), .file_found(sd_file_found),
         .list_name(sd_list_name), .list_namelen(sd_list_name_length),

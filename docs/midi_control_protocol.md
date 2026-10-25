@@ -478,3 +478,17 @@ F0 7D parameter_id value_msb value_lsb F7
 原子提交。FPGA在96 kHz下并行产生三个LFO值，并在50 MHz域用10拍完成共享路由。
 CC参数继续作为各目标的基础值。
 完整目标编号、编码和定点计算见`docs/lfo_curve_control.md`。
+
+## 独立音色控制UART（2026-10-23）
+
+- `control_uart_rx`: FPGA C19, 3.3 V UART RX, internal pull-up enabled (user-selected header pin).
+- 外部MCU TX接C19，双方GND共地。接口是3.3 V TTL UART，空闲高，不可直接连接RS-232或5 V TX。
+- 默认31250 baud、8N1；独立参数 `CONTROL_UART_BAUD_RATE` 可修改新口速率。原USB-UART速率由 `UART_BAUD_RATE` 决定，原入口继续同时接受音符与音色指令。
+- 新口只接受音色控制：通道16 CC（状态BF）与现有 `F0 7D id msb lsb F7` 高精度参数；该口Note事件丢弃，键盘演奏仍走原入口。
+- 两路独立UART同步接收并独立解析完整消息，然后通过8项事件队列合并。每拍最多入队2项、出队1项。同拍按原口、新口顺序处理，不丢弃后者；同参数最后处理的写入生效。溢出由 `control_event_overflow` 粘滞标志记录，复位清除。
+- 字节流及Running Status互相独立。由于LFO的route index、配置影子寄存器和Commit是共享状态，一次多消息配置事务应只由一个控制源发送，另一个源等待事务结束；队列不会隔离两套同时修改的LFO配置事务。
+- 调试时可把上位机USB-TTL串口接到新RX口，沿用原协议；无须改为另一套协议。
+
+板测：先用原口Note On维持声音，新口发送 `BF 2E 20` 修改OSC A Level=32；再用原口发送 `BF 2E 7F` 恢复127。随后从新口发送LFO配置，确认活动音符产生调制。抓取control_uart_byte_valid、control_uart_framing_error、merged_control_valid、control_event_overflow定位输入问题。
+
+本次已运行ModelSim路由及顶层回归，包含新增目标、同拍双UART CC、独立SysEx和按住音符实时Detune检查。未运行综合布线，资源增量与时序仍需下一次报告确认。

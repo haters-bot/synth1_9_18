@@ -12,11 +12,16 @@
 
 # Generated IP scratch and netlists not referenced by the project
 /src/advanced_fir_filter/temp/
+/src/ddr3_memory_interface/temp/
+/src/gowin_pll/*_tmp.v
 *.vo
 
 # Temporary render and analysis files
 /tmp/
 /tmp_clock_page/
+/build_results/
+/work/
+/wlft*
 
 # Python cache
 __pycache__/

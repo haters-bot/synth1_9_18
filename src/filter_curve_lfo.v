@@ -309,21 +309,53 @@ module lfo_modulation_router #(
     output reg [14:0] mod_filter_cutoff_q8,
     output reg [6:0]  mod_filter_resonance,
     output reg [6:0]  mod_filter_mix,
+    input wire [6:0] base_master_level,
+    output reg [6:0] mod_master_level,
+    input wire [6:0] base_distortion_drive,
+    output reg [6:0] mod_distortion_drive,
+    input wire [6:0] base_distortion_mix,
+    output reg [6:0] mod_distortion_mix,
+    input wire [6:0] base_chorus_depth,
+    output reg [6:0] mod_chorus_depth,
+    input wire [6:0] base_chorus_mix,
+    output reg [6:0] mod_chorus_mix,
+    input wire [6:0] base_phaser_depth,
+    output reg [6:0] mod_phaser_depth,
+    input wire [6:0] base_phaser_mix,
+    output reg [6:0] mod_phaser_mix,
+    input wire [6:0] base_reverb_mix,
+    output reg [6:0] mod_reverb_mix,
+    input wire [6:0] base_delay_mix,
+    output reg [6:0] mod_delay_mix,
+    input wire [6:0] base_osc_a_detune, base_osc_b_detune,
+    output reg [6:0] mod_osc_a_detune, mod_osc_b_detune,
     output reg        route_overrun
 );
 
-    localparam [3:0] DEST_NONE             = 4'd0;
-    localparam [3:0] DEST_OSC_A_WT         = 4'd1;
-    localparam [3:0] DEST_OSC_A_WARP       = 4'd2;
-    localparam [3:0] DEST_OSC_A_LEVEL      = 4'd3;
-    localparam [3:0] DEST_OSC_B_WT         = 4'd4;
-    localparam [3:0] DEST_OSC_B_WARP       = 4'd5;
-    localparam [3:0] DEST_OSC_B_LEVEL      = 4'd6;
-    localparam [3:0] DEST_PAN               = 4'd7;
-    localparam [3:0] DEST_FILTER_CUTOFF     = 4'd8;
-    localparam [3:0] DEST_FILTER_RESONANCE  = 4'd9;
-    localparam [3:0] DEST_FILTER_MIX        = 4'd10;
+    localparam [5:0] DEST_NONE             = 6'd0;
+    localparam [5:0] DEST_OSC_A_WT         = 6'd1;
+    localparam [5:0] DEST_OSC_A_WARP       = 6'd2;
+    localparam [5:0] DEST_OSC_A_LEVEL      = 6'd3;
+    localparam [5:0] DEST_OSC_B_WT         = 6'd4;
+    localparam [5:0] DEST_OSC_B_WARP       = 6'd5;
+    localparam [5:0] DEST_OSC_B_LEVEL      = 6'd6;
+    localparam [5:0] DEST_PAN               = 6'd7;
+    localparam [5:0] DEST_FILTER_CUTOFF     = 6'd8;
+    localparam [5:0] DEST_FILTER_RESONANCE  = 6'd9;
+    localparam [5:0] DEST_FILTER_MIX        = 6'd10;
 
+    localparam [5:0] DEST_MASTER_LEVEL = 6'd13;
+    localparam [5:0] DEST_DISTORTION_DRIVE = 6'd14;
+    localparam [5:0] DEST_DISTORTION_MIX = 6'd15;
+    localparam [5:0] DEST_CHORUS_DEPTH = 6'd16;
+    localparam [5:0] DEST_CHORUS_MIX = 6'd17;
+    localparam [5:0] DEST_PHASER_DEPTH = 6'd18;
+    localparam [5:0] DEST_PHASER_MIX = 6'd19;
+    localparam [5:0] DEST_REVERB_MIX = 6'd20;
+    localparam [5:0] DEST_DELAY_MIX = 6'd21;
+
+    localparam [5:0] DEST_OSC_A_DETUNE = 6'd11;
+    localparam [5:0] DEST_OSC_B_DETUNE = 6'd12;
     localparam [1:0] STATE_IDLE    = 2'd0;
     localparam [1:0] STATE_PROCESS = 2'd1;
     localparam [1:0] STATE_COMMIT  = 2'd2;
@@ -332,11 +364,11 @@ module lfo_modulation_router #(
 
     reg [2:0] shadow_route_index;
     reg shadow_enable [0:ROUTE_COUNT-1];
-    reg [3:0] shadow_destination [0:ROUTE_COUNT-1];
+    reg [5:0] shadow_destination [0:ROUTE_COUNT-1];
     reg signed [13:0] shadow_depth_q13 [0:ROUTE_COUNT-1];
     reg [1:0] shadow_source [0:ROUTE_COUNT-1];
     reg active_enable [0:ROUTE_COUNT-1];
-    reg [3:0] active_destination [0:ROUTE_COUNT-1];
+    reg [5:0] active_destination [0:ROUTE_COUNT-1];
     reg signed [13:0] active_depth_q13 [0:ROUTE_COUNT-1];
     reg [1:0] active_source [0:ROUTE_COUNT-1];
 
@@ -357,6 +389,17 @@ module lfo_modulation_router #(
     reg signed [17:0] acc_filter_resonance;
     reg signed [17:0] acc_filter_mix;
 
+    reg signed [17:0] acc_master_level;
+    reg signed [17:0] acc_distortion_drive;
+    reg signed [17:0] acc_distortion_mix;
+    reg signed [17:0] acc_chorus_depth;
+    reg signed [17:0] acc_chorus_mix;
+    reg signed [17:0] acc_phaser_depth;
+    reg signed [17:0] acc_phaser_mix;
+    reg signed [17:0] acc_reverb_mix;
+    reg signed [17:0] acc_delay_mix;
+
+    reg signed [17:0] acc_osc_a_detune, acc_osc_b_detune;
     integer reset_index;
     integer commit_index;
 
@@ -425,6 +468,27 @@ module lfo_modulation_router #(
             mod_osc_b_warp <= 7'd0;
             mod_osc_b_level <= 7'd127;
             mod_pan <= 7'd64;
+            mod_osc_a_detune <= 64; mod_osc_b_detune <= 64;
+            acc_osc_a_detune <= 64; acc_osc_b_detune <= 64;
+            mod_master_level <= 7'd127;
+            acc_master_level <= 18'sd127;
+            mod_distortion_drive <= 7'd0;
+            acc_distortion_drive <= 18'sd0;
+            mod_distortion_mix <= 7'd0;
+            acc_distortion_mix <= 18'sd0;
+            mod_chorus_depth <= 7'd0;
+            acc_chorus_depth <= 18'sd0;
+            mod_chorus_mix <= 7'd0;
+            acc_chorus_mix <= 18'sd0;
+            mod_phaser_depth <= 7'd0;
+            acc_phaser_depth <= 18'sd0;
+            mod_phaser_mix <= 7'd0;
+            acc_phaser_mix <= 18'sd0;
+            mod_reverb_mix <= 7'd0;
+            acc_reverb_mix <= 18'sd0;
+            mod_delay_mix <= 7'd0;
+            acc_delay_mix <= 18'sd0;
+
             mod_filter_cutoff_q8 <= 15'd32512;
             mod_filter_resonance <= 7'd0;
             mod_filter_mix <= 7'd127;
@@ -462,8 +526,8 @@ module lfo_modulation_router #(
                             <= parameter_value != 14'd0;
                     PARAM_ROUTE_DEST:
                         shadow_destination[shadow_route_index]
-                            <= parameter_value[3:0] <= DEST_FILTER_MIX
-                               ? parameter_value[3:0] : DEST_NONE;
+                            <= parameter_value <= 14'd21
+                               ? parameter_value[5:0] : DEST_NONE;
                     PARAM_ROUTE_DEPTH:
                         // 协议采用 Offset Binary：0=-1，8192=0，16383≈+1。
                         shadow_depth_q13[shadow_route_index]
@@ -513,6 +577,17 @@ module lfo_modulation_router #(
                         acc_filter_resonance
                             <= $signed({1'b0, base_filter_resonance});
                         acc_filter_mix <= $signed({1'b0, base_filter_mix});
+                        acc_master_level <= $signed({1'b0, base_master_level});
+                        acc_distortion_drive <= $signed({1'b0, base_distortion_drive});
+                        acc_distortion_mix <= $signed({1'b0, base_distortion_mix});
+                        acc_chorus_depth <= $signed({1'b0, base_chorus_depth});
+                        acc_chorus_mix <= $signed({1'b0, base_chorus_mix});
+                        acc_phaser_depth <= $signed({1'b0, base_phaser_depth});
+                        acc_phaser_mix <= $signed({1'b0, base_phaser_mix});
+                        acc_reverb_mix <= $signed({1'b0, base_reverb_mix});
+                        acc_delay_mix <= $signed({1'b0, base_delay_mix});
+                        acc_osc_a_detune <= $signed({1'b0,base_osc_a_detune});
+                        acc_osc_b_detune <= $signed({1'b0,base_osc_b_detune});
                         state <= STATE_PROCESS;
                     end
                 end
@@ -546,6 +621,17 @@ module lfo_modulation_router #(
                                                         + route_delta_u7;
                             DEST_FILTER_MIX:
                                 acc_filter_mix <= acc_filter_mix + route_delta_u7;
+                            DEST_OSC_A_DETUNE: acc_osc_a_detune <= acc_osc_a_detune + route_delta_u7;
+                            DEST_OSC_B_DETUNE: acc_osc_b_detune <= acc_osc_b_detune + route_delta_u7;
+                            DEST_MASTER_LEVEL: acc_master_level <= acc_master_level + route_delta_u7;
+                            DEST_DISTORTION_DRIVE: acc_distortion_drive <= acc_distortion_drive + route_delta_u7;
+                            DEST_DISTORTION_MIX: acc_distortion_mix <= acc_distortion_mix + route_delta_u7;
+                            DEST_CHORUS_DEPTH: acc_chorus_depth <= acc_chorus_depth + route_delta_u7;
+                            DEST_CHORUS_MIX: acc_chorus_mix <= acc_chorus_mix + route_delta_u7;
+                            DEST_PHASER_DEPTH: acc_phaser_depth <= acc_phaser_depth + route_delta_u7;
+                            DEST_PHASER_MIX: acc_phaser_mix <= acc_phaser_mix + route_delta_u7;
+                            DEST_REVERB_MIX: acc_reverb_mix <= acc_reverb_mix + route_delta_u7;
+                            DEST_DELAY_MIX: acc_delay_mix <= acc_delay_mix + route_delta_u7;
                             default: begin
                             end
                         endcase
@@ -571,6 +657,17 @@ module lfo_modulation_router #(
                     mod_filter_resonance
                         <= saturate_s18_to_u7(acc_filter_resonance);
                     mod_filter_mix <= saturate_s18_to_u7(acc_filter_mix);
+                    mod_master_level <= saturate_s18_to_u7(acc_master_level);
+                    mod_distortion_drive <= saturate_s18_to_u7(acc_distortion_drive);
+                    mod_distortion_mix <= saturate_s18_to_u7(acc_distortion_mix);
+                    mod_chorus_depth <= saturate_s18_to_u7(acc_chorus_depth);
+                    mod_chorus_mix <= saturate_s18_to_u7(acc_chorus_mix);
+                    mod_phaser_depth <= saturate_s18_to_u7(acc_phaser_depth);
+                    mod_phaser_mix <= saturate_s18_to_u7(acc_phaser_mix);
+                    mod_reverb_mix <= saturate_s18_to_u7(acc_reverb_mix);
+                    mod_delay_mix <= saturate_s18_to_u7(acc_delay_mix);
+                    mod_osc_a_detune <= saturate_s18_to_u7(acc_osc_a_detune);
+                    mod_osc_b_detune <= saturate_s18_to_u7(acc_osc_b_detune);
                     state <= STATE_IDLE;
                 end
 

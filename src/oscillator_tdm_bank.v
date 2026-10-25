@@ -14,6 +14,7 @@ module oscillator_tdm_bank #(
     parameter integer CORE_SUM_WIDTH      = 24,
     parameter integer BANK_SUM_WIDTH      = 32,
     parameter integer GAIN_SMOOTH_SHIFT   = 12,
+    parameter integer REALTIME_DETUNE_ENABLE = 0,
     parameter integer ENVELOPE_UPDATE_DIV = 16
 )(
     input  wire clk,
@@ -46,6 +47,10 @@ module oscillator_tdm_bank #(
     input  wire                  task_update_valid,
     input  wire [7:0]            task_update_slot,
     input  wire [31:0]           task_update_phase_step,
+    input wire [31:0] task_update_base_step,
+    input wire [34:0] task_update_detune_unit,
+    input wire task_update_detune_negative,
+    input wire [6:0] detune_amount,
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
@@ -93,6 +98,7 @@ module oscillator_tdm_bank #(
                                      - ENGINE_BASE_SLOT;
 
             oscillator_tdm_core #(
+                .REALTIME_DETUNE_ENABLE(REALTIME_DETUNE_ENABLE),
                 .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
                 .PARTIAL_SUM_WIDTH(CORE_SUM_WIDTH),
                 .ENVELOPE_UPDATE_DIV(ENVELOPE_UPDATE_DIV)
@@ -123,6 +129,10 @@ module oscillator_tdm_bank #(
                 .task_update_valid(engine_update_selected),
                 .task_update_slot(engine_local_slot),
                 .task_update_phase_step(task_update_phase_step),
+                .task_update_base_step(task_update_base_step),
+                .task_update_detune_unit(task_update_detune_unit),
+                .task_update_detune_negative(task_update_detune_negative),
+                .detune_amount(detune_amount),
                 .task_update_velocity(task_update_velocity),
                 .task_update_enable(task_update_enable),
                 .task_update_phase_reset(task_update_phase_reset),

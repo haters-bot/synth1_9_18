@@ -126,7 +126,7 @@ F0 7D parameter_id value_msb value_lsb F7
 |---:|---|---|
 | 26 | Route Index | 0～7 |
 | 27 | Route Enable | 0 或 1 |
-| 28 | Destination | 0～10 |
+| 28 | Destination | 0～21，内部6位编号 |
 | 29 | Route Depth | 双极性 Q1.13 Offset Binary |
 | 30 | Route Source | 0=LFO 1，1=LFO 2，2=LFO 3 |
 
@@ -155,3 +155,23 @@ encoded = round((normalized + 1) × 8191.5)
 - Pan 路由已经生成控制值，但当前 I2S 链路仍复制单声道样本，因此尚无可听效果。
 - 第一版提供 3 个独立 LFO 源和 8 条共享路由；三个 LFO 可设置不同速率、控制点和曲率。
 - Detune 按本阶段约定暂不加入目标列表。
+
+## 扩展目标（2026-10-23）
+
+原0～10编号保持兼容，8条共享路由及配置SysEx格式不变。
+
+|编号|目标|
+|---|---|
+|11|OSC A Detune|
+|12|OSC B Detune|
+|13|Master Level|
+|14|Distortion Drive|
+|15|Distortion Mix|
+|16|Chorus Depth|
+|17|Chorus Mix|
+|18|Phaser Depth|
+|19|Phaser Mix|
+|20|Reverb Mix|
+|21|Delay Mix|
+
+这些目标均在基础值上叠加调制，饱和到0～127。Detune表示现有Unison成员间距，Unison=1时无音高变化；它不是整体Pitch Bend。活动槽位保存基础步进、偏移系数和方向，在请求级乘当前Detune，在返回级舍入并加减，提交级累加相位，保持原槽位吞吐率、相位和包络。旧实例默认关闭REALTIME_DETUNE_ENABLE，主顶层打开此参数。效果器需启用并具有非零Mix才可听到调制。Pan仍为预留单声道目标。

@@ -43,7 +43,18 @@ module tb_filter_curve_lfo;
     wire [6:0] mod_filter_mix;
     wire route_overrun;
 
+    wire [6:0] mod_master_level;
+    wire [6:0] mod_distortion_drive;
+    wire [6:0] mod_distortion_mix;
+    wire [6:0] mod_chorus_depth;
+    wire [6:0] mod_chorus_mix;
+    wire [6:0] mod_phaser_depth;
+    wire [6:0] mod_phaser_mix;
+    wire [6:0] mod_reverb_mix;
+    wire [6:0] mod_delay_mix;
+    wire [6:0] mod_osc_a_detune, mod_osc_b_detune;
     integer errors;
+    integer dest_test;
     integer sample_index;
     integer valid_count;
 
@@ -74,6 +85,18 @@ module tb_filter_curve_lfo;
         .parameter_id             (parameter_id),
         .parameter_value          (parameter_value),
         .filter_mode              (filter_mode),
+        .base_osc_a_detune(7'd64), .mod_osc_a_detune(mod_osc_a_detune),
+        .base_osc_b_detune(7'd64), .mod_osc_b_detune(mod_osc_b_detune),
+        .base_master_level(7'd64), .mod_master_level(mod_master_level),
+        .base_distortion_drive(7'd64), .mod_distortion_drive(mod_distortion_drive),
+        .base_distortion_mix(7'd64), .mod_distortion_mix(mod_distortion_mix),
+        .base_chorus_depth(7'd64), .mod_chorus_depth(mod_chorus_depth),
+        .base_chorus_mix(7'd64), .mod_chorus_mix(mod_chorus_mix),
+        .base_phaser_depth(7'd64), .mod_phaser_depth(mod_phaser_depth),
+        .base_phaser_mix(7'd64), .mod_phaser_mix(mod_phaser_mix),
+        .base_reverb_mix(7'd64), .mod_reverb_mix(mod_reverb_mix),
+        .base_delay_mix(7'd64), .mod_delay_mix(mod_delay_mix),
+
         .base_osc_a_wt            (base_osc_a_wt),
         .base_osc_a_warp          (base_osc_a_warp),
         .base_osc_a_level         (base_osc_a_level),
@@ -118,13 +141,13 @@ module tb_filter_curve_lfo;
     task configure_route;
         input [2:0] index;
         input enable;
-        input [3:0] destination;
+        input [5:0] destination;
         input [13:0] depth_offset_binary;
         input [1:0] source;
         begin
             write_parameter(7'd26, {11'd0, index});
             write_parameter(7'd27, enable ? 14'd1 : 14'd0);
-            write_parameter(7'd28, {10'd0, destination});
+            write_parameter(7'd28, {8'd0, destination});
             write_parameter(7'd29, depth_offset_binary);
             write_parameter(7'd30, {12'd0, source});
         end
@@ -235,6 +258,109 @@ module tb_filter_curve_lfo;
             errors = errors + 1;
         end
 
+        configure_route(3'd0, 1'b1, 6'd13, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_master_level !== 7'd127) begin
+            $display("ERROR: new destination master_level"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_master_level !== 7'd0) begin
+            $display("ERROR: negative clamp master_level"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd14, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_distortion_drive !== 7'd127) begin
+            $display("ERROR: new destination distortion_drive"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_distortion_drive !== 7'd0) begin
+            $display("ERROR: negative clamp distortion_drive"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd15, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_distortion_mix !== 7'd127) begin
+            $display("ERROR: new destination distortion_mix"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_distortion_mix !== 7'd0) begin
+            $display("ERROR: negative clamp distortion_mix"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd16, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_chorus_depth !== 7'd127) begin
+            $display("ERROR: new destination chorus_depth"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_chorus_depth !== 7'd0) begin
+            $display("ERROR: negative clamp chorus_depth"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd17, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_chorus_mix !== 7'd127) begin
+            $display("ERROR: new destination chorus_mix"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_chorus_mix !== 7'd0) begin
+            $display("ERROR: negative clamp chorus_mix"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd18, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_phaser_depth !== 7'd127) begin
+            $display("ERROR: new destination phaser_depth"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_phaser_depth !== 7'd0) begin
+            $display("ERROR: negative clamp phaser_depth"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd19, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_phaser_mix !== 7'd127) begin
+            $display("ERROR: new destination phaser_mix"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_phaser_mix !== 7'd0) begin
+            $display("ERROR: negative clamp phaser_mix"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd20, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_reverb_mix !== 7'd127) begin
+            $display("ERROR: new destination reverb_mix"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_reverb_mix !== 7'd0) begin
+            $display("ERROR: negative clamp reverb_mix"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd21, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_delay_mix !== 7'd127) begin
+            $display("ERROR: new destination delay_mix"); errors = errors + 1;
+        end
+        route_sample(-15'sd8192, 15'sd0, 15'sd0);
+        if (mod_delay_mix !== 7'd0) begin
+            $display("ERROR: negative clamp delay_mix"); errors = errors + 1;
+        end
+
+        configure_route(3'd0, 1'b1, 6'd11, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_osc_a_detune !== 7'd127) begin
+            $display("ERROR: osc_a_detune route"); errors = errors + 1;
+        end
+        configure_route(3'd0, 1'b1, 6'd12, 14'd16383, 2'd0);
+        write_parameter(7'd25, 14'd1);
+        route_sample(15'sd4096, 15'sd0, 15'sd0);
+        if (mod_osc_b_detune !== 7'd127) begin
+            $display("ERROR: osc_b_detune route"); errors = errors + 1;
+        end
         // 曲线源应自行推进，并在约 5.33 ms 后完成启用淡入。
         for (sample_index = 0; sample_index < 540;
              sample_index = sample_index + 1)

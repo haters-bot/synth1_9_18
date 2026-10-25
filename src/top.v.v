@@ -1,6 +1,7 @@
 // 双振荡器、每组32槽位时分复用与MAX98357A音频输出顶层。
 module top #(
     parameter integer UART_BAUD_RATE = 31250,
+    parameter integer CONTROL_UART_BAUD_RATE = 31250,
     parameter integer DEFAULT_UNISON_COUNT = 1,
     parameter integer OSC_ENGINE_COUNT = 1,
     parameter integer SLOTS_PER_ENGINE = 32,
@@ -8,6 +9,7 @@ module top #(
 )(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
+    input  wire control_uart_rx, // C19; 独立音色控制UART RX，3.3 V，空闲高电平
     input  wire uart_rx,       // 板载USB-UART接收，引脚V14
     input  wire midi_gpio_rx,  // 跨板MIDI输入：PMOD1 IO2 / AB21
     output wire MAX_SD,        // MAX98357A使能，引脚AB20
@@ -98,6 +100,9 @@ module top #(
     wire        osc_a_task_update_valid;
     wire [7:0]  osc_a_task_update_slot;
     wire [31:0] osc_a_task_update_phase_step;
+    wire [31:0] osc_a_task_update_base_step;
+    wire [34:0] osc_a_task_update_detune_unit;
+    wire osc_a_task_update_detune_negative;
     wire [6:0]  osc_a_task_update_velocity;
     wire        osc_a_task_update_enable;
     wire        osc_a_task_update_phase_reset;
@@ -106,6 +111,9 @@ module top #(
     wire        osc_b_task_update_valid;
     wire [7:0]  osc_b_task_update_slot;
     wire [31:0] osc_b_task_update_phase_step;
+    wire [31:0] osc_b_task_update_base_step;
+    wire [34:0] osc_b_task_update_detune_unit;
+    wire osc_b_task_update_detune_negative;
     wire [6:0]  osc_b_task_update_velocity;
     wire        osc_b_task_update_enable;
     wire        osc_b_task_update_phase_reset;
@@ -475,7 +483,7 @@ module top #(
     assign osc_b_mix_gain_target_q8 = !osc_b_enabled ? 9'd0
         : osc_a_enabled ? (level_to_half_gain_q8(lfo_osc_b_level_target) >> 1)
         : level_to_half_gain_q8(lfo_osc_b_level_target);
-    assign master_gain_target_q8 = level_to_unity_gain_q8(master_level_target);
+    assign master_gain_target_q8 = level_to_unity_gain_q8(lfo_master_level_target);
 
     always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
@@ -536,6 +544,23 @@ module top #(
         .framing_error(uart_framing_error)
     );
 
+    wire  shared_cc_valid;
+    wire [3:0] shared_cc_channel;
+    wire [6:0] shared_cc_number;
+    wire [6:0] shared_cc_value;
+    wire  shared_hr_valid;
+    wire [6:0] shared_hr_id;
+    wire [13:0] shared_hr_value;
+    wire  external_cc_valid;
+    wire [3:0] external_cc_channel;
+    wire [6:0] external_cc_number;
+    wire [6:0] external_cc_value;
+    wire  external_hr_valid;
+    wire [6:0] external_hr_id;
+    wire [13:0] external_hr_value;
+    wire [7:0] control_uart_byte;
+    wire control_uart_byte_valid, control_uart_framing_error;
+    wire control_event_overflow;
     midi_note_parser u_midi_note_parser (
         .clk                   (clk_sys),
         .rst_n                 (rst_n_sys),
@@ -546,10 +571,10 @@ module top #(
         .note_event_channel    (midi_note_event_channel),
         .note_event_note       (midi_note_event_note),
         .note_event_velocity   (midi_note_event_velocity),
-        .control_change_valid  (midi_control_change_valid),
-        .control_change_channel(midi_control_change_channel),
-        .control_change_number (midi_control_change_number),
-        .control_change_value  (midi_control_change_value)
+        .control_change_valid  (shared_cc_valid),
+        .control_change_channel(shared_cc_channel),
+        .control_change_number (shared_cc_number),
+        .control_change_value  (shared_cc_value)
     );
 
     highres_parameter_parser u_highres_parameter_parser (
@@ -557,10 +582,50 @@ module top #(
         .rst_n          (rst_n_sys),
         .byte_data      (uart_byte),
         .byte_valid     (uart_byte_valid),
-        .parameter_valid(highres_parameter_valid),
-        .parameter_id   (highres_parameter_id),
-        .parameter_value(highres_parameter_value)
+        .parameter_valid(shared_hr_valid),
+        .parameter_id   (shared_hr_id),
+        .parameter_value(shared_hr_value)
     );
+
+    uart_rx #(.CLK_HZ(50000000), .BAUD_RATE(CONTROL_UART_BAUD_RATE)) u_control_uart_rx (
+        .clk(clk_sys), .rst_n(rst_n_sys), .rx(control_uart_rx),
+        .data(control_uart_byte), .data_valid(control_uart_byte_valid),
+        .framing_error(control_uart_framing_error)
+    );
+    midi_note_parser u_control_cc_parser (
+        .clk(clk_sys), .rst_n(rst_n_sys),
+        .byte_data(control_uart_byte), .byte_valid(control_uart_byte_valid),
+        .note_event_valid(), .note_event_on(), .note_event_channel(),
+        .note_event_note(), .note_event_velocity(),
+        .control_change_valid(external_cc_valid), .control_change_channel(external_cc_channel),
+        .control_change_number(external_cc_number), .control_change_value(external_cc_value)
+    );
+    highres_parameter_parser u_control_highres_parser (
+        .clk(clk_sys), .rst_n(rst_n_sys),
+        .byte_data(control_uart_byte), .byte_valid(control_uart_byte_valid),
+        .parameter_valid(external_hr_valid), .parameter_id(external_hr_id),
+        .parameter_value(external_hr_value)
+    );
+    wire [21:0] merged_control_event;
+    wire merged_control_valid;
+    control_event_merge u_control_event_merge (
+        .clk(clk_sys), .rst_n(rst_n_sys),
+        .valid_a(shared_cc_valid || shared_hr_valid),
+        .data_a(shared_hr_valid ? {1'b1,shared_hr_id,shared_hr_value}
+               : {4'd0,shared_cc_channel,shared_cc_number,shared_cc_value}),
+        .valid_b(external_cc_valid || external_hr_valid),
+        .data_b(external_hr_valid ? {1'b1,external_hr_id,external_hr_value}
+               : {4'd0,external_cc_channel,external_cc_number,external_cc_value}),
+        .out_valid(merged_control_valid), .out_data(merged_control_event),
+        .overflow(control_event_overflow)
+    );
+    assign midi_control_change_valid = merged_control_valid && !merged_control_event[21];
+    assign midi_control_change_channel = merged_control_event[17:14];
+    assign midi_control_change_number = merged_control_event[13:7];
+    assign midi_control_change_value = merged_control_event[6:0];
+    assign highres_parameter_valid = merged_control_valid && merged_control_event[21];
+    assign highres_parameter_id = merged_control_event[20:14];
+    assign highres_parameter_value = merged_control_event[13:0];
 
     // 静态CC43仍经过5.33 ms平滑器。高精度SysEx只负责写入LFO配置，
     // 不再周期性覆盖Cutoff目标。
@@ -626,6 +691,17 @@ module top #(
         .lfo_enabled(lfo_2_enabled), .active_segment(), .segment_phase()
     );
 
+    wire [6:0] lfo_master_level_target;
+    wire [6:0] lfo_distortion_drive_target;
+    wire [6:0] lfo_distortion_mix_target;
+    wire [6:0] lfo_chorus_depth_target;
+    wire [6:0] lfo_chorus_mix_target;
+    wire [6:0] lfo_phaser_depth_target;
+    wire [6:0] lfo_phaser_mix_target;
+    wire [6:0] lfo_reverb_mix_target;
+    wire [6:0] lfo_delay_mix_target;
+
+    wire [6:0] lfo_osc_a_detune_target, lfo_osc_b_detune_target;
     lfo_modulation_router u_lfo_modulation_router (
         .clk                       (clk_sys),
         .rst_n                     (rst_n_sys),
@@ -657,6 +733,17 @@ module top #(
         .mod_filter_cutoff_q8      (filter_cutoff_current_q8),
         .mod_filter_resonance      (lfo_filter_resonance_target),
         .mod_filter_mix            (lfo_filter_mix_target),
+        .base_master_level(master_level_target), .mod_master_level(lfo_master_level_target),
+        .base_distortion_drive(distortion_drive_target), .mod_distortion_drive(lfo_distortion_drive_target),
+        .base_distortion_mix(distortion_mix_target), .mod_distortion_mix(lfo_distortion_mix_target),
+        .base_chorus_depth(chorus_depth_target), .mod_chorus_depth(lfo_chorus_depth_target),
+        .base_chorus_mix(chorus_mix_target), .mod_chorus_mix(lfo_chorus_mix_target),
+        .base_phaser_depth(phaser_depth_target), .mod_phaser_depth(lfo_phaser_depth_target),
+        .base_phaser_mix(phaser_mix_target), .mod_phaser_mix(lfo_phaser_mix_target),
+        .base_reverb_mix(reverb_mix_target), .mod_reverb_mix(lfo_reverb_mix_target),
+        .base_delay_mix(delay_mix_target), .mod_delay_mix(lfo_delay_mix_target),
+        .base_osc_a_detune(osc_a_detune_amount), .mod_osc_a_detune(lfo_osc_a_detune_target),
+        .base_osc_b_detune(osc_b_detune_amount), .mod_osc_b_detune(lfo_osc_b_detune_target),
         .route_overrun             (lfo_route_overrun)
     );
 
@@ -778,11 +865,14 @@ module top #(
         .note_event_note         (routed_note_event_note),
         .note_event_velocity     (routed_note_event_velocity),
         .unison_count            (osc_a_unison_count),
-        .detune_amount           (osc_a_detune_amount),
+        .detune_amount           (lfo_osc_a_detune_target),
         .task_idle_mask          (osc_a_task_idle_mask),
         .task_update_valid       (osc_a_task_update_valid),
         .task_update_slot        (osc_a_task_update_slot),
         .task_update_phase_step  (osc_a_task_update_phase_step),
+        .task_update_base_step(osc_a_task_update_base_step),
+        .task_update_detune_unit(osc_a_task_update_detune_unit),
+        .task_update_detune_negative(osc_a_task_update_detune_negative),
         .task_update_velocity    (osc_a_task_update_velocity),
         .task_update_enable      (osc_a_task_update_enable),
         .task_update_phase_reset (osc_a_task_update_phase_reset),
@@ -801,11 +891,14 @@ module top #(
         .note_event_note         (routed_note_event_note),
         .note_event_velocity     (routed_note_event_velocity),
         .unison_count            (osc_b_unison_count),
-        .detune_amount           (osc_b_detune_amount),
+        .detune_amount           (lfo_osc_b_detune_target),
         .task_idle_mask          (osc_b_task_idle_mask),
         .task_update_valid       (osc_b_task_update_valid),
         .task_update_slot        (osc_b_task_update_slot),
         .task_update_phase_step  (osc_b_task_update_phase_step),
+        .task_update_base_step(osc_b_task_update_base_step),
+        .task_update_detune_unit(osc_b_task_update_detune_unit),
+        .task_update_detune_negative(osc_b_task_update_detune_negative),
         .task_update_velocity    (osc_b_task_update_velocity),
         .task_update_enable      (osc_b_task_update_enable),
         .task_update_phase_reset (osc_b_task_update_phase_reset),
@@ -814,6 +907,7 @@ module top #(
     );
 
     oscillator_tdm_bank #(
+        .REALTIME_DETUNE_ENABLE(1),
         .ENGINE_COUNT      (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE)
     ) u_osc_a_tdm_bank (
@@ -843,6 +937,10 @@ module top #(
         .task_update_valid         (osc_a_task_update_valid),
         .task_update_slot          (osc_a_task_update_slot),
         .task_update_phase_step    (osc_a_task_update_phase_step),
+        .detune_amount(lfo_osc_a_detune_target),
+        .task_update_base_step(osc_a_task_update_base_step),
+        .task_update_detune_unit(osc_a_task_update_detune_unit),
+        .task_update_detune_negative(osc_a_task_update_detune_negative),
         .task_update_velocity      (osc_a_task_update_velocity),
         .task_update_enable        (osc_a_task_update_enable),
         .task_update_phase_reset   (osc_a_task_update_phase_reset),
@@ -857,6 +955,7 @@ module top #(
     );
 
     oscillator_tdm_bank #(
+        .REALTIME_DETUNE_ENABLE(1),
         .ENGINE_COUNT      (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE)
     ) u_osc_b_tdm_bank (
@@ -886,6 +985,10 @@ module top #(
         .task_update_valid         (osc_b_task_update_valid),
         .task_update_slot          (osc_b_task_update_slot),
         .task_update_phase_step    (osc_b_task_update_phase_step),
+        .detune_amount(lfo_osc_b_detune_target),
+        .task_update_base_step(osc_b_task_update_base_step),
+        .task_update_detune_unit(osc_b_task_update_detune_unit),
+        .task_update_detune_negative(osc_b_task_update_detune_negative),
         .task_update_velocity      (osc_b_task_update_velocity),
         .task_update_enable        (osc_b_task_update_enable),
         .task_update_phase_reset   (osc_b_task_update_phase_reset),
@@ -981,28 +1084,28 @@ module top #(
         .in_ready        (global_effects_input_ready),
         .distortion_enable(distortion_enable_target),
         .distortion_type  (distortion_type_target),
-        .distortion_drive (distortion_drive_target),
+        .distortion_drive (lfo_distortion_drive_target),
         .distortion_tone  (distortion_tone_target),
-        .distortion_mix   (distortion_mix_target),
+        .distortion_mix   (lfo_distortion_mix_target),
         .phaser_enable    (phaser_enable_target),
         .phaser_rate      (phaser_rate_target),
-        .phaser_depth     (phaser_depth_target),
+        .phaser_depth     (lfo_phaser_depth_target),
         .phaser_center    (phaser_center_target),
         .phaser_feedback  (phaser_feedback_target),
-        .phaser_mix       (phaser_mix_target),
+        .phaser_mix       (lfo_phaser_mix_target),
         .chorus_enable    (chorus_enable_target),
         .chorus_rate      (chorus_rate_target),
-        .chorus_depth     (chorus_depth_target),
+        .chorus_depth     (lfo_chorus_depth_target),
         .chorus_delay     (chorus_delay_target),
         .chorus_feedback  (chorus_feedback_target),
-        .chorus_mix       (chorus_mix_target),
+        .chorus_mix       (lfo_chorus_mix_target),
         .effect_mode     (effect_mode_target),
         .delay_time      (delay_time_target),
         .delay_feedback  (delay_feedback_target),
-        .delay_mix       (delay_mix_target),
+        .delay_mix       (lfo_delay_mix_target),
         .reverb_size     (reverb_size_target),
         .reverb_decay    (reverb_decay_target),
-        .reverb_mix      (reverb_mix_target),
+        .reverb_mix      (lfo_reverb_mix_target),
         .compressor_enable   (compressor_enable_target),
         .compressor_threshold(compressor_threshold_target),
         .compressor_ratio    (compressor_ratio_target),

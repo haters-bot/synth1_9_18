@@ -10,6 +10,7 @@ module tb_top_dual_unison8;
     reg sys_clk;
     reg rst_n;
     reg uart_rx;
+    reg control_uart_rx;
 
     wire MAX_SD;
     wire MAX_GAIN;
@@ -35,6 +36,7 @@ module tb_top_dual_unison8;
 
     top #(
         .UART_BAUD_RATE(TEST_UART_BAUD),
+        .CONTROL_UART_BAUD_RATE(TEST_UART_BAUD),
         .DEFAULT_UNISON_COUNT(1),
         .OSC_ENGINE_COUNT(2),
         .SLOTS_PER_ENGINE(32),
@@ -44,6 +46,7 @@ module tb_top_dual_unison8;
         .rst_n   (rst_n),
         .uart_rx (uart_rx),
         .midi_gpio_rx(1'b1),
+        .control_uart_rx(control_uart_rx),
         .MAX_SD  (MAX_SD),
         .MAX_GAIN(MAX_GAIN),
         .MAX_DIN (MAX_DIN),
@@ -85,6 +88,23 @@ module tb_top_dual_unison8;
         end
     endtask
 
+    task send_control_byte;
+        input [7:0] value;
+        integer bit_number;
+        begin
+            @(negedge sys_clk);
+            control_uart_rx = 1'b0;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+            for (bit_number = 0; bit_number < 8;
+                 bit_number = bit_number + 1) begin
+                control_uart_rx = value[bit_number];
+                repeat (CLKS_PER_BIT) @(negedge sys_clk);
+            end
+            control_uart_rx = 1'b1;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+        end
+    endtask
+
     task send_cc;
         input [6:0] controller;
         input [6:0] value;
@@ -108,6 +128,7 @@ module tb_top_dual_unison8;
         sys_clk = 1'b0;
         rst_n = 1'b0;
         uart_rx = 1'b1;
+        control_uart_rx = 1'b1;
         sd_dat0 = 1'b1;
         errors = 0;
         valid_count = 0;
@@ -139,6 +160,29 @@ module tb_top_dual_unison8;
             errors = errors + 1;
         end
 
+        // 两路UART同拍完成CC，验证两条指令均保留。
+        fork
+            send_cc(7'd46, 7'd73);
+            begin
+                send_control_byte(8'hBF);
+                send_control_byte(8'd47);
+                send_control_byte(8'd91);
+            end
+        join
+        repeat (20) @(posedge sys_clk);
+        if (dut.osc_a_level !== 7'd73 || dut.osc_b_level !== 7'd91
+            || dut.control_event_overflow) begin
+            $display("ERROR: dual UART CC collision"); errors = errors + 1;
+        end
+        // 独立控制口接收高精度SysEx。
+        send_control_byte(8'hF0); send_control_byte(8'h7D);
+        send_control_byte(8'd26); send_control_byte(8'd0);
+        send_control_byte(8'd5); send_control_byte(8'hF7);
+        repeat (20) @(posedge sys_clk);
+        if (dut.u_lfo_modulation_router.shadow_route_index !== 3'd5) begin
+            $display("ERROR: external SysEx parser"); errors = errors + 1;
+        end
+
         // 每发一个音符等待两组调度器空闲，避免测试UART吞掉事件。
         for (note_index = 0; note_index < 8; note_index = note_index + 1) begin
             send_note_on(7'd48 + note_index);
@@ -156,6 +200,23 @@ module tb_top_dual_unison8;
                      dut.osc_a_active_task_count,
                      dut.osc_b_active_task_count);
             errors = errors + 1;
+        end
+
+        // 按住音符改变Detune，验证已分配槽位的步进随之变化。
+        send_cc(7'd22, 7'd0);
+        repeat (2000) @(posedge sys_clk);
+        wait (dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.pipe_valid && dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.pipe_slot == 0);
+        #1;
+        if (dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.pipe_phase_step !== dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.base_step_state[0]) begin
+            $display("ERROR: live detune zero did not restore base"); errors = errors + 1;
+        end
+        send_cc(7'd22, 7'd127);
+        repeat (2000) @(posedge sys_clk);
+        wait (dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.pipe_valid && dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.pipe_slot == 0);
+        #1;
+        if (dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.pipe_phase_step >= dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.base_step_state[0]
+            || dut.osc_a_active_task_count !== 7'd64) begin
+            $display("ERROR: held voice live detune did not change step"); errors = errors + 1;
         end
 
         // 保持一段时间，确认两个完整Bank都能持续产生同步采样。

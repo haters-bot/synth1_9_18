@@ -1,4 +1,4 @@
-﻿// Tang Mega 138K DDR3 standalone validation constraints.
+// Tang Mega 138K DDR3 standalone validation constraints.
 // Device: GW5AST-LV138PG484AC1/I0
 
 IO_LOC  "ddr_bank[2]"   M6;
@@ -145,11 +145,11 @@ IO_PORT "sys_clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
 IO_LOC "rst_n" AA13;
 IO_PORT "rst_n" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 
-// DDR IP内部专用资源位置；生成IP后必须核对层次名。
-INS_LOC "GEN_WAVETABLE_STORAGE/u_wavetable_storage_system/u_ddr3_wrapper/u_ddr_pll/u_pll/PLL_inst" PLL_L[0];
-INS_LOC "GEN_WAVETABLE_STORAGE/u_wavetable_storage_system/u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/u_dll" DDRDLLM_BL;
-INS_LOC "GEN_WAVETABLE_STORAGE/u_wavetable_storage_system/u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/fclkdiv" LEFTSIDE[4];
-// MAX98357A与板载功放控制。
+// Dedicated DDR IP resource locations; verify hierarchy names after IP generation.
+INS_LOC "GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_ddr3_wrapper/u_ddr_pll/u_pll/PLL_inst" PLL_L[0];
+INS_LOC "GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/u_dll" DDRDLLM_BL;
+INS_LOC "GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/fclkdiv" LEFTSIDE[4];
+// MAX98357A and onboard power-amplifier control.
 IO_LOC "PA_EN" AB16;
 IO_PORT "PA_EN" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "MAX_SD" AB20;
@@ -168,10 +168,14 @@ IO_PORT "uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 IO_LOC "midi_gpio_rx" AB21;
 IO_PORT "midi_gpio_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 
-// 板载SD卡使用1-bit SD模式。
+// Onboard SD card in 1-bit SD mode.
 IO_LOC "sd_clk" V15;
 IO_PORT "sd_clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "sd_cmd" Y16;
 IO_PORT "sd_cmd" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "sd_dat0" AA15;
 IO_PORT "sd_dat0" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// Dedicated control UART RX on header pin C19 (user-selected).
+IO_LOC "control_uart_rx" C19;
+IO_PORT "control_uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;

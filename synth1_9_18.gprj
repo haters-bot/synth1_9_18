@@ -11,31 +11,32 @@
         <File path="src/advanced_fir_filter/fir_decimator_8x_ip.v" type="file.verilog" enable="1"/>
         <File path="src/async_fifo.v" type="file.verilog" enable="1"/>
         <File path="src/basic_osc_v1.v" type="file.verilog" enable="1"/>
+        <File path="src/control_event_merge.v" type="file.verilog" enable="1"/>
         <File path="src/ddr3_bist.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_memory_interface/ddr3_wavetable_ip.v" type="file.verilog" enable="1"/>
         <File path="src/ddr3_standalone_test_top.v" type="file.verilog" enable="0"/>
         <File path="src/ddr3_status_uart.v" type="file.verilog" enable="1"/>
         <File path="src/ddr3_transaction_arbiter.v" type="file.verilog" enable="1"/>
         <File path="src/ddr3_user_port_adapter.v" type="file.verilog" enable="1"/>
         <File path="src/ddr3_wavetable_wrapper.v" type="file.verilog" enable="1"/>
-        <File path="src/ddr3_wavetable_ip/ddr3_wavetable_ip.v" type="file.verilog" enable="1"/>
         <File path="src/filter_curve_lfo.v" type="file.verilog" enable="1"/>
         <File path="src/fir_decimator_8x_wrapper.v" type="file.verilog" enable="1"/>
         <File path="src/freq_lut.v" type="file.verilog" enable="1"/>
+        <File path="src/global_chorus.v" type="file.verilog" enable="1"/>
         <File path="src/global_comb_filter.v" type="file.verilog" enable="1"/>
-        <File path="src/global_filter.v" type="file.verilog" enable="1"/>
+        <File path="src/global_compressor.v" type="file.verilog" enable="1"/>
         <File path="src/global_delay.v" type="file.verilog" enable="1"/>
-        <File path="src/global_reverb.v" type="file.verilog" enable="1"/>
         <File path="src/global_delay_reverb.v" type="file.verilog" enable="1"/>
         <File path="src/global_distortion.v" type="file.verilog" enable="1"/>
-        <File path="src/global_phaser.v" type="file.verilog" enable="1"/>
-        <File path="src/global_chorus.v" type="file.verilog" enable="1"/>
-        <File path="src/global_compressor.v" type="file.verilog" enable="1"/>
         <File path="src/global_effects.v" type="file.verilog" enable="1"/>
+        <File path="src/global_filter.v" type="file.verilog" enable="1"/>
+        <File path="src/global_phaser.v" type="file.verilog" enable="1"/>
+        <File path="src/global_reverb.v" type="file.verilog" enable="1"/>
         <File path="src/global_svf_filter.v" type="file.verilog" enable="1"/>
-        <File path="src/gowin_pll/sys_pll_50m_ip.v" type="file.verilog" enable="1"/>
-        <File path="src/gowin_pll/sys_pll_50m_ip_mod.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_ddr_pll/ddr3_pll_400m_ip.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_ddr_pll/ddr3_pll_400m_ip_mod.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll/sys_pll_50m_ip.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll/sys_pll_50m_ip_mod.v" type="file.verilog" enable="1"/>
         <File path="src/highres_parameter_parser.v" type="file.verilog" enable="1"/>
         <File path="src/i2s_tx.v" type="file.verilog" enable="1"/>
         <File path="src/key_debounce.v" type="file.verilog" enable="1"/>
@@ -47,9 +48,9 @@
         <File path="src/pll_init.v" type="file.verilog" enable="1"/>
         <File path="src/reset_release_sync.v" type="file.verilog" enable="1"/>
         <File path="src/sawtooth_lut.v" type="file.verilog" enable="1"/>
-        <File path="src/sd_card/sdcmd_ctrl.sv" type="file.verilog" enable="1"/>
-        <File path="src/sd_card/sd_reader.sv" type="file.verilog" enable="1"/>
         <File path="src/sd_card/sd_file_list_reader.sv" type="file.verilog" enable="1"/>
+        <File path="src/sd_card/sd_reader.sv" type="file.verilog" enable="1"/>
+        <File path="src/sd_card/sdcmd_ctrl.sv" type="file.verilog" enable="1"/>
         <File path="src/sd_wavetable_loader.v" type="file.verilog" enable="1"/>
         <File path="src/sine_lut.v" type="file.verilog" enable="1"/>
         <File path="src/square_lut.v" type="file.verilog" enable="1"/>
@@ -58,9 +59,9 @@
         <File path="src/top.v.v" type="file.verilog" enable="1"/>
         <File path="src/triangle_lut.v" type="file.verilog" enable="1"/>
         <File path="src/uart_rx.v" type="file.verilog" enable="1"/>
-        <File path="src/wavetable_phase_warp.v" type="file.verilog" enable="1"/>
         <File path="src/wavetable_cache_loader.v" type="file.verilog" enable="1"/>
         <File path="src/wavetable_frame_cache.v" type="file.verilog" enable="1"/>
+        <File path="src/wavetable_phase_warp.v" type="file.verilog" enable="1"/>
         <File path="src/wavetable_storage_system.sv" type="file.verilog" enable="1"/>
         <File path="constraints/tang_mega_138k_audio_test.cst" type="file.cst" enable="0"/>
         <File path="constraints/tang_mega_138k_ddr3_standalone.cst" type="file.cst" enable="0"/>
@@ -68,6 +69,7 @@
         <File path="constraints/ddr3_standalone.sdc" type="file.sdc" enable="0"/>
         <File path="constraints/full_synth.sdc" type="file.sdc" enable="1"/>
         <File path="src/timing.sdc" type="file.sdc" enable="0"/>
+        <File path="src/SD_DDR.rao" type="file.gao" enable="1"/>
         <File path="src/synth1_9_18.rao" type="file.gao" enable="0"/>
         <File path="src/wavecheck.rao" type="file.gao" enable="0"/>
     </FileList>
