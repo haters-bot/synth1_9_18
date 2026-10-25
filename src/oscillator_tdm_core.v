@@ -10,6 +10,7 @@
 module oscillator_tdm_core #(
     parameter integer SLOTS_PER_ENGINE = 4,
     parameter integer PARTIAL_SUM_WIDTH = 24,
+    parameter integer REALTIME_DETUNE_ENABLE = 0,
     parameter integer ENVELOPE_UPDATE_DIV = 16
 )(
     input  wire clk,
@@ -41,6 +42,10 @@ module oscillator_tdm_core #(
     input  wire                  task_update_valid,
     input  wire [7:0]            task_update_slot,
     input  wire [31:0]           task_update_phase_step,
+    input wire [31:0] task_update_base_step,
+    input wire [34:0] task_update_detune_unit,
+    input wire task_update_detune_negative,
+    input wire [6:0] detune_amount,
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
@@ -64,6 +69,15 @@ module oscillator_tdm_core #(
     localparam [15:0] ENVELOPE_DIV_LAST = ENVELOPE_UPDATE_DIV - 1;
 
     reg [31:0] phase_state [0:SLOTS_PER_ENGINE-1];
+    // 实时Detune：请求级做乘法，返回级舍入加减，提交级累加相位。
+    // 系数仅在新音符分配时更新，Note Off不改系数，Release期间仍可调制。
+    reg [31:0] base_step_state [0:SLOTS_PER_ENGINE-1];
+    reg [34:0] detune_unit_state [0:SLOTS_PER_ENGINE-1];
+    reg detune_negative_state [0:SLOTS_PER_ENGINE-1];
+    reg [6:0] detune_batch;
+    reg [41:0] request_detune_product;
+    reg request_detune_negative;
+    wire [41:0] rounded_live_detune = request_detune_product + 42'd32;
     reg [31:0] phase_step_state [0:SLOTS_PER_ENGINE-1];
     reg        enable_state [0:SLOTS_PER_ENGINE-1];
     reg        gate_state [0:SLOTS_PER_ENGINE-1];
@@ -341,6 +355,7 @@ module oscillator_tdm_core #(
             request_phase     <= 32'd0;
             request_wave_address <= 8'd0;
             request_phase_step <= 32'd0;
+            detune_batch <= 0; request_detune_product <= 0; request_detune_negative <= 0;
             request_enable    <= 1'b0;
             request_gate      <= 1'b0;
             request_envelope_stage <= ENV_IDLE;
@@ -371,6 +386,8 @@ module oscillator_tdm_core #(
                  reset_index = reset_index + 1) begin
                 phase_state[reset_index] <= 32'd0;
                 phase_step_state[reset_index] <= 32'd0;
+                base_step_state[reset_index] <= 0; detune_unit_state[reset_index] <= 0;
+                detune_negative_state[reset_index] <= 0;
                 enable_state[reset_index] <= 1'b0;
                 gate_state[reset_index] <= 1'b0;
                 envelope_stage[reset_index] <= ENV_IDLE;
@@ -407,6 +424,7 @@ module oscillator_tdm_core #(
                     wt_position_batch <= wt_position;
                     warp_mode_batch <= warp_mode;
                     warp_amount_batch <= warp_amount;
+                    detune_batch <= detune_amount;
                     attack_phase_step_batch <= attack_phase_step;
                     decay_phase_step_batch <= decay_phase_step;
                     sustain_level_batch <= sustain_level;
@@ -435,7 +453,11 @@ module oscillator_tdm_core #(
                     pipe_slot <= request_slot;
                     pipe_phase <= request_phase;
                     pipe_wave_address <= request_wave_address;
-                    pipe_phase_step <= request_phase_step;
+                    if (REALTIME_DETUNE_ENABLE)
+                        pipe_phase_step <= request_detune_negative
+                            ? request_phase_step - rounded_live_detune[37:6]
+                            : request_phase_step + rounded_live_detune[37:6];
+                    else pipe_phase_step <= request_phase_step;
                     pipe_enable <= request_enable;
                     pipe_gate <= request_gate;
                     pipe_envelope_stage <= request_envelope_stage;
@@ -559,7 +581,10 @@ module oscillator_tdm_core #(
                     request_slot   <= issue_slot;
                     request_phase  <= phase_state[issue_slot];
                     request_wave_address <= issue_warped_wave_address;
-                    request_phase_step <= phase_step_state[issue_slot];
+                    request_phase_step <= REALTIME_DETUNE_ENABLE
+                        ? base_step_state[issue_slot] : phase_step_state[issue_slot];
+                    request_detune_product <= detune_unit_state[issue_slot] * detune_batch;
+                    request_detune_negative <= detune_negative_state[issue_slot];
                     request_enable <= enable_state[issue_slot];
                     request_gate   <= gate_state[issue_slot];
                     request_envelope_stage <= envelope_stage[issue_slot];
@@ -586,6 +611,11 @@ module oscillator_tdm_core #(
                 phase_step_state[task_update_slot]
                     <= task_update_phase_step;
 
+                if (task_update_enable && task_update_phase_reset) begin
+                    base_step_state[task_update_slot] <= task_update_base_step;
+                    detune_unit_state[task_update_slot] <= task_update_detune_unit;
+                    detune_negative_state[task_update_slot] <= task_update_detune_negative;
+                end
                 if (task_update_enable) begin
                     enable_state[task_update_slot] <= 1'b1;
                     gate_state[task_update_slot] <= 1'b1;

@@ -69,13 +69,15 @@ module tb_sd_ddr_wavetable_path;
 
     reg pending_rsp;
     reg pending_write;
-    reg [11:0] pending_word_index;
-    reg [255:0] ddr_memory [0:4095];
+    reg [12:0] pending_word_index;
+    reg [255:0] ddr_memory [0:8191];
     integer errors;
+    integer table_index;
     integer frame_index;
     integer phase_index;
     integer wait_cycles;
     reg [15:0] generated_sample;
+    reg previous_commit_toggle;
 
     always #10 sd_clk = ~sd_clk;
     always #5 ddr_clk = ~ddr_clk;
@@ -160,7 +162,7 @@ module tb_sd_ddr_wavetable_path;
             ddr_rsp_error <= 1'b0;
             pending_rsp <= 1'b0;
             pending_write <= 1'b0;
-            pending_word_index <= 12'd0;
+            pending_word_index <= 13'd0;
         end else begin
             ddr_rsp_valid <= pending_rsp;
             ddr_rsp_write <= pending_write;
@@ -172,9 +174,9 @@ module tb_sd_ddr_wavetable_path;
             if (ddr_req_valid && ddr_req_ready) begin
                 pending_rsp <= 1'b1;
                 pending_write <= ddr_req_write;
-                pending_word_index <= ddr_req_addr[14:3];
+                pending_word_index <= ddr_req_addr[15:3];
                 if (ddr_req_write)
-                    ddr_memory[ddr_req_addr[14:3]] <= ddr_req_wdata;
+                    ddr_memory[ddr_req_addr[15:3]] <= ddr_req_wdata;
             end
         end
     end
@@ -224,20 +226,24 @@ module tb_sd_ddr_wavetable_path;
         ddr_rst_n = 1'b1;
         audio_rst_n = 1'b1;
 
-        // 32字节WTB1头。
+        // 32字节WTB1头，声明包含两张波表。
         send_byte(8'h57); send_byte(8'h54); send_byte(8'h42); send_byte(8'h31);
-        send_byte(8'd1);  send_byte(8'd1);
+        send_byte(8'd1);  send_byte(8'd2);
         send_byte(8'h00); send_byte(8'h01);
         send_byte(8'h00); send_byte(8'h01);
         send_byte(8'd16); send_byte(8'd1);
         repeat (20) send_byte(8'd0);
 
-        // 一张表：sample = frame*256 + phase，小端16位。
-        for (frame_index = 0; frame_index < 256; frame_index = frame_index + 1) begin
-            for (phase_index = 0; phase_index < 256; phase_index = phase_index + 1) begin
-                generated_sample = frame_index * 256 + phase_index;
-                send_byte(generated_sample[7:0]);
-                send_byte(generated_sample[15:8]);
+        // 每张表均为256帧、每帧256个16位小端样本。
+        // 两张表使用不同直流偏移，便于确认表编号确实改变了DDR读取地址。
+        for (table_index = 0; table_index < 2; table_index = table_index + 1) begin
+            for (frame_index = 0; frame_index < 256; frame_index = frame_index + 1) begin
+                for (phase_index = 0; phase_index < 256; phase_index = phase_index + 1) begin
+                    generated_sample = frame_index * 256 + phase_index
+                                     + table_index * 16'h4000;
+                    send_byte(generated_sample[7:0]);
+                    send_byte(generated_sample[15:8]);
+                end
             end
         end
         @(negedge sd_clk);
@@ -250,7 +256,8 @@ module tb_sd_ddr_wavetable_path;
             @(posedge ddr_clk);
             wait_cycles = wait_cycles + 1;
         end
-        if (!storage_ready || storage_error || (words_written != 17'd4096)) begin
+        if (!storage_ready || storage_error || (table_count != 5'd2)
+                || (words_written != 17'd8192)) begin
             $display("ERROR: storage load failed ready=%b error=%b words=%0d",
                      storage_ready, storage_error, words_written);
             errors = errors + 1;
@@ -267,6 +274,16 @@ module tb_sd_ddr_wavetable_path;
         wait(cache_commit_fraction == 8'd128 && cache_loader_ready);
         repeat (8) @(posedge audio_clk);
         request_and_check(8'd5, -16'sd32635);
+
+        // 切换到表1并回到第0帧；必须出现一次新的缓存提交。
+        previous_commit_toggle = cache_commit_toggle;
+        desired_table = 4'd1;
+        desired_position = 7'd0;
+        wait(cache_commit_toggle != previous_commit_toggle);
+        wait(cache_loader_ready);
+        repeat (8) @(posedge audio_clk);
+        request_and_check(8'd5, 16'sh4005);
+        request_and_check(8'd200, 16'sh40C8);
 
         if (cache_load_error) begin
             $display("ERROR: cache loader reported an error");

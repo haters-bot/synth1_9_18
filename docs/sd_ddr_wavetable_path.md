@@ -53,6 +53,12 @@ python tools/pack_wavetable_bank.py `
   -o E:\SDCARD\WAVEBANK.WTB
 ```
 
+打包器接受未压缩的整数PCM WAV（8/16/24/32 bit）以及32位IEEE浮点WAV；
+多声道输入使用第一个声道。`--source-frame-size`必须与输入波表的单帧采样数一致，
+Serum/Xfer波表通常为2048。每个输入WAV对应WTB1中的一张波表。源帧轴会均匀映射到
+256帧：源帧不足256时执行相邻帧线性插值，只有单帧输入会复制为256个相同帧。
+WAV中的采样率字段不参与振荡器音高计算。
+
 当前SD控制器按根目录文件编号读取第0个普通文件。板测时建议使用空的FAT32卡，只复制
 一个`WAVEBANK.WTB`文件，避免目录顺序与文件名显示顺序不同。
 

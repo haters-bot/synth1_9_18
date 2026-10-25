@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 import struct
 import wave
@@ -30,14 +31,67 @@ def decode_pcm_sample(raw: bytes, sample_width: int) -> int:
     raise ValueError(f"不支持的PCM位宽：{sample_width * 8} bit")
 
 
+def read_float32_first_channel(path: Path) -> list[int]:
+    """读取Python wave模块尚不支持的IEEE float32 WAV。"""
+    wav_data = path.read_bytes()
+    if wav_data[:4] != b"RIFF" or wav_data[8:12] != b"WAVE":
+        raise ValueError(f"{path} 不是RIFF/WAVE文件")
+
+    fmt_chunk: bytes | None = None
+    sample_data: bytes | None = None
+    offset = 12
+    while offset + 8 <= len(wav_data):
+        chunk_id = wav_data[offset : offset + 4]
+        chunk_size = struct.unpack_from("<I", wav_data, offset + 4)[0]
+        chunk_start = offset + 8
+        chunk_end = chunk_start + chunk_size
+        if chunk_end > len(wav_data):
+            raise ValueError(f"{path} 的WAV区块长度无效")
+        if chunk_id == b"fmt ":
+            fmt_chunk = wav_data[chunk_start:chunk_end]
+        elif chunk_id == b"data":
+            sample_data = wav_data[chunk_start:chunk_end]
+        offset = chunk_end + (chunk_size & 1)
+
+    if fmt_chunk is None or len(fmt_chunk) < 16 or sample_data is None:
+        raise ValueError(f"{path} 缺少fmt或data区块")
+    audio_format, channels, _, _, block_align, bits = struct.unpack_from(
+        "<HHIIHH", fmt_chunk
+    )
+    if audio_format != 3 or bits != 32:
+        raise ValueError(f"{path} 不是支持的整数PCM或32位IEEE浮点WAV")
+    if channels < 1 or block_align != channels * 4:
+        raise ValueError(f"{path} 的声道或块对齐参数无效")
+    if len(sample_data) % block_align:
+        raise ValueError(f"{path} 的采样数据没有按帧对齐")
+
+    result: list[int] = []
+    for frame_offset in range(0, len(sample_data), block_align):
+        value = struct.unpack_from("<f", sample_data, frame_offset)[0]
+        if not math.isfinite(value):
+            raise ValueError(f"{path} 含有NaN或无穷浮点采样")
+        if value <= -1.0:
+            result.append(-32768)
+        elif value >= 1.0:
+            result.append(32767)
+        else:
+            result.append(round(value * 32767.0))
+    return result
+
+
 def read_first_channel(path: Path) -> list[int]:
-    with wave.open(str(path), "rb") as wav_file:
-        if wav_file.getcomptype() != "NONE":
-            raise ValueError(f"{path} 不是未压缩PCM WAV")
-        channels = wav_file.getnchannels()
-        sample_width = wav_file.getsampwidth()
-        frame_count = wav_file.getnframes()
-        raw = wav_file.readframes(frame_count)
+    try:
+        with wave.open(str(path), "rb") as wav_file:
+            if wav_file.getcomptype() != "NONE":
+                raise ValueError(f"{path} 不是未压缩PCM WAV")
+            channels = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
+            frame_count = wav_file.getnframes()
+            raw = wav_file.readframes(frame_count)
+    except wave.Error as error:
+        if "unknown format: 3" not in str(error):
+            raise ValueError(f"无法解析{path}：{error}") from error
+        return read_float32_first_channel(path)
 
     stride = channels * sample_width
     return [
@@ -77,19 +131,44 @@ def convert_table(path: Path, source_frame_size: int) -> list[list[int]]:
         print(f"警告：{path.name}尾部不足一帧的数据将被忽略")
 
     source_frames = [
-        samples[index * source_frame_size : (index + 1) * source_frame_size]
+        resample_frame(
+            samples[index * source_frame_size : (index + 1) * source_frame_size]
+        )
         for index in range(source_frame_count)
     ]
-    if source_frame_count >= TARGET_FRAMES:
-        selected = [
-            source_frames[round(index * (source_frame_count - 1) / (TARGET_FRAMES - 1))]
-            for index in range(TARGET_FRAMES)
-        ]
-    else:
-        selected = source_frames + [source_frames[-1]] * (
-            TARGET_FRAMES - source_frame_count
+    if source_frame_count == 1:
+        return [source_frames[0][:] for _ in range(TARGET_FRAMES)]
+
+    # 把源波表的完整帧轴映射到0～255。源帧少于256时在相邻帧间插值，
+    # 避免旧实现用最后一帧填满尾部，导致大部分WT Position失去变化。
+    table: list[list[int]] = []
+    target_last = TARGET_FRAMES - 1
+    source_last = source_frame_count - 1
+    for target_index in range(TARGET_FRAMES):
+        numerator = target_index * source_last
+        left_index, remainder = divmod(numerator, target_last)
+        right_index = min(left_index + 1, source_last)
+        if remainder == 0:
+            table.append(source_frames[left_index][:])
+            continue
+        left_frame = source_frames[left_index]
+        right_frame = source_frames[right_index]
+        table.append(
+            [
+                max(
+                    -32768,
+                    min(
+                        32767,
+                        round(
+                            left
+                            + (right - left) * remainder / target_last
+                        ),
+                    ),
+                )
+                for left, right in zip(left_frame, right_frame)
+            ]
         )
-    return [resample_frame(frame) for frame in selected]
+    return table
 
 
 def build_header(table_count: int) -> bytes:

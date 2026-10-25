@@ -1,0 +1,156 @@
+<?xml version="1" encoding="UTF-8"?>
+<GAO_CONFIG>
+    <Version>3.0</Version>
+    <Mode>Standard</Mode>
+    <AoCore index="0" sample_clock="cache_load_clk" trig_type="0" storage_depth="4096" window_num="1" capture_amount="1024" implementation="0" trigger_pos="0" module_name="top" force_trigger_by_falling_edge="false" capture_init_data_enabled="false">
+        <SignalList>
+            <Bus capture_enable="true" name="osc_a_wavetable_index[3:0]">
+                <Signal>osc_a_wavetable_index[3]</Signal>
+                <Signal>osc_a_wavetable_index[2]</Signal>
+                <Signal>osc_a_wavetable_index[1]</Signal>
+                <Signal>osc_a_wavetable_index[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="wavetable_table_count[4:0]">
+                <Signal>wavetable_table_count[4]</Signal>
+                <Signal>wavetable_table_count[3]</Signal>
+                <Signal>wavetable_table_count[2]</Signal>
+                <Signal>wavetable_table_count[1]</Signal>
+                <Signal>wavetable_table_count[0]</Signal>
+            </Bus>
+            <Signal capture_enable="true">wavetable_storage_ready</Signal>
+            <Signal capture_enable="true">wavetable_storage_error</Signal>
+            <Signal capture_enable="true">cache_a_ready</Signal>
+            <Signal capture_enable="true">cache_a_commit_toggle</Signal>
+            <Bus capture_enable="true" name="GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/osc_a_table_sync_2[3:0]">
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/osc_a_table_sync_2[3]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/osc_a_table_sync_2[2]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/osc_a_table_sync_2[1]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/osc_a_table_sync_2[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/state[2:0]">
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/state[2]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/state[1]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/state[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/fetch_table[3:0]">
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/fetch_table[3]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/fetch_table[2]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/fetch_table[1]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/fetch_table[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/loaded_table[3:0]">
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/loaded_table[3]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/loaded_table[2]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/loaded_table[1]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/loaded_table[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/clamped_table[3:0]">
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/clamped_table[3]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/clamped_table[2]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/clamped_table[1]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/clamped_table[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[28:0]">
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[28]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[27]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[26]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[25]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[24]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[23]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[22]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[21]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[20]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[19]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[18]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[17]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[16]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[15]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[14]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[13]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[12]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[11]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[10]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[9]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[8]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[7]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[6]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[5]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[4]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[3]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[2]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[1]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/req_addr[0]</Signal>
+            </Bus>
+            <Bus capture_enable="true" name="GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[15:0]">
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[15]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[14]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[13]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[12]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[11]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[10]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[9]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[8]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[7]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[6]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[5]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[4]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[3]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[2]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[1]</Signal>
+                <Signal>GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_data[0]</Signal>
+            </Bus>
+            <Signal capture_enable="true">GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/rsp_valid</Signal>
+            <Signal capture_enable="true">GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_write_enable</Signal>
+            <Signal capture_enable="true">GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_cache_a_loader/cache_load_error</Signal>
+        </SignalList>
+        <Triggers>
+            <Trigger index="0">
+                <SignalList>
+                    <Bus restorename="osc_a_wavetable_index[3:0]">
+                        <Signal>osc_a_wavetable_index[3]</Signal>
+                        <Signal>osc_a_wavetable_index[2]</Signal>
+                        <Signal>osc_a_wavetable_index[1]</Signal>
+                        <Signal>osc_a_wavetable_index[0]</Signal>
+                    </Bus>
+                </SignalList>
+            </Trigger>
+            <Trigger index="1"/>
+            <Trigger index="2"/>
+            <Trigger index="3"/>
+            <Trigger index="4"/>
+            <Trigger index="5"/>
+            <Trigger index="6"/>
+            <Trigger index="7"/>
+            <Trigger index="8"/>
+            <Trigger index="9"/>
+            <Trigger index="10"/>
+            <Trigger index="11"/>
+            <Trigger index="12"/>
+            <Trigger index="13"/>
+            <Trigger index="14"/>
+            <Trigger index="15"/>
+        </Triggers>
+        <MatchUnits>
+            <MatchUnit index="0" enabled="1" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="0001" value1="0000" trigger="0"/>
+            <MatchUnit index="1" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="2" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="3" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="4" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="5" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="6" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="7" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="8" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="9" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="10" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="11" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="12" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="13" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="14" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+            <MatchUnit index="15" enabled="0" match_type="0" counter_enable="0" counter_width="2" counter="2" countinuous="0" func="0" value0="" value1=""/>
+        </MatchUnits>
+        <Expressions type="Static">
+            <Expression>M0</Expression>
+        </Expressions>
+    </AoCore>
+    <GAO_ID>0001001111000100</GAO_ID>
+</GAO_CONFIG>

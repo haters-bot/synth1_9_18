@@ -42,6 +42,7 @@ vlog -work work_top_dual_unison8 \
     src/global_compressor.v \
     src/global_effects.v \
     src/i2s_tx.v \
+    src/control_event_merge.v \
     src/top.v.v \
     sim/tb_top_dual_unison8.v
 

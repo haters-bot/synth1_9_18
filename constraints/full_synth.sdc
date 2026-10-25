@@ -10,3 +10,6 @@ create_clock -name ddr_user_clk100 -period 10.000 -waveform {0.000 5.000} [get_p
 
 // DDR PHY, DDR user, and system clocks interact through dedicated logic or asynchronous FIFOs.
 set_clock_groups -exclusive -group [get_clocks {ddr_clk400}] -group [get_clocks {sys_clk}] -group [get_clocks {ddr_user_clk100}]
+
+// Asynchronous control UART input, first synchronizer stage only.
+set_false_path -from [get_ports {control_uart_rx}] -to [get_regs {u_control_uart_rx/rx_meta_s0}]

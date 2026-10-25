@@ -172,3 +172,7 @@ IO_LOC "sd_cmd" Y16;
 IO_PORT "sd_cmd" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "sd_dat0" AA15;
 IO_PORT "sd_dat0" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// Dedicated control UART RX on header pin C19 (user-selected).
+IO_LOC "control_uart_rx" C19;
+IO_PORT "control_uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
