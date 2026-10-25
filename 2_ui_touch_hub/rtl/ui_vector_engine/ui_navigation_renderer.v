@@ -12,7 +12,7 @@ module ui_navigation_renderer(
  output reg out_hit,
  output reg [23:0] out_rgb
 );
- `include "navigation_font.vh"
+ `include "navigation_font_hd.vh"
  `include "navigation_labels.vh"
  reg hit;reg [23:0] bg;
  reg [1:0] macro_row;
