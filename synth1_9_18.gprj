@@ -70,7 +70,7 @@
         <File path="constraints/ddr3_standalone.sdc" type="file.sdc" enable="0"/>
         <File path="constraints/full_synth.sdc" type="file.sdc" enable="1"/>
         <File path="src/timing.sdc" type="file.sdc" enable="0"/>
-        <File path="src/SD_DDR.rao" type="file.gao" enable="1"/>
+        <File path="src/SD_DDR.rao" type="file.gao" enable="0"/>
         <File path="src/synth1_9_18.rao" type="file.gao" enable="0"/>
         <File path="src/wavecheck.rao" type="file.gao" enable="0"/>
     </FileList>
