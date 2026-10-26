@@ -137,3 +137,8 @@ Future entries should append a dated section and never rewrite prior verificatio
 - **来源**：提交 `3b8807b`，位流 SHA256 `8C2617DB216CA7F930818B1032EE1ED520D2B214AB53613A025525518281FB71`。
 - **部署**：工程机 `10.136.125.157` 执行 `tools/deploy_verified.py --target sram`，目录 `2_ui_touch_hub/impl/deploy_runs/20261026_112652_TXE8148_EC11_SPI_QUADRANT_MAPPING/`；GW5AST-138B、SRAM operation 2、`PROGRAMMER_EXIT=0`、Status `0x00026230`、User Code `0x00004262`、22.73 s，远端哈希匹配。
 - **实屏证据**：`preview.jpg` 显示正常六窗 UI。仍待现场旋钮逐个转动确认参数变化、方向正负和 EC11 按压行为；Flash 保持暂停。
+## 2026-10-26 12:18 — 实体按压选中态接入试跑失败并撤回（Codex）
+
+- **尝试**：将 `knob_select_valid/select_id` 接到 `touch_event_router.selected_param_id`，使 EC11 按压更新屏幕当前选中参数。
+- **结果**：Gowin P&R 出现 2 条 setup 违例，最差 `−0.339 ns`；其中一条是导航 `ch1_4_s0 → coverage2_0_s0`，另一条是 `id0_2_s0 → ch1_0_s0`。该试验没有提交、没有部署，已撤回，工作区恢复干净。
+- **当前状态**：提交 `3b8807b` 的 SPI 采样修复、四区映射和旋转事件路径仍在板上；按压事件仍只在接收器内部形成 `select_valid/select_id`，持久视觉选中态待低扇出旋钮局部路径实现。

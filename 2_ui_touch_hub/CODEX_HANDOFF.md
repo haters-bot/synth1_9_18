@@ -1,5 +1,11 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 12:18：实体按压选中态接入试跑已撤回
+
+- 试验把 `knob_select_valid/select_id` 接入 `touch_event_router.selected_param_id`，目标是让实体按压更新屏幕旋钮高亮。
+- 试跑 P&R 产生 2 条 setup 违例，最差 Slack `−0.339 ns`（另一条为导航既有路径），因此未提交、未部署，已恢复到提交 `3b8807b` 的闭合版本。当前板上仍是 `8C2617...FB71` 对应的旋转采样/四区映射版本。
+- 后续如果继续做按压视觉反馈，应只把选择 ID 接到旋钮局部渲染路径，避免改变全局触摸选择寄存器和导航布局。
+
 ## 2026-10-26 11:27：四区映射位流已烧录 UI 板 SRAM
 
 - 使用提交 `3b8807b` 对应位流执行 `tools/deploy_verified.py --target sram`，部署目录为 `impl/deploy_runs/20261026_112652_TXE8148_EC11_SPI_QUADRANT_MAPPING/`。
