@@ -14,6 +14,9 @@ module tb_top_midi_input;
     wire MAX_DIN;
     wire MAX_BCLK;
     wire MAX_LRC;
+    wire VIS_BCLK;
+    wire VIS_LRC;
+    wire VIS_DIN;
     wire PA_EN;
     wire sd_clk;
     tri  sd_cmd;
@@ -63,6 +66,9 @@ module tb_top_midi_input;
         .MAX_DIN (MAX_DIN),
         .MAX_BCLK(MAX_BCLK),
         .MAX_LRC (MAX_LRC),
+        .VIS_BCLK(VIS_BCLK),
+        .VIS_LRC (VIS_LRC),
+        .VIS_DIN (VIS_DIN),
         .PA_EN   (PA_EN),
         .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
         .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),

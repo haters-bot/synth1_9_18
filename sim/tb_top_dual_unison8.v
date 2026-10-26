@@ -17,6 +17,9 @@ module tb_top_dual_unison8;
     wire MAX_DIN;
     wire MAX_BCLK;
     wire MAX_LRC;
+    wire VIS_BCLK;
+    wire VIS_LRC;
+    wire VIS_DIN;
     wire PA_EN;
     wire sd_clk;
     tri  sd_cmd;
@@ -51,6 +54,9 @@ module tb_top_dual_unison8;
         .MAX_DIN (MAX_DIN),
         .MAX_BCLK(MAX_BCLK),
         .MAX_LRC (MAX_LRC),
+        .VIS_BCLK(VIS_BCLK),
+        .VIS_LRC (VIS_LRC),
+        .VIS_DIN (VIS_DIN),
         .PA_EN   (PA_EN),
         .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
         .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),
@@ -68,6 +74,10 @@ module tb_top_dual_unison8;
             errors = errors + 1;
         if (dut.osc_a_mix_valid && dut.osc_b_mix_valid)
             valid_count = valid_count + 1;
+        if ((VIS_BCLK !== MAX_BCLK) ||
+            (VIS_LRC  !== MAX_LRC)  ||
+            (VIS_DIN  !== MAX_DIN))
+            errors = errors + 1;
     end
 
     task send_uart_byte;
