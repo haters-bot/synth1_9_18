@@ -1,5 +1,13 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 11:05：TXE8148 SPI 采样与四区映射版本时序闭合（待 SRAM 部署）
+
+- 本轮修复 `rtl/knob_spi_intake/knob_spi_rx.v` 的 SPI 采样时序：TXE8148 在 SCLK 下降沿更新 SDO，接收器改为在高电平阶段结束时采样稳定后的同步数据。保留两颗 TXE8148、32 个 EC11 的 A/B/SW 解码与 0..127 参数值输出。
+- 物理编号映射已按面板四区收口：旋钮 1..8=左上 OSC A，9..16=左下 ENV/Global，17..24=右上 OSC B，25..32=右下 Filter/FX。完整 ID 表见 `doc/TXE8148_EC11_SPI_INTEGRATION.md` 和 `doc/HARDWARE_WIRING_PINOUT.md`。
+- 当前旋转事件已进入 `param_merger` 的 SPI 参数路径；触摸路径保持原逻辑。实体按压的 `select_valid/select_id` 已在 SPI 接收器中识别并保留，但本轮没有并入高扇出 `btn_tap`/渲染选择路径，因为该接法使既有环境曲线路径出现 22 条 setup 违例。按压到持久 UI 选中态需另做低扇出、时序收口的实现，不能把本轮称为按压视觉反馈已验收。
+- Gowin 全量 P&R 已通过：Setup 违例 0、Hold 违例 0，最差 Setup Slack `+0.595 ns`；位流 `impl/pnr/2_ui_touch_hub.fs` SHA256 `8C2617DB216CA7F930818B1032EE1ED520D2B214AB53613A025525518281FB71`。`tb_lfo_sysex_tx` 全部检查通过，`tb_midi_uart_tx` 全部协议检查通过。
+- 当前仅完成源码构建与仿真证据，尚未把该新位流写入 UI 板 SRAM；Flash 继续暂停。部署前需继续执行 `tools/deploy_verified.py --target sram`，并核对工程机编程返回码、远端哈希和摄像头画面。实体 32 路旋转/按压仍需现场逐项验收。
+
 ## 2026-10-26 04:48：TXE8148 32 路旋钮版本已烧录 SRAM
 
 - 使用提交 `76a7fb9` 对应位流 `impl/pnr/2_ui_touch_hub.fs` 执行 `tools/deploy_verified.py --target sram`。

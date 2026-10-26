@@ -34,9 +34,8 @@ module knob_spi_rx #(
     output reg  [7:0]  param_id,
     output reg  [6:0]  param_val,
 
-    output reg         button_valid,
-    output reg  [7:0]  button_id,
-    output reg  [1:0]  button_action
+    output reg         select_valid,
+    output reg  [7:0]  select_id
 );
 
     localparam integer HALF_DIV = (CLK_HZ / (SPI_HZ * 2)) < 1
@@ -69,13 +68,13 @@ module knob_spi_rx #(
     reg        commit_pending;
 
     reg [31:0] pending_mask;
-    reg [31:0] button_pending_mask;
+    reg [31:0] select_pending_mask;
     reg [6:0]  knob_value [0:31];
 
     reg [31:0] next_pending_mask;
-    reg [31:0] next_button_pending_mask;
+    reg [31:0] next_select_pending_mask;
     reg [31:0] emitted_mask;
-    reg [31:0] emitted_button_mask;
+    reg [31:0] emitted_select_mask;
     reg [1:0]  qstep;
     reg        old_a, old_b, new_a, new_b;
     reg        old_sw, new_sw;
@@ -93,57 +92,42 @@ module knob_spi_rx #(
     function [7:0] map_knob_to_param_id;
         input [4:0] knob;
         begin
-            // Keep the earlier 16-channel mapping, then extend it to the
-            // remaining primary synthesis and FX controls.
+            // Four physical 8-knob blocks: upper-left OSC A, lower-left ENV
+            // and global controls, upper-right OSC B, lower-right filter/FX.
             case (knob)
-                5'd0:  map_knob_to_param_id = `PARAM_ID_FLT_CUTOFF;
-                5'd1:  map_knob_to_param_id = `PARAM_ID_FLT_RES;
-                5'd2:  map_knob_to_param_id = `PARAM_ID_OSCA_WT_POS;
-                5'd3:  map_knob_to_param_id = `PARAM_ID_OSCA_DETUNE;
+                5'd0:  map_knob_to_param_id = `PARAM_ID_OSCA_WT_POS;
+                5'd1:  map_knob_to_param_id = `PARAM_ID_OSCA_WARP;
+                5'd2:  map_knob_to_param_id = `PARAM_ID_OSCA_PAN;
+                5'd3:  map_knob_to_param_id = `PARAM_ID_OSCA_VOL;
                 5'd4:  map_knob_to_param_id = `PARAM_ID_OSCA_UNISON;
-                5'd5:  map_knob_to_param_id = `PARAM_ID_OSCA_PAN;
-                5'd6:  map_knob_to_param_id = `PARAM_ID_OSCA_VOL;
-                5'd7:  map_knob_to_param_id = `PARAM_ID_ENV1_ATTACK;
-                5'd8:  map_knob_to_param_id = `PARAM_ID_ENV1_DECAY;
-                5'd9:  map_knob_to_param_id = `PARAM_ID_ENV1_SUSTAIN;
-                5'd10: map_knob_to_param_id = `PARAM_ID_ENV1_RELEASE;
-                5'd11: map_knob_to_param_id = `PARAM_ID_MASTER_VOL;
-                5'd12: map_knob_to_param_id = `PARAM_ID_MACRO1;
-                5'd13: map_knob_to_param_id = `PARAM_ID_MACRO2;
-                5'd14: map_knob_to_param_id = `PARAM_ID_MACRO3;
-                5'd15: map_knob_to_param_id = `PARAM_ID_MACRO4;
+                5'd5:  map_knob_to_param_id = `PARAM_ID_OSCA_DETUNE;
+                5'd6:  map_knob_to_param_id = `PARAM_ID_OSCA_BLEND;
+                5'd7:  map_knob_to_param_id = `PARAM_ID_OSCA_PHASE;
+                5'd8:  map_knob_to_param_id = `PARAM_ID_ENV1_ATTACK;
+                5'd9:  map_knob_to_param_id = `PARAM_ID_ENV1_HOLD;
+                5'd10: map_knob_to_param_id = `PARAM_ID_ENV1_DECAY;
+                5'd11: map_knob_to_param_id = `PARAM_ID_ENV1_SUSTAIN;
+                5'd12: map_knob_to_param_id = `PARAM_ID_ENV1_RELEASE;
+                5'd13: map_knob_to_param_id = `PARAM_ID_MASTER_VOL;
+                5'd14: map_knob_to_param_id = `PARAM_ID_MACRO1;
+                5'd15: map_knob_to_param_id = `PARAM_ID_MACRO2;
                 5'd16: map_knob_to_param_id = `PARAM_ID_OSCB_WT_POS;
-                5'd17: map_knob_to_param_id = `PARAM_ID_OSCB_DETUNE;
-                5'd18: map_knob_to_param_id = `PARAM_ID_OSCB_UNISON;
-                5'd19: map_knob_to_param_id = `PARAM_ID_OSCB_PAN;
-                5'd20: map_knob_to_param_id = `PARAM_ID_OSCB_VOL;
-                5'd21: map_knob_to_param_id = `PARAM_ID_OSCB_BLEND;
-                5'd22: map_knob_to_param_id = `PARAM_ID_OSCB_PHASE;
-                5'd23: map_knob_to_param_id = `PARAM_ID_OSCB_RAND;
-                5'd24: map_knob_to_param_id = `PARAM_ID_FLT_PAN;
-                5'd25: map_knob_to_param_id = `PARAM_ID_FLT_DRIVE;
-                5'd26: map_knob_to_param_id = `PARAM_ID_FLT_FAT;
-                5'd27: map_knob_to_param_id = `PARAM_ID_FLT_MIX;
-                5'd28: map_knob_to_param_id = `PARAM_ID_ENV1_HOLD;
-                5'd29: map_knob_to_param_id = `PARAM_ID_FX_REVERB;
-                5'd30: map_knob_to_param_id = `PARAM_ID_FX_DELAY;
-                5'd31: map_knob_to_param_id = `PARAM_ID_FX_CHORUS;
+                5'd17: map_knob_to_param_id = `PARAM_ID_OSCB_WARP;
+                5'd18: map_knob_to_param_id = `PARAM_ID_OSCB_PAN;
+                5'd19: map_knob_to_param_id = `PARAM_ID_OSCB_VOL;
+                5'd20: map_knob_to_param_id = `PARAM_ID_OSCB_UNISON;
+                5'd21: map_knob_to_param_id = `PARAM_ID_OSCB_DETUNE;
+                5'd22: map_knob_to_param_id = `PARAM_ID_OSCB_BLEND;
+                5'd23: map_knob_to_param_id = `PARAM_ID_OSCB_PHASE;
+                5'd24: map_knob_to_param_id = `PARAM_ID_FLT_CUTOFF;
+                5'd25: map_knob_to_param_id = `PARAM_ID_FLT_RES;
+                5'd26: map_knob_to_param_id = `PARAM_ID_FLT_PAN;
+                5'd27: map_knob_to_param_id = `PARAM_ID_FLT_DRIVE;
+                5'd28: map_knob_to_param_id = `PARAM_ID_FLT_FAT;
+                5'd29: map_knob_to_param_id = `PARAM_ID_FLT_MIX;
+                5'd30: map_knob_to_param_id = `PARAM_ID_FX_REVERB;
+                5'd31: map_knob_to_param_id = `PARAM_ID_FX_DELAY;
                 default: map_knob_to_param_id = `PARAM_ID_NONE;
-            endcase
-        end
-    endfunction
-
-    function [7:0] map_switch_to_button_id;
-        input [4:0] sw;
-        begin
-            case (sw)
-                5'd0: map_switch_to_button_id = `PARAM_ID_OSCA_POWER;
-                5'd1: map_switch_to_button_id = `PARAM_ID_OSCA_WAVE;
-                5'd2: map_switch_to_button_id = `PARAM_ID_OSCB_POWER;
-                5'd3: map_switch_to_button_id = `PARAM_ID_OSCB_WAVE;
-                5'd4: map_switch_to_button_id = `PARAM_ID_FLT_POWER;
-                5'd5: map_switch_to_button_id = `PARAM_ID_FLT_TYPE;
-                default: map_switch_to_button_id = `PARAM_ID_NONE;
             endcase
         end
     endfunction
@@ -210,18 +194,17 @@ module knob_spi_rx #(
             snapshot_valid         <= 1'b0;
             commit_pending         <= 1'b0;
             pending_mask           <= 32'd0;
-            button_pending_mask    <= 32'd0;
+            select_pending_mask    <= 32'd0;
             param_valid            <= 1'b0;
             param_id               <= `PARAM_ID_NONE;
             param_val              <= 7'd64;
-            button_valid           <= 1'b0;
-            button_id              <= `PARAM_ID_NONE;
-            button_action          <= 2'd0;
+            select_valid           <= 1'b0;
+            select_id              <= `PARAM_ID_NONE;
             for (i = 0; i < 32; i = i + 1)
                 knob_value[i] <= 7'd64;
         end else begin
             param_valid  <= 1'b0;
-            button_valid <= 1'b0;
+            select_valid <= 1'b0;
 
             if (state == ST_RESET) begin
                 if (reset_count >= RESET_HOLD_CYCLES - 1) begin
@@ -247,14 +230,16 @@ module knob_spi_rx #(
                 if (div_count >= HALF_DIV - 1) begin
                     div_count <= 32'd0;
                     state     <= ST_HIGH;
-                    // SPI mode 0 samples SDO on the rising edge.
-                    rx_shift  <= {rx_shift[22:0], sdo_d2};
                 end else begin
                     div_count <= div_count + 32'd1;
                 end
             end else if (state == ST_HIGH) begin
                 if (div_count >= HALF_DIV - 1) begin
                     div_count <= 32'd0;
+                    // TXE8148 changes SDO on the falling edge.  Capture the
+                    // synchronized bit at the end of the high phase, after
+                    // it has been stable for the whole SCLK high interval.
+                    rx_shift <= {rx_shift[22:0], sdo_d2};
                     if (bit_idx == 5'd23) begin
                         state <= ST_END;
                     end else begin
@@ -316,7 +301,7 @@ module knob_spi_rx #(
             if (commit_pending) begin
                 commit_pending          <= 1'b0;
                 next_pending_mask       = pending_mask;
-                next_button_pending_mask = button_pending_mask;
+                next_select_pending_mask = select_pending_mask;
                 if (!snapshot_valid) begin
                     prev_chip1_gpio <= chip1_gpio;
                     prev_chip2_gpio <= chip2_gpio;
@@ -351,14 +336,17 @@ module knob_spi_rx #(
                         end
 
                         // EC11 switches are active low: emit on press only.
-                        if (old_sw && !new_sw && map_switch_to_button_id(i[4:0]) != `PARAM_ID_NONE)
-                            next_button_pending_mask[i] = 1'b1;
+                        // Pressing an EC11 selects the same parameter that
+                        // its rotation controls. Touching the matching UI
+                        // knob uses the same parameter ID.
+                        if (old_sw && !new_sw)
+                            next_select_pending_mask[i] = 1'b1;
                     end
                     prev_chip1_gpio <= chip1_gpio;
                     prev_chip2_gpio <= chip2_gpio;
                 end
                 pending_mask        <= next_pending_mask;
-                button_pending_mask <= next_button_pending_mask;
+                select_pending_mask <= next_select_pending_mask;
             end else begin
                 emitted_mask = 32'd0;
                 for (i = 0; i < 32; i = i + 1) begin
@@ -371,16 +359,15 @@ module knob_spi_rx #(
                 end
                 pending_mask <= pending_mask & ~emitted_mask;
 
-                emitted_button_mask = 32'd0;
+                emitted_select_mask = 32'd0;
                 for (i = 0; i < 32; i = i + 1) begin
-                    if (!emitted_button_mask[i] && button_pending_mask[i]) begin
-                        button_valid           <= 1'b1;
-                        button_id              <= map_switch_to_button_id(i[4:0]);
-                        button_action          <= 2'd0;
-                        emitted_button_mask[i] = 1'b1;
+                    if (!emitted_select_mask[i] && select_pending_mask[i]) begin
+                        select_valid         <= 1'b1;
+                        select_id            <= map_knob_to_param_id(i[4:0]);
+                        emitted_select_mask[i] = 1'b1;
                     end
                 end
-                button_pending_mask <= button_pending_mask & ~emitted_button_mask;
+                select_pending_mask <= select_pending_mask & ~emitted_select_mask;
             end
         end
     end

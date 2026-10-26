@@ -67,6 +67,8 @@
 
 TXE8148 的每 48 个 GPIO 按三个一组连接一个 EC11：`A、B、SW`。第一颗芯片从 `P0.0/P0.1/P0.2` 开始，连续到旋钮 16 的 `P5.5/P5.6/P5.7`；第二颗芯片以同样顺序对应旋钮 17..32。`SW` 按主动低处理。
 
+实体四区和 UI 的关系为：左上/Upper-left → OSC A，左下/Lower-left → ENV/Global，右上/Upper-right → OSC B，右下/Lower-right → Filter/FX。实体旋钮按下时选择对应 UI 参数，旋转时修改同一参数；触摸屏和实体输入共享参数 ID。
+
 FPGA 侧 I/O 仍使用 3.3 V LVCMOS。若键盘板内部 TXE8148 直接以 5 V 供电，必须确认 `SDO` 输出和 `SDI/SCLK/CS/RESET` 输入已经经过电平适配；未经确认不得把 5 V `SDO` 直接接入 FPGA。
 
 ### 2. 音频引擎跨板 UART MIDI 控制链路（独立GPIO）

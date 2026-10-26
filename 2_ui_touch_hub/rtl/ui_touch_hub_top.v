@@ -310,9 +310,8 @@ module ui_touch_hub_top #(
     wire [7:0]  spi_param_id;
     wire [6:0]  spi_param_val;
 
-    wire        knob_button_valid;
-    wire [7:0]  knob_button_id;
-    wire [1:0]  knob_button_action;
+    wire        knob_select_valid;
+    wire [7:0]  knob_select_id;
 
     knob_spi_rx u_knob_spi (
         .clk          (clk_pixel),
@@ -327,9 +326,8 @@ module ui_touch_hub_top #(
         .param_valid  (spi_param_valid),
         .param_id     (spi_param_id),
         .param_val    (spi_param_val),
-        .button_valid (knob_button_valid),
-        .button_id    (knob_button_id),
-        .button_action(knob_button_action)
+        .select_valid (knob_select_valid),
+        .select_id    (knob_select_id)
     );
 
     // --------------------------------------------------------------------------
@@ -381,9 +379,9 @@ module ui_touch_hub_top #(
         .touch_delta_valid (navigation_delta_valid | touch_delta_valid),
         .touch_selected_id (navigation_delta_valid ? navigation_delta_id : selected_param_id),
         .touch_delta_val   (navigation_delta_valid ? navigation_delta_value : touch_delta_val),
-        .btn_tap_valid     (btn_tap_valid | knob_button_valid),
-        .btn_tap_id        (knob_button_valid ? knob_button_id : btn_tap_id),
-        .btn_tap_action    (knob_button_valid ? knob_button_action : btn_tap_action),
+        .btn_tap_valid     (btn_tap_valid),
+        .btn_tap_id        (btn_tap_id),
+        .btn_tap_action    (btn_tap_action),
         .spi_param_valid   (spi_param_valid && spi_param_id < 8'h60),
         .spi_param_id      (spi_param_id),
         .spi_param_val     (spi_param_val),

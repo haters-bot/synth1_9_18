@@ -10,7 +10,7 @@
 - 第一颗芯片提供 EC11 1..16，第二颗芯片提供 EC11 17..32；
 - 每个旋钮按 `A、B、SW` 三个 GPIO 顺序解码；
 - A/B 使用四状态正交解码，旋钮值为 0..127，初值 64；
-- SW 按主动低处理，按下产生一次 UI 按钮事件；
+- SW 按主动低处理，按下选择该旋钮对应的 UI 参数；释放只结束实体按键事件，不重复触发参数动作；
 - 首次完整扫描只建立基线，不产生误触发。
 
 TXE8148 的 SPI 读帧为 `0x82, {port[2:0], 4'b0}, 0x00`。读回的前 16 位是状态和填充，最后 8 位是目标输入端口寄存器。芯片规定 SPI 时钟最高 10 MHz，本工程使用约 1.7 MHz，留出同步和连线裕量。
@@ -29,9 +29,17 @@ SW = GPIO[3*k + 2]
 
 ## UI 参数映射
 
-前 16 个通道沿用原工程的参数映射。后 16 个通道先接入 OSC B、Filter、ENV 和 FX 的主要参数，映射集中在 `map_knob_to_param_id`，后续如果硬件队友给出面板丝印到 UI 参数的正式表，只需修改这一处。
+四个实体区域与 UI 的关系固定为：左上 = OSC A，左下 = ENV/Global，右上 = OSC B，右下 = Filter/FX。旋钮按每块 8 个连续编号，映射集中在 `map_knob_to_param_id`。
 
-前六个按键暂时映射为：OSC A 电源、OSC A 波形、OSC B 电源、OSC B 波形、Filter 电源、Filter 类型。其余按键已采样但不触发 UI 动作，避免在没有正式按键功能表时误操作页面。
+| 实体区域 | 旋钮编号 | UI 参数关系 |
+|---|---:|---|
+| 左上 / Upper-left | 1..8 | OSC A：WT Pos、Warp、Pan、Vol、Unison、Detune、Blend、Phase |
+| 左下 / Lower-left | 9..16 | ENV：Attack、Hold、Decay、Sustain、Release；Master、Macro 1、Macro 2 |
+| 右上 / Upper-right | 17..24 | OSC B：WT Pos、Warp、Pan、Vol、Unison、Detune、Blend、Phase |
+| 右下 / Lower-right | 25..32 | Filter：Cutoff、Res、Pan、Drive、Fat、Mix；Reverb、Delay |
+
+按下某个实体 EC11 的 SW 后，UI 会把该参数设为当前选中项；随后旋转该实体旋钮改变这个参数。触摸屏点选同一个 UI 旋钮时使用同一个参数 ID，因此两种输入可以交替操作同一参数。当前版本把“按下”定义为选择/聚焦，不把“释放”重复发送成一次新的参数动作。
+
 
 ## 供电和电平边界
 

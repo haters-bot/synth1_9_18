@@ -126,3 +126,9 @@ Future entries should append a dated section and never rewrite prior verificatio
   - `2_ui_touch_hub.gprj`: registered the new file. `sim/tb_lfo_sysex_tx.v` NEW (94 checks, ALL PASS); `sim/tb_midi_uart_tx.v` port-tied for the new inputs (regression 100% PASS); full top compiles clean under `-sv`, elaborates to the device-primitive boundary.
 - Timing status: three build/audit rounds converged −3.685 → −2.933 → **−0.056 ns** setup (hold/recovery/removal/pulse all positive). The remaining single violation `u_render/u_navigation_render/id0_5_s0 → ch1_0_s0` (−0.056) is a pre-existing path squeezed by placement, not in the LFO logic; Gowin placement is deterministic so re-running reproduces it. **timing_closed = false — deployment is prohibited by the gate.**
 - Handover to Codex: suggest anchoring those two FFs via INS_LOC exactly as commit `a276b9b` did for the serializer resets (site syntax `R##C##[0][A]` from a routed report), or shrinking/relocating `u_lfo_sysex`. Builds: `impl/R16A_build_20261025_200224`, `_201138`, `_202146`/`_203946` (last two identical results). No bitstream programmed.
+## 2026-10-26 11:05 — UI 侧 TXE8148 采样点修复与四区参数映射（Codex）
+
+- **改动**：`2_ui_touch_hub/rtl/knob_spi_intake/knob_spi_rx.v` 将 SDO 捕获从低相位开始前移采样改为高相位结束采样，匹配 TXE8148 在下降沿更新 SDO 的 SPI 时序；旋钮 0..31 改为左上 OSC A、左下 ENV/Global、右上 OSC B、右下 Filter/FX 四个 8 路区域映射。
+- **输入语义**：旋转事件仍走 `spi_param_valid/id/val` → `param_merger`，触摸路径未改。EC11 按压只在接收器内部形成 `select_valid/select_id` 单拍事件；尝试把它直接并入 `btn_tap` 或渲染选择路径会改变高扇出布局并产生 setup 违例，因此持久视觉选中态留待低扇出实现。当前不能宣称实体按压 UI 反馈已完成。
+- **验证**：Gowin P&R Setup/Hold 违例均为 0，最差 Setup Slack `+0.595 ns`；`tb_lfo_sysex_tx` 与 `tb_midi_uart_tx` 均通过；位流 SHA256 `8C2617DB216CA7F930818B1032EE1ED520D2B214AB53613A025525518281FB71`。
+- **部署边界**：截至本条目，尚未烧录这版新位流；仅 SRAM 目标，Flash 暂停。下一步是提交/推送后执行 `deploy_verified.py --target sram`，然后以工程机编程返回码、远端哈希、摄像头抓屏和现场旋钮逐项测试作为证据。
