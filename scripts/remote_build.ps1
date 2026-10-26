@@ -5,6 +5,8 @@ param(
     [string]$Branch = "main",
     [string]$OutputRoot = "D:\FPGA\build_output",
     [string]$GowinSh = $env:GOWIN_SH,
+    [ValidateSet("Signoff", "Fast", "Incremental")]
+    [string]$BuildProfile = "Signoff",
     [switch]$SkipPull,
     [switch]$AllowDirty
 )
@@ -127,7 +129,7 @@ $buildStarted = Get-Date
 
 New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
 $tclProjectPath = $projectPath.Replace("\", "/")
-@(
+$tclCommands = @(
     "open_project {$tclProjectPath}"
     # impl/ is intentionally not versioned, so make the required HDL dialect
     # explicit for clean clones and remote build machines.
@@ -137,12 +139,47 @@ $tclProjectPath = $projectPath.Replace("\", "/")
     "set_option -use_cpu_as_gpio 1"
     "set_option -use_sspi_as_gpio 1"
     "set_option -top_module top"
+    # Keep timing-driven routing enabled in every profile. Fast only reduces
+    # search effort; it does not turn timing checks into a functional build.
+    "set_option -timing_driven 1"
+    "set_option -correct_hold_violation 1"
+)
+
+switch ($BuildProfile) {
+    "Signoff" {
+        $tclCommands += @(
+            "set_option -place_option 3"
+            "set_option -route_option 2"
+            "set_option -inc_place 0"
+            "set_option -inc_pnr 0"
+        )
+    }
+    "Fast" {
+        $tclCommands += @(
+            "set_option -place_option 0"
+            "set_option -route_option 0"
+            "set_option -inc_place 0"
+            "set_option -inc_pnr 0"
+        )
+    }
+    "Incremental" {
+        $tclCommands += @(
+            "set_option -place_option 3"
+            "set_option -route_option 2"
+            "set_option -inc_pnr auto"
+        )
+    }
+}
+
+$tclCommands += @(
     "run all"
     "run close"
     "exit"
-) | Set-Content -LiteralPath $tclPath -Encoding ASCII
+)
+$tclCommands | Set-Content -LiteralPath $tclPath -Encoding ASCII
 
 Write-Host "[2/4] Building commit $commit with $gowinShell ..."
+Write-Host "      Build profile: $BuildProfile"
 try {
     Push-Location $ProjectRoot
     try {
@@ -195,6 +232,7 @@ $metadata = [ordered]@{
     build_started       = $buildStarted.ToString("o")
     build_finished      = $buildFinished.ToString("o")
     duration_seconds    = [math]::Round(($buildFinished - $buildStarted).TotalSeconds, 1)
+    build_profile       = $BuildProfile
     bitstream_file      = "pnr/$($bitstream.Name)"
     artifact_name       = $artifactName
 }
@@ -209,6 +247,7 @@ $latest = [ordered]@{
     commit        = $fullCommit
     short_commit  = $commit
     created       = $buildFinished.ToString("o")
+    build_profile = $BuildProfile
 }
 $latest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputRoot "latest.json") -Encoding UTF8
 

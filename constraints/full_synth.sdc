@@ -16,3 +16,6 @@ set_false_path -from [get_ports {control_uart_rx}] -to [get_regs {u_control_uart
 
 // Asynchronous physical-keyboard UART input, first synchronizer stage only.
 set_false_path -from [get_ports {keyboard_uart_rx}] -to [get_regs {u_keyboard_uart_rx/rx_meta_s0}]
+
+// Asynchronous board USB-UART input, first synchronizer stage only.
+set_false_path -from [get_ports {uart_rx}] -to [get_regs {u_uart_rx/rx_meta_s0}]
