@@ -11,6 +11,7 @@ module tb_top_dual_unison8;
     reg rst_n;
     reg uart_rx;
     reg control_uart_rx;
+    reg keyboard_uart_rx;
 
     wire MAX_SD;
     wire MAX_GAIN;
@@ -40,6 +41,7 @@ module tb_top_dual_unison8;
     top #(
         .UART_BAUD_RATE(TEST_UART_BAUD),
         .CONTROL_UART_BAUD_RATE(TEST_UART_BAUD),
+        .KEYBOARD_UART_BAUD_RATE(TEST_UART_BAUD),
         .DEFAULT_UNISON_COUNT(1),
         .OSC_ENGINE_COUNT(2),
         .SLOTS_PER_ENGINE(32),
@@ -49,6 +51,7 @@ module tb_top_dual_unison8;
         .rst_n   (rst_n),
         .uart_rx (uart_rx),
         .control_uart_rx(control_uart_rx),
+        .keyboard_uart_rx(keyboard_uart_rx),
         .MAX_SD  (MAX_SD),
         .MAX_GAIN(MAX_GAIN),
         .MAX_DIN (MAX_DIN),
@@ -114,6 +117,23 @@ module tb_top_dual_unison8;
         end
     endtask
 
+    task send_keyboard_byte;
+        input [7:0] value;
+        integer bit_number;
+        begin
+            @(negedge sys_clk);
+            keyboard_uart_rx = 1'b0;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+            for (bit_number = 0; bit_number < 8;
+                 bit_number = bit_number + 1) begin
+                keyboard_uart_rx = value[bit_number];
+                repeat (CLKS_PER_BIT) @(negedge sys_clk);
+            end
+            keyboard_uart_rx = 1'b1;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+        end
+    endtask
+
     task send_cc;
         input [6:0] controller;
         input [6:0] value;
@@ -138,14 +158,37 @@ module tb_top_dual_unison8;
         rst_n = 1'b0;
         uart_rx = 1'b1;
         control_uart_rx = 1'b1;
+        keyboard_uart_rx = 1'b1;
         sd_dat0 = 1'b1;
         errors = 0;
         valid_count = 0;
 
         repeat (8) @(posedge sys_clk);
+
         @(negedge sys_clk);
         rst_n = 1'b1;
         repeat (8) @(posedge sys_clk);
+
+        // 实体键盘口独立解析并合并完整事件。使用非演奏通道避免改变容量测试。
+        fork
+            begin
+                send_keyboard_byte(8'h91);
+                send_keyboard_byte(8'd60);
+                send_keyboard_byte(8'd45);
+            end
+            begin
+                wait (dut.midi_note_event_valid);
+                #1;
+                if (dut.midi_note_event_on !== 1'b1
+                    || dut.midi_note_event_channel !== 4'd1
+                    || dut.midi_note_event_note !== 7'd60
+                    || dut.midi_note_event_velocity !== 7'd45) begin
+                    $display("ERROR: physical keyboard MIDI UART route");
+                    errors = errors + 1;
+                end
+            end
+        join
+        repeat (20) @(posedge sys_clk);
 
         // 两个振荡器分别设置为Unison=8并保持启用。
         send_cc(7'd23, 7'd8);
@@ -263,7 +306,10 @@ module tb_top_dual_unison8;
             $display("ERROR: oscillator schedule overrun detected");
             errors = errors + 1;
         end
-        if (dut.uart_framing_error !== 1'b0) begin
+        if (dut.uart_framing_error !== 1'b0
+            || dut.control_uart_framing_error !== 1'b0
+            || dut.keyboard_uart_framing_error !== 1'b0
+            || dut.midi_note_event_overflow !== 1'b0) begin
             $display("ERROR: UART framing error detected");
             errors = errors + 1;
         end

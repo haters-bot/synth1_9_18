@@ -2,6 +2,7 @@
 module top #(
     parameter integer UART_BAUD_RATE = 31250,
     parameter integer CONTROL_UART_BAUD_RATE = 31250,
+    parameter integer KEYBOARD_UART_BAUD_RATE = 31250,
     parameter integer DEFAULT_UNISON_COUNT = 1,
     parameter integer OSC_ENGINE_COUNT = 1,
     parameter integer SLOTS_PER_ENGINE = 32,
@@ -10,6 +11,7 @@ module top #(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
     input  wire control_uart_rx, // C19; 独立音色控制UART RX，3.3 V，空闲高电平
+    input  wire keyboard_uart_rx, // E19; 实体MIDI键盘转换后的3.3 V UART RX
     input  wire uart_rx,       // 板载USB-UART接收，引脚V14
     output wire MAX_SD,        // MAX98357A使能，引脚AB20
     output wire MAX_GAIN,      // MAX98357A增益选择，引脚AA21
@@ -131,6 +133,16 @@ module top #(
     wire [3:0] midi_note_event_channel;
     wire [6:0] midi_note_event_note;
     wire [6:0] midi_note_event_velocity;
+    wire       shared_note_event_valid;
+    wire       shared_note_event_on;
+    wire [3:0] shared_note_event_channel;
+    wire [6:0] shared_note_event_note;
+    wire [6:0] shared_note_event_velocity;
+    wire       keyboard_note_event_valid;
+    wire       keyboard_note_event_on;
+    wire [3:0] keyboard_note_event_channel;
+    wire [6:0] keyboard_note_event_note;
+    wire [6:0] keyboard_note_event_velocity;
     wire       midi_control_change_valid;
     wire [3:0] midi_control_change_channel;
     wire [6:0] midi_control_change_number;
@@ -580,16 +592,21 @@ module top #(
     wire [7:0] control_uart_byte;
     wire control_uart_byte_valid, control_uart_framing_error;
     wire control_event_overflow;
+    wire [7:0] keyboard_uart_byte;
+    wire keyboard_uart_byte_valid, keyboard_uart_framing_error;
+    wire [21:0] merged_note_event;
+    wire merged_note_event_valid;
+    wire midi_note_event_overflow;
     midi_note_parser u_midi_note_parser (
         .clk                   (clk_sys),
         .rst_n                 (rst_n_sys),
         .byte_data             (uart_byte),
         .byte_valid            (uart_byte_valid),
-        .note_event_valid      (midi_note_event_valid),
-        .note_event_on         (midi_note_event_on),
-        .note_event_channel    (midi_note_event_channel),
-        .note_event_note       (midi_note_event_note),
-        .note_event_velocity   (midi_note_event_velocity),
+        .note_event_valid      (shared_note_event_valid),
+        .note_event_on         (shared_note_event_on),
+        .note_event_channel    (shared_note_event_channel),
+        .note_event_note       (shared_note_event_note),
+        .note_event_velocity   (shared_note_event_velocity),
         .control_change_valid  (shared_cc_valid),
         .control_change_channel(shared_cc_channel),
         .control_change_number (shared_cc_number),
@@ -605,6 +622,59 @@ module top #(
         .parameter_id   (shared_hr_id),
         .parameter_value(shared_hr_value)
     );
+
+    // 实体键盘使用独立UART与MIDI状态机，避免两路Running Status互相污染。
+    // 第一版只合并Note On/Off、通道、音高和力度；键盘CC不进入音色控制链。
+    uart_rx #(
+        .CLK_HZ   (50000000),
+        .BAUD_RATE(KEYBOARD_UART_BAUD_RATE)
+    ) u_keyboard_uart_rx (
+        .clk          (clk_sys),
+        .rst_n        (rst_n_sys),
+        .rx           (keyboard_uart_rx),
+        .data         (keyboard_uart_byte),
+        .data_valid   (keyboard_uart_byte_valid),
+        .framing_error(keyboard_uart_framing_error)
+    );
+
+    midi_note_parser u_keyboard_midi_note_parser (
+        .clk                   (clk_sys),
+        .rst_n                 (rst_n_sys),
+        .byte_data             (keyboard_uart_byte),
+        .byte_valid            (keyboard_uart_byte_valid),
+        .note_event_valid      (keyboard_note_event_valid),
+        .note_event_on         (keyboard_note_event_on),
+        .note_event_channel    (keyboard_note_event_channel),
+        .note_event_note       (keyboard_note_event_note),
+        .note_event_velocity   (keyboard_note_event_velocity),
+        .control_change_valid  (),
+        .control_change_channel(),
+        .control_change_number (),
+        .control_change_value  ()
+    );
+
+    // 复用现有8项双入口事件FIFO。先保留板载USB-UART事件，再保留实体键盘事件。
+    control_event_merge u_midi_note_event_merge (
+        .clk      (clk_sys),
+        .rst_n    (rst_n_sys),
+        .valid_a  (shared_note_event_valid),
+        .data_a   ({3'd0, shared_note_event_on,
+                    shared_note_event_channel, shared_note_event_note,
+                    shared_note_event_velocity}),
+        .valid_b  (keyboard_note_event_valid),
+        .data_b   ({3'd0, keyboard_note_event_on,
+                    keyboard_note_event_channel, keyboard_note_event_note,
+                    keyboard_note_event_velocity}),
+        .out_valid(merged_note_event_valid),
+        .out_data (merged_note_event),
+        .overflow (midi_note_event_overflow)
+    );
+
+    assign midi_note_event_valid = merged_note_event_valid;
+    assign midi_note_event_on = merged_note_event[18];
+    assign midi_note_event_channel = merged_note_event[17:14];
+    assign midi_note_event_note = merged_note_event[13:7];
+    assign midi_note_event_velocity = merged_note_event[6:0];
 
     uart_rx #(.CLK_HZ(50000000), .BAUD_RATE(CONTROL_UART_BAUD_RATE)) u_control_uart_rx (
         .clk(clk_sys), .rst_n(rst_n_sys), .rx(control_uart_rx),

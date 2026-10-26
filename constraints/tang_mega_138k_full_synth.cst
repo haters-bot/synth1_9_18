@@ -171,6 +171,9 @@ IO_LOC "VIS_DIN" R17;
 IO_PORT "VIS_DIN" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "uart_rx" V14;
 IO_PORT "uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+// 3.3 V UART RX from the external physical MIDI keyboard converter.
+IO_LOC "keyboard_uart_rx" E19;
+IO_PORT "keyboard_uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 
 // Onboard SD card in 1-bit SD mode.
 IO_LOC "sd_clk" V15;

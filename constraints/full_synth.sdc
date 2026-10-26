@@ -13,3 +13,6 @@ set_clock_groups -exclusive -group [get_clocks {ddr_clk400}] -group [get_clocks 
 
 // Asynchronous control UART input, first synchronizer stage only.
 set_false_path -from [get_ports {control_uart_rx}] -to [get_regs {u_control_uart_rx/rx_meta_s0}]
+
+// Asynchronous physical-keyboard UART input, first synchronizer stage only.
+set_false_path -from [get_ports {keyboard_uart_rx}] -to [get_regs {u_keyboard_uart_rx/rx_meta_s0}]

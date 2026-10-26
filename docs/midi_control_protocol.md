@@ -529,3 +529,12 @@ CC参数继续作为各目标的基础值。
 板测：先用原口Note On维持声音，新口发送 `BF 2E 20` 修改OSC A Level=32；再用原口发送 `BF 2E 7F` 恢复127。随后从新口发送LFO配置，确认活动音符产生调制。抓取control_uart_byte_valid、control_uart_framing_error、merged_control_valid、control_event_overflow定位输入问题。
 
 本次已运行ModelSim路由及顶层回归，包含新增目标、同拍双UART CC、独立SysEx和按住音符实时Detune检查。未运行综合布线，资源增量与时序仍需下一次报告确认。
+
+## 实体MIDI键盘UART输入（2026-10-26）
+
+- `keyboard_uart_rx`：FPGA E19，3.3 V TTL UART RX，内部上拉，空闲高电平。
+- 默认格式为31250 baud、8N1，由顶层参数`KEYBOARD_UART_BAUD_RATE`配置。
+- MIDI DIN/TRS电流环不能直接连接FPGA；必须先经过光耦或合规的MIDI接收转换电路，向E19输出3.3 V UART电平，并与FPGA共地。
+- 板载USB-UART与实体键盘口分别使用独立UART接收器和独立MIDI Running Status解析器，解析完成后通过8项事件FIFO合并，避免两路原始字节交织。
+- 实体键盘口第一版只接收Note On、Note Off、MIDI通道、音高和力度。其Control Change不会进入音色参数控制链；音色控制仍由原USB-UART或C19独立控制口负责。
+- 同拍到达时先保留板载USB-UART事件，再保留实体键盘事件；`midi_note_event_overflow`记录队列溢出，复位后清零。
