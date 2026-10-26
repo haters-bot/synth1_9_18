@@ -51,7 +51,7 @@
 ```
 
 ### 1. 队友 1 (硬件面板) 双 TXE8148 / 32 个 EC11
-键盘板的 Type-C 口作为 **5 V 供电入口**。FPGA 只连接下面 7 根逻辑信号和公共地；FPGA 不驱动键盘板 VCC。
+键盘板原理图把 Type-C 的 VCC 网络标为 `3.3V-IN`，因此该 Type-C 口按 **3.3 V 供电入口**使用。FPGA 只连接下面 7 根逻辑信号和公共地；FPGA 不驱动键盘板 VCC。不要把 5 V 直接接到该口。
 
 | 面板信号 | Tang Mega FPGA 引脚 | FPGA 方向 | 说明 |
 | :--- | :--- | :--- | :--- |
@@ -62,14 +62,14 @@
 | `SDO` | **`D17`** | Input | 两颗 TXE8148 的共享输出 |
 | `INT#` | **`A18`** | Input | 当前版本同步采样但仍采用轮询读取 |
 | `RESET` | **`D14`** | Output | 上电低电平保持约 1 ms，之后释放 |
-| `VCC` | 独立 Type-C 5 V 输入 | — | 不接 FPGA I/O；键盘板内部应完成 3.3 V 稳压/电平适配 |
+| `VCC` | 独立 Type-C 3.3 V 输入 | — | 原理图网络为 `3.3V-IN -> VCC`；不接 FPGA I/O，禁止直接接 5 V |
 | `GND` | GND | — | 两板公共地，必须连接 |
 
-TXE8148 的每 48 个 GPIO 按三个一组连接一个 EC11：`A、B、SW`。第一颗芯片从 `P0.0/P0.1/P0.2` 开始，连续到旋钮 16 的 `P5.5/P5.6/P5.7`；第二颗芯片以同样顺序对应旋钮 17..32。`SW` 按主动低处理。
+TXE8148 的 48 个 GPIO 在本 PCB 上按端口分成三个 16 路 bank，而不是按单个 EC11 交错排列：`P0/P1 -> A`、`P2/P3 -> B`、`P4/P5 -> SW`。第一颗芯片的 16 路 bank 对应旋钮 1..16，第二颗芯片对应旋钮 17..32；例如第一颗的旋钮 1 使用 `P0.0`、`P2.0`、`P4.0`，旋钮 9 使用 `P1.0`、`P3.0`、`P5.0`。`SW` 按主动低处理。
 
-实体四区和 UI 的关系为：左上/Upper-left → OSC A，左下/Lower-left → ENV/Global，右上/Upper-right → OSC B，右下/Lower-right → Filter/FX。实体旋钮按下时选择对应 UI 参数，旋转时修改同一参数；触摸屏和实体输入共享参数 ID。
+实体四区和 UI 的关系为：左上/Upper-left → OSC A，左下/Lower-left → ENV/Global，右上/Upper-right → OSC B，右下/Lower-right → Filter/FX。旋转事件修改对应参数；当前实体按压事件已在接收器内识别，但尚未接入全局 UI 持久选中态。
 
-FPGA 侧 I/O 仍使用 3.3 V LVCMOS。若键盘板内部 TXE8148 直接以 5 V 供电，必须确认 `SDO` 输出和 `SDI/SCLK/CS/RESET` 输入已经经过电平适配；未经确认不得把 5 V `SDO` 直接接入 FPGA。
+FPGA 侧 I/O 使用 3.3 V LVCMOS。PCB 原理图显示 TXE8148 与 Type-C VCC 共用 `3.3V-IN`；因此必须使用 3.3 V 供电并共地，不能用 5 V 代替。
 
 ### 2. 音频引擎跨板 UART MIDI 控制链路（独立GPIO）
 不要将UI的UART输出接到音频板V14：V14同时连接板载USB-JTAG/USB-UART桥的TX网络。两边使用专用PMOD1 IO2；互连前确认没有接DVP摄像头或SDRAM1扩展设备。

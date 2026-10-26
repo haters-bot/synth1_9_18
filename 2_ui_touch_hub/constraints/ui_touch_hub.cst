@@ -15,7 +15,7 @@ INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R101C161[0][A
 INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R101C163[0][A];
 INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R88C164[0][B];
 INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R90C166[0][A];
-INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R92C168[0][A];
+INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R92C166[0][A];
 INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R63C164[0][B];
 INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R61C164[0][A];
 INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R60C166[0][A];

@@ -3,8 +3,8 @@
 //
 // Two TXE8148 devices are read through independent CS# lines. SCLK and SDI
 // are shared, while SDO is shared by the two devices. Each device contributes
-// 48 GPIO bits (P0.0..P5.7). Every encoder uses three consecutive GPIOs:
-// A, B, then the active-low push switch.
+// 48 GPIO bits (P0.0..P5.7). The PCB routes each 16-encoder half as three
+// port banks: P0/P1 -> A, P2/P3 -> B, and P4/P5 -> active-low SW.
 //
 // TXE8148 SPI is mode 0, MSB first. An input-port read uses 0x82 as the first
 // byte, the port number in bits 6:4 of the second byte, then a dummy byte.
@@ -159,6 +159,23 @@ module knob_spi_rx #(
         end
     endfunction
 
+    // PCB bank layout: local encoder 0..15 uses one bit from each of the
+    // three 16-bit banks. chip1 covers encoders 1..16; chip2 covers 17..32.
+    function integer gpio_a_bit;
+        input integer local_knob;
+        begin gpio_a_bit = local_knob; end
+    endfunction
+
+    function integer gpio_b_bit;
+        input integer local_knob;
+        begin gpio_b_bit = 16 + local_knob; end
+    endfunction
+
+    function integer gpio_sw_bit;
+        input integer local_knob;
+        begin gpio_sw_bit = 32 + local_knob; end
+    endfunction
+
     // INT# is not needed for the first polling implementation. Synchronizing
     // it here keeps the input safe and leaves the interface ready for an
     // interrupt-driven scan in a later revision.
@@ -309,19 +326,19 @@ module knob_spi_rx #(
                 end else begin
                     for (i = 0; i < 32; i = i + 1) begin
                         if (i < 16) begin
-                            old_a  = get_gpio(prev_chip1_gpio, (i * 3));
-                            old_b  = get_gpio(prev_chip1_gpio, (i * 3) + 1);
-                            new_a  = get_gpio(chip1_gpio, (i * 3));
-                            new_b  = get_gpio(chip1_gpio, (i * 3) + 1);
-                            old_sw = get_gpio(prev_chip1_gpio, (i * 3) + 2);
-                            new_sw = get_gpio(chip1_gpio, (i * 3) + 2);
+                            old_a  = get_gpio(prev_chip1_gpio, gpio_a_bit(i));
+                            old_b  = get_gpio(prev_chip1_gpio, gpio_b_bit(i));
+                            new_a  = get_gpio(chip1_gpio, gpio_a_bit(i));
+                            new_b  = get_gpio(chip1_gpio, gpio_b_bit(i));
+                            old_sw = get_gpio(prev_chip1_gpio, gpio_sw_bit(i));
+                            new_sw = get_gpio(chip1_gpio, gpio_sw_bit(i));
                         end else begin
-                            old_a  = get_gpio(prev_chip2_gpio, ((i-16) * 3));
-                            old_b  = get_gpio(prev_chip2_gpio, ((i-16) * 3) + 1);
-                            new_a  = get_gpio(chip2_gpio, ((i-16) * 3));
-                            new_b  = get_gpio(chip2_gpio, ((i-16) * 3) + 1);
-                            old_sw = get_gpio(prev_chip2_gpio, ((i-16) * 3) + 2);
-                            new_sw = get_gpio(chip2_gpio, ((i-16) * 3) + 2);
+                            old_a  = get_gpio(prev_chip2_gpio, gpio_a_bit(i-16));
+                            old_b  = get_gpio(prev_chip2_gpio, gpio_b_bit(i-16));
+                            new_a  = get_gpio(chip2_gpio, gpio_a_bit(i-16));
+                            new_b  = get_gpio(chip2_gpio, gpio_b_bit(i-16));
+                            old_sw = get_gpio(prev_chip2_gpio, gpio_sw_bit(i-16));
+                            new_sw = get_gpio(chip2_gpio, gpio_sw_bit(i-16));
                         end
 
                         qstep = quad_step(old_a, old_b, new_a, new_b);

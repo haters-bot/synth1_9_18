@@ -142,3 +142,9 @@ Future entries should append a dated section and never rewrite prior verificatio
 - **尝试**：将 `knob_select_valid/select_id` 接到 `touch_event_router.selected_param_id`，使 EC11 按压更新屏幕当前选中参数。
 - **结果**：Gowin P&R 出现 2 条 setup 违例，最差 `−0.339 ns`；其中一条是导航 `ch1_4_s0 → coverage2_0_s0`，另一条是 `id0_2_s0 → ch1_0_s0`。该试验没有提交、没有部署，已撤回，工作区恢复干净。
 - **当前状态**：提交 `3b8807b` 的 SPI 采样修复、四区映射和旋转事件路径仍在板上；按压事件仍只在接收器内部形成 `select_valid/select_id`，持久视觉选中态待低扇出旋钮局部路径实现。
+## 2026-10-26 20:47 — PCB 原理图审计发现并修正 TXE8148 GPIO bank 映射（Codex）
+
+- **证据**：用户提供的 `32旋钮PCB.zip` 中 `SCH_Schematic2_2026-10-26.pdf` 明确分出 `P1A..P32A`、`P1B..P32B`、`P1SW..P32SW` 三组总线；TXE8148 符号包含 P0.0..P5.7 六个 8 位端口。由此确认每颗芯片的 16 个旋钮按端口 bank 接线：P0/P1=A、P2/P3=B、P4/P5=SW。
+- **修正**：`knob_spi_rx.v` 改为 `A=GPIO[k]`、`B=GPIO[16+k]`、`SW=GPIO[32+k]`，不再按三个连续 GPIO 交错读取。四区 UI 参数映射保持原定义。
+- **供电修正**：同一原理图把 Type-C VCC 网络标为 `3.3V-IN`，因此文档中的 5 V 入口说明已改为 3.3 V，禁止把 5 V 直接接入键盘板 VCC。用户已确认已改接 3.3 V。
+- **验证**：Gowin P&R Setup/Hold 违例 0，最差恢复余量 `+0.201 ns`；位流 SHA256 `37FB1A5409AF62F51B32BBC04146C125D09F7FB55320527128E22FC76D25E541`。新位流尚未部署。
