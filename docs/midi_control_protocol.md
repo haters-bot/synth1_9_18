@@ -361,6 +361,7 @@ Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通�
 - “演奏通道”只影响Note On和Note Off，正常测试保持通道1；
 - OSC A/B及全局参数固定通过通道16发送；
 - 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
+- 音色预设下拉框可一次载入并发送完整参数组合；当前包含使用DDR波表8的合成钢琴和使用DDR波表9的合成提琴，切换预设时会关闭旧LFO路由，避免残留调制影响新音色；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
 - 全局效果器面板通过CC51～57控制Delay和Reverb，通过CC58～81独立控制Distortion、
   Chorus、Phaser和Compressor；
