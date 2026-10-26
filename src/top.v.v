@@ -101,6 +101,7 @@ module top #(
     wire [31:0] osc_a_task_update_phase_step;
     wire [31:0] osc_a_task_update_base_step;
     wire [34:0] osc_a_task_update_detune_unit;
+    wire [2:0]  osc_a_task_update_detune_magnitude;
     wire osc_a_task_update_detune_negative;
     wire [6:0]  osc_a_task_update_velocity;
     wire        osc_a_task_update_enable;
@@ -112,6 +113,7 @@ module top #(
     wire [31:0] osc_b_task_update_phase_step;
     wire [31:0] osc_b_task_update_base_step;
     wire [34:0] osc_b_task_update_detune_unit;
+    wire [2:0]  osc_b_task_update_detune_magnitude;
     wire osc_b_task_update_detune_negative;
     wire [6:0]  osc_b_task_update_velocity;
     wire        osc_b_task_update_enable;
@@ -152,6 +154,15 @@ module top #(
     wire       routed_note_event_on;
     wire [6:0] routed_note_event_note;
     wire [6:0] routed_note_event_velocity;
+    wire       pitch_note_event_valid;
+    wire       pitch_note_event_on;
+    wire [6:0] pitch_note_event_note;
+    wire [6:0] pitch_note_event_velocity;
+    wire       glide_override_enable;
+    wire [31:0] glide_base_step;
+    wire signed [12:0] vibrato_ratio_delta_q16;
+    wire [23:0] debug_glide_current_pitch_q16;
+    wire [23:0] debug_glide_target_pitch_q16;
     wire [6:0] pan_target;
     wire [2:0] filter_mode_target;
     reg  [2:0] filter_mode_active;
@@ -195,6 +206,11 @@ module top #(
     wire [6:0] compressor_mix_target;
     reg  [8:0] master_gain_q8;
     wire [8:0] master_gain_target_q8;
+    wire       vibrato_enable;
+    wire [6:0] vibrato_rate;
+    wire [6:0] vibrato_depth;
+    wire       portamento_enable;
+    wire [6:0] portamento_time;
 
     wire [6:0] osc_a_wt_position_target;
     reg  [6:0] osc_a_wt_position_current;
@@ -800,6 +816,11 @@ module top #(
         .compressor_release        (compressor_release_target),
         .compressor_makeup         (compressor_makeup_target),
         .compressor_mix            (compressor_mix_target),
+        .vibrato_enable            (vibrato_enable),
+        .vibrato_rate              (vibrato_rate),
+        .vibrato_depth             (vibrato_depth),
+        .portamento_enable         (portamento_enable),
+        .portamento_time           (portamento_time),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
         .osc_a_detune_amount       (osc_a_detune_amount),
@@ -826,6 +847,32 @@ module top #(
         .osc_b_warp_amount         (osc_b_warp_amount_target),
         .osc_b_level               (osc_b_level),
         .osc_b_wavetable_index     (osc_b_wavetable_index)
+    );
+
+    // 共享演奏音高层：Portamento开启时把Note流转换为最后音符优先的
+    // 单音Legato；同一条滑音基础步进同时供给OSC A和OSC B。
+    performance_pitch_controller u_performance_pitch_controller (
+        .clk                       (clk_sys),
+        .rst_n                     (rst_n_sys),
+        .sample_tick               (sample_tick),
+        .note_event_valid          (routed_note_event_valid),
+        .note_event_on             (routed_note_event_on),
+        .note_event_note           (routed_note_event_note),
+        .note_event_velocity       (routed_note_event_velocity),
+        .vibrato_enable            (vibrato_enable),
+        .vibrato_rate              (vibrato_rate),
+        .vibrato_depth             (vibrato_depth),
+        .portamento_enable         (portamento_enable),
+        .portamento_time           (portamento_time),
+        .routed_note_event_valid   (pitch_note_event_valid),
+        .routed_note_event_on      (pitch_note_event_on),
+        .routed_note_event_note    (pitch_note_event_note),
+        .routed_note_event_velocity(pitch_note_event_velocity),
+        .glide_override_enable     (glide_override_enable),
+        .glide_base_step           (glide_base_step),
+        .vibrato_ratio_delta_q16   (vibrato_ratio_delta_q16),
+        .debug_current_pitch_q16   (debug_glide_current_pitch_q16),
+        .debug_target_pitch_q16    (debug_glide_target_pitch_q16)
     );
 
     adsr_parameter_mapper u_osc_a_adsr_parameter_mapper (
@@ -856,10 +903,10 @@ module top #(
     ) u_osc_a_task_scheduler (
         .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (routed_note_event_valid),
-        .note_event_on           (routed_note_event_on),
-        .note_event_note         (routed_note_event_note),
-        .note_event_velocity     (routed_note_event_velocity),
+        .note_event_valid        (pitch_note_event_valid),
+        .note_event_on           (pitch_note_event_on),
+        .note_event_note         (pitch_note_event_note),
+        .note_event_velocity     (pitch_note_event_velocity),
         .unison_count            (osc_a_unison_count),
         .detune_amount           (lfo_osc_a_detune_target),
         .task_idle_mask          (osc_a_task_idle_mask),
@@ -868,6 +915,8 @@ module top #(
         .task_update_phase_step  (osc_a_task_update_phase_step),
         .task_update_base_step(osc_a_task_update_base_step),
         .task_update_detune_unit(osc_a_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_a_task_update_detune_magnitude),
         .task_update_detune_negative(osc_a_task_update_detune_negative),
         .task_update_velocity    (osc_a_task_update_velocity),
         .task_update_enable      (osc_a_task_update_enable),
@@ -882,10 +931,10 @@ module top #(
     ) u_osc_b_task_scheduler (
         .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (routed_note_event_valid),
-        .note_event_on           (routed_note_event_on),
-        .note_event_note         (routed_note_event_note),
-        .note_event_velocity     (routed_note_event_velocity),
+        .note_event_valid        (pitch_note_event_valid),
+        .note_event_on           (pitch_note_event_on),
+        .note_event_note         (pitch_note_event_note),
+        .note_event_velocity     (pitch_note_event_velocity),
         .unison_count            (osc_b_unison_count),
         .detune_amount           (lfo_osc_b_detune_target),
         .task_idle_mask          (osc_b_task_idle_mask),
@@ -894,6 +943,8 @@ module top #(
         .task_update_phase_step  (osc_b_task_update_phase_step),
         .task_update_base_step(osc_b_task_update_base_step),
         .task_update_detune_unit(osc_b_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_b_task_update_detune_magnitude),
         .task_update_detune_negative(osc_b_task_update_detune_negative),
         .task_update_velocity    (osc_b_task_update_velocity),
         .task_update_enable      (osc_b_task_update_enable),
@@ -936,7 +987,12 @@ module top #(
         .detune_amount(lfo_osc_a_detune_target),
         .task_update_base_step(osc_a_task_update_base_step),
         .task_update_detune_unit(osc_a_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_a_task_update_detune_magnitude),
         .task_update_detune_negative(osc_a_task_update_detune_negative),
+        .glide_override_enable(glide_override_enable),
+        .glide_override_base_step(glide_base_step),
+        .vibrato_ratio_delta_q16(vibrato_ratio_delta_q16),
         .task_update_velocity      (osc_a_task_update_velocity),
         .task_update_enable        (osc_a_task_update_enable),
         .task_update_phase_reset   (osc_a_task_update_phase_reset),
@@ -984,7 +1040,12 @@ module top #(
         .detune_amount(lfo_osc_b_detune_target),
         .task_update_base_step(osc_b_task_update_base_step),
         .task_update_detune_unit(osc_b_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_b_task_update_detune_magnitude),
         .task_update_detune_negative(osc_b_task_update_detune_negative),
+        .glide_override_enable(glide_override_enable),
+        .glide_override_base_step(glide_base_step),
+        .vibrato_ratio_delta_q16(vibrato_ratio_delta_q16),
         .task_update_velocity      (osc_b_task_update_velocity),
         .task_update_enable        (osc_b_task_update_enable),
         .task_update_phase_reset   (osc_b_task_update_phase_reset),

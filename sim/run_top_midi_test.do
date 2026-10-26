@@ -17,6 +17,7 @@ vlog -work work_top_midi \
     src/filter_curve_lfo.v \
     src/synth_control_router.v \
     src/adsr_parameter_mapper.v \
+    src/performance_pitch_controller.v \
     src/oscillator_task_scheduler.v \
     src/freq_lut.v \
     src/sine_lut.v \
@@ -59,6 +60,18 @@ add wave sim:/tb_top_midi_input/dut/midi_control_change_valid
 add wave sim:/tb_top_midi_input/dut/midi_control_change_channel
 add wave sim:/tb_top_midi_input/dut/midi_control_change_number
 add wave sim:/tb_top_midi_input/dut/midi_control_change_value
+add wave sim:/tb_top_midi_input/dut/vibrato_enable
+add wave -radix unsigned sim:/tb_top_midi_input/dut/vibrato_rate
+add wave -radix unsigned sim:/tb_top_midi_input/dut/vibrato_depth
+add wave sim:/tb_top_midi_input/dut/portamento_enable
+add wave -radix unsigned sim:/tb_top_midi_input/dut/portamento_time
+add wave sim:/tb_top_midi_input/dut/pitch_note_event_valid
+add wave sim:/tb_top_midi_input/dut/pitch_note_event_on
+add wave -radix unsigned sim:/tb_top_midi_input/dut/pitch_note_event_note
+add wave -radix hexadecimal sim:/tb_top_midi_input/dut/glide_base_step
+add wave -radix signed sim:/tb_top_midi_input/dut/vibrato_ratio_delta_q16
+add wave -radix hexadecimal sim:/tb_top_midi_input/dut/debug_glide_current_pitch_q16
+add wave -radix hexadecimal sim:/tb_top_midi_input/dut/debug_glide_target_pitch_q16
 add wave sim:/tb_top_midi_input/dut/pan_target
 add wave sim:/tb_top_midi_input/dut/filter_mode_target
 add wave sim:/tb_top_midi_input/dut/filter_mode_active

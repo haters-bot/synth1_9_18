@@ -70,6 +70,11 @@ COMPRESSOR_ATTACK_CC = 78
 COMPRESSOR_RELEASE_CC = 79
 COMPRESSOR_MAKEUP_CC = 80
 COMPRESSOR_MIX_CC = 81
+VIBRATO_ENABLE_CC = 82
+VIBRATO_RATE_CC = 83
+VIBRATO_DEPTH_CC = 84
+PORTAMENTO_ENABLE_CC = 85
+PORTAMENTO_TIME_CC = 86
 # 三个独立三点LFO共享同一个8槽调制矩阵和一次原子提交。
 FILTER_LFO_PARAMETER_SETS = (
     {
@@ -415,6 +420,11 @@ class MidiUartSender:
         self.compressor_release = tk.IntVar(value=80)
         self.compressor_makeup = tk.IntVar(value=0)
         self.compressor_mix = tk.IntVar(value=127)
+        self.vibrato_enabled = tk.BooleanVar(value=False)
+        self.vibrato_rate = tk.IntVar(value=52)
+        self.vibrato_depth = tk.IntVar(value=0)
+        self.portamento_enabled = tk.BooleanVar(value=False)
+        self.portamento_time = tk.IntVar(value=80)
         self.filter_lfo_enabled = [
             tk.BooleanVar(value=False) for _ in range(3)
         ]
@@ -683,11 +693,56 @@ class MidiUartSender:
             ),
         )
 
+        pitch_frame = ttk.LabelFrame(
+            parameter_controls, text="颤音与单音Legato滑音", padding=6
+        )
+        pitch_frame.grid(
+            row=2, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+        ttk.Checkbutton(
+            pitch_frame,
+            text="开启Vibrato",
+            variable=self.vibrato_enabled,
+            command=lambda: self.send_synth_control(
+                VIBRATO_ENABLE_CC, 127 if self.vibrato_enabled.get() else 0
+            ),
+        ).grid(row=0, column=0, padx=4, sticky="w")
+        pitch_specs = (
+            ("Vibrato Rate", self.vibrato_rate, VIBRATO_RATE_CC),
+            ("Vibrato Depth", self.vibrato_depth, VIBRATO_DEPTH_CC),
+            ("Glide Time", self.portamento_time, PORTAMENTO_TIME_CC),
+        )
+        for index, (label, variable, controller) in enumerate(pitch_specs):
+            column = 1 + index * 2
+            ttk.Label(pitch_frame, text=label).grid(
+                row=0, column=column, padx=(8, 2), sticky="e"
+            )
+            scale = tk.Scale(
+                pitch_frame, from_=0, to=127, orient=tk.HORIZONTAL,
+                variable=variable, length=145,
+            )
+            scale.grid(row=0, column=column + 1, padx=2)
+            scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event, cc=controller, var=variable: (
+                    self.send_synth_control(cc, var.get())
+                ),
+            )
+        ttk.Checkbutton(
+            pitch_frame,
+            text="开启单音Legato Portamento",
+            variable=self.portamento_enabled,
+            command=lambda: self.send_synth_control(
+                PORTAMENTO_ENABLE_CC,
+                127 if self.portamento_enabled.get() else 0,
+            ),
+        ).grid(row=1, column=0, columnspan=3, padx=4, sticky="w")
+
         lfo_frame = ttk.LabelFrame(
             parameter_controls, text="FPGA通用LFO与调制路由", padding=6
         )
         lfo_frame.grid(
-            row=2, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+            row=3, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
         )
 
         for lfo_index in range(3):
@@ -760,7 +815,7 @@ class MidiUartSender:
             parameter_controls, text="全局效果器", padding=6
         )
         effects_frame.grid(
-            row=3, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+            row=4, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
         )
         ttk.Label(effects_frame, text="模式").grid(row=0, column=0, padx=4)
         effect_mode_box = ttk.Combobox(
@@ -812,7 +867,7 @@ class MidiUartSender:
             padding=6,
         )
         advanced_effects_frame.grid(
-            row=4, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+            row=5, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
         )
         effect_blocks = (
             (
@@ -911,7 +966,7 @@ class MidiUartSender:
             osc_frame = ttk.LabelFrame(
                 parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            osc_frame.grid(row=5, column=column, padx=6, pady=(6, 0))
+            osc_frame.grid(row=6, column=column, padx=6, pady=(6, 0))
             self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
@@ -1424,6 +1479,16 @@ class MidiUartSender:
         )
         self.send_synth_control(FILTER_MIX_CC, self.filter_mix.get())
         self.send_synth_control(MASTER_LEVEL_CC, self.master_level.get())
+        self.send_synth_control(
+            VIBRATO_ENABLE_CC, 127 if self.vibrato_enabled.get() else 0
+        )
+        self.send_synth_control(VIBRATO_RATE_CC, self.vibrato_rate.get())
+        self.send_synth_control(VIBRATO_DEPTH_CC, self.vibrato_depth.get())
+        self.send_synth_control(
+            PORTAMENTO_ENABLE_CC,
+            127 if self.portamento_enabled.get() else 0,
+        )
+        self.send_synth_control(PORTAMENTO_TIME_CC, self.portamento_time.get())
         self.send_effect_mode_selection()
         self.send_synth_control(DELAY_TIME_CC, self.delay_time.get())
         self.send_synth_control(DELAY_FEEDBACK_CC, self.delay_feedback.get())

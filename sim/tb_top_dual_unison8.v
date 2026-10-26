@@ -159,6 +159,23 @@ module tb_top_dual_unison8;
             errors = errors + 1;
         end
 
+        // 新增演奏音高CC必须通过原共享UART到达控制寄存器。
+        send_cc(7'd82, 7'd127);
+        send_cc(7'd83, 7'd73);
+        send_cc(7'd84, 7'd41);
+        send_cc(7'd85, 7'd127);
+        send_cc(7'd86, 7'd92);
+        repeat (20) @(posedge sys_clk);
+        if (!dut.vibrato_enable || dut.vibrato_rate !== 7'd73
+            || dut.vibrato_depth !== 7'd41 || !dut.portamento_enable
+            || dut.portamento_time !== 7'd92) begin
+            $display("ERROR: vibrato/portamento controls did not reach top");
+            errors = errors + 1;
+        end
+        // 后续容量测试保持原复音模式，避免改变既有64任务验收条件。
+        send_cc(7'd82, 7'd0);
+        send_cc(7'd85, 7'd0);
+
         // 两路UART同拍完成CC，验证两条指令均保留。
         fork
             send_cc(7'd46, 7'd73);
