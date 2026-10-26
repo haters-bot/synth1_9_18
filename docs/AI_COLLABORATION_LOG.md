@@ -137,4 +137,3 @@ Future entries should append a dated section and never rewrite prior verificatio
 - **来源**：提交 `3b8807b`，位流 SHA256 `8C2617DB216CA7F930818B1032EE1ED520D2B214AB53613A025525518281FB71`。
 - **部署**：工程机 `10.136.125.157` 执行 `tools/deploy_verified.py --target sram`，目录 `2_ui_touch_hub/impl/deploy_runs/20261026_112652_TXE8148_EC11_SPI_QUADRANT_MAPPING/`；GW5AST-138B、SRAM operation 2、`PROGRAMMER_EXIT=0`、Status `0x00026230`、User Code `0x00004262`、22.73 s，远端哈希匹配。
 - **实屏证据**：`preview.jpg` 显示正常六窗 UI。仍待现场旋钮逐个转动确认参数变化、方向正负和 EC11 按压行为；Flash 保持暂停。
-
