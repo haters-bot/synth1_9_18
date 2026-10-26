@@ -132,3 +132,9 @@ Future entries should append a dated section and never rewrite prior verificatio
 - **输入语义**：旋转事件仍走 `spi_param_valid/id/val` → `param_merger`，触摸路径未改。EC11 按压只在接收器内部形成 `select_valid/select_id` 单拍事件；尝试把它直接并入 `btn_tap` 或渲染选择路径会改变高扇出布局并产生 setup 违例，因此持久视觉选中态留待低扇出实现。当前不能宣称实体按压 UI 反馈已完成。
 - **验证**：Gowin P&R Setup/Hold 违例均为 0，最差 Setup Slack `+0.595 ns`；`tb_lfo_sysex_tx` 与 `tb_midi_uart_tx` 均通过；位流 SHA256 `8C2617DB216CA7F930818B1032EE1ED520D2B214AB53613A025525518281FB71`。
 - **部署边界**：截至本条目，尚未烧录这版新位流；仅 SRAM 目标，Flash 暂停。下一步是提交/推送后执行 `deploy_verified.py --target sram`，然后以工程机编程返回码、远端哈希、摄像头抓屏和现场旋钮逐项测试作为证据。
+## 2026-10-26 11:27 — 四区映射位流已部署到 UI 板 SRAM（Codex）
+
+- **来源**：提交 `3b8807b`，位流 SHA256 `8C2617DB216CA7F930818B1032EE1ED520D2B214AB53613A025525518281FB71`。
+- **部署**：工程机 `10.136.125.157` 执行 `tools/deploy_verified.py --target sram`，目录 `2_ui_touch_hub/impl/deploy_runs/20261026_112652_TXE8148_EC11_SPI_QUADRANT_MAPPING/`；GW5AST-138B、SRAM operation 2、`PROGRAMMER_EXIT=0`、Status `0x00026230`、User Code `0x00004262`、22.73 s，远端哈希匹配。
+- **实屏证据**：`preview.jpg` 显示正常六窗 UI。仍待现场旋钮逐个转动确认参数变化、方向正负和 EC11 按压行为；Flash 保持暂停。
+

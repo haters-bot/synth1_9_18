@@ -1,5 +1,11 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-26 11:27：四区映射位流已烧录 UI 板 SRAM
+
+- 使用提交 `3b8807b` 对应位流执行 `tools/deploy_verified.py --target sram`，部署目录为 `impl/deploy_runs/20261026_112652_TXE8148_EC11_SPI_QUADRANT_MAPPING/`。
+- 工程机 `10.136.125.157` 识别 `GW5AST-138B (0x0001081B)`；SRAM 编程完成，`PROGRAMMER_EXIT=0`，Status `0x00026230`，User Code `0x00004262`，用时 22.73 s。远端 SHA256 与本地一致：`8C2617DB216CA7F930818B1032EE1ED520D2B214AB53613A025525518281FB71`。
+- `preview.jpg` 已抓到正常 UI 六窗画面，证明新位流正在板上运行。该抓屏不证明 32 个 EC11 的现场方向和按压逐项验收；Flash 未操作。
+
 ## 2026-10-26 11:05：TXE8148 SPI 采样与四区映射版本时序闭合（待 SRAM 部署）
 
 - 本轮修复 `rtl/knob_spi_intake/knob_spi_rx.v` 的 SPI 采样时序：TXE8148 在 SCLK 下降沿更新 SDO，接收器改为在高电平阶段结束时采样稳定后的同步数据。保留两颗 TXE8148、32 个 EC11 的 A/B/SW 解码与 0..127 参数值输出。
