@@ -10,8 +10,12 @@ def main():
     out.mkdir();print(out,flush=True)
     sources=[ROOT.parent/'src/i2s_visual_tx.v',ROOT.parent/'src/i2s_tx.v']
     sources += [ROOT/p for p in ('rtl/audio/i2s_visual_rx.v','rtl/audio/audio_phase_plot.v',
-        'rtl/audio/audio_pcm_metrics.v','sim/tb_visual_return_v2.v')]
-    hashes={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
+        'rtl/audio/audio_pcm_metrics.v','rtl/audio/audio_stereo_meter.v',
+        'rtl/audio/audio_correlation_cursor.v','rtl/audio/audio_waveform_capture.v',
+        'rtl/audio/audio_fft_tables.v','rtl/audio/audio_fft_analyzer.v',
+        'rtl/ui_vector_engine/ui_navigation_renderer.v','sim/tb_visual_return_v2.v')]
+    hashes={str(p):hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sources+list((ROOT/'rtl/ui_vector_engine').glob('*.vh'))}
     def run(name,args):
         p=subprocess.run(list(map(str,args)),cwd=out,capture_output=True,text=True,errors='replace',timeout=240)
         log=p.stdout+p.stderr;(out/(name+'.log')).write_text(log,encoding='utf-8')
