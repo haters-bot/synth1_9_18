@@ -28,8 +28,11 @@ module knob_ui_control(
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)focus_id<=`PARAM_ID_NONE;
   else if(fx_touch_focus_valid)focus_id<=fx_touch_focus_id;
-  else if(touch_focus_valid && touch_down && touch_focus_id!=`PARAM_ID_NONE)focus_id<=touch_focus_id;
+  // The newest physical operation owns the display halo. A stale persistent
+  // touch selection may update the parameter bank, but cannot hide a knob
+  // motion or press that arrived in the same/next pixel-clock interval.
   else if(motion_valid)focus_id<=screen_id(motion_id);
   else if(button_valid && button_action==1)focus_id<=screen_id(button_id);
+  else if(touch_focus_valid && touch_down && touch_focus_id!=`PARAM_ID_NONE)focus_id<=touch_focus_id;
  end
 endmodule
