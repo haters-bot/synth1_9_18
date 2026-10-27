@@ -2,6 +2,7 @@
 module top #(
     parameter integer UART_BAUD_RATE = 31250,
     parameter integer CONTROL_UART_BAUD_RATE = 31250,
+    parameter integer KEYBOARD_UART_BAUD_RATE = 31250,
     parameter integer DEFAULT_UNISON_COUNT = 1,
     parameter integer OSC_ENGINE_COUNT = 1,
     parameter integer SLOTS_PER_ENGINE = 32,
@@ -10,6 +11,7 @@ module top #(
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
     input  wire control_uart_rx, // C19; 独立音色控制UART RX，3.3 V，空闲高电平
+    input  wire keyboard_uart_rx, // E19; 实体MIDI键盘转换后的3.3 V UART RX
     input  wire uart_rx,       // 板载USB-UART接收，引脚V14
     input  wire midi_gpio_rx,  // 跨板MIDI输入：PMOD1 IO2 / AB21
     output wire MAX_SD,        // MAX98357A使能，引脚AB20
@@ -105,6 +107,7 @@ module top #(
     wire [31:0] osc_a_task_update_phase_step;
     wire [31:0] osc_a_task_update_base_step;
     wire [34:0] osc_a_task_update_detune_unit;
+    wire [2:0]  osc_a_task_update_detune_magnitude;
     wire osc_a_task_update_detune_negative;
     wire [6:0]  osc_a_task_update_velocity;
     wire        osc_a_task_update_enable;
@@ -116,6 +119,7 @@ module top #(
     wire [31:0] osc_b_task_update_phase_step;
     wire [31:0] osc_b_task_update_base_step;
     wire [34:0] osc_b_task_update_detune_unit;
+    wire [2:0]  osc_b_task_update_detune_magnitude;
     wire osc_b_task_update_detune_negative;
     wire [6:0]  osc_b_task_update_velocity;
     wire        osc_b_task_update_enable;
@@ -133,6 +137,16 @@ module top #(
     wire [3:0] midi_note_event_channel;
     wire [6:0] midi_note_event_note;
     wire [6:0] midi_note_event_velocity;
+    wire       shared_note_event_valid;
+    wire       shared_note_event_on;
+    wire [3:0] shared_note_event_channel;
+    wire [6:0] shared_note_event_note;
+    wire [6:0] shared_note_event_velocity;
+    wire       keyboard_note_event_valid;
+    wire       keyboard_note_event_on;
+    wire [3:0] keyboard_note_event_channel;
+    wire [6:0] keyboard_note_event_note;
+    wire [6:0] keyboard_note_event_velocity;
     wire       midi_control_change_valid;
     wire [3:0] midi_control_change_channel;
     wire [6:0] midi_control_change_number;
@@ -159,6 +173,15 @@ module top #(
     wire       routed_note_event_on;
     wire [6:0] routed_note_event_note;
     wire [6:0] routed_note_event_velocity;
+    wire       pitch_note_event_valid;
+    wire       pitch_note_event_on;
+    wire [6:0] pitch_note_event_note;
+    wire [6:0] pitch_note_event_velocity;
+    wire       glide_override_enable;
+    wire [31:0] glide_base_step;
+    wire signed [12:0] vibrato_ratio_delta_q16;
+    wire [23:0] debug_glide_current_pitch_q16;
+    wire [23:0] debug_glide_target_pitch_q16;
     wire [6:0] pan_target;
     wire [2:0] filter_mode_target;
     reg  [2:0] filter_mode_active;
@@ -202,6 +225,11 @@ module top #(
     wire [6:0] compressor_mix_target;
     reg  [8:0] master_gain_q8;
     wire [8:0] master_gain_target_q8;
+    wire       vibrato_enable;
+    wire [6:0] vibrato_rate;
+    wire [6:0] vibrato_depth;
+    wire       portamento_enable;
+    wire [6:0] portamento_time;
 
     wire [6:0] osc_a_wt_position_target;
     reg  [6:0] osc_a_wt_position_current;
@@ -587,16 +615,21 @@ module top #(
     wire [7:0] control_uart_byte;
     wire control_uart_byte_valid, control_uart_framing_error;
     wire control_event_overflow;
+    wire [7:0] keyboard_uart_byte;
+    wire keyboard_uart_byte_valid, keyboard_uart_framing_error;
+    wire [21:0] merged_note_event;
+    wire merged_note_event_valid;
+    wire midi_note_event_overflow;
     midi_note_parser u_midi_note_parser (
         .clk                   (clk_sys),
         .rst_n                 (rst_n_sys),
         .byte_data             (uart_byte),
         .byte_valid            (uart_byte_valid),
-        .note_event_valid      (midi_note_event_valid),
-        .note_event_on         (midi_note_event_on),
-        .note_event_channel    (midi_note_event_channel),
-        .note_event_note       (midi_note_event_note),
-        .note_event_velocity   (midi_note_event_velocity),
+        .note_event_valid      (shared_note_event_valid),
+        .note_event_on         (shared_note_event_on),
+        .note_event_channel    (shared_note_event_channel),
+        .note_event_note       (shared_note_event_note),
+        .note_event_velocity   (shared_note_event_velocity),
         .control_change_valid  (shared_cc_valid),
         .control_change_channel(shared_cc_channel),
         .control_change_number (shared_cc_number),
@@ -612,6 +645,59 @@ module top #(
         .parameter_id   (shared_hr_id),
         .parameter_value(shared_hr_value)
     );
+
+    // 实体键盘使用独立UART与MIDI状态机，避免两路Running Status互相污染。
+    // 第一版只合并Note On/Off、通道、音高和力度；键盘CC不进入音色控制链。
+    uart_rx #(
+        .CLK_HZ   (50000000),
+        .BAUD_RATE(KEYBOARD_UART_BAUD_RATE)
+    ) u_keyboard_uart_rx (
+        .clk          (clk_sys),
+        .rst_n        (rst_n_sys),
+        .rx           (keyboard_uart_rx),
+        .data         (keyboard_uart_byte),
+        .data_valid   (keyboard_uart_byte_valid),
+        .framing_error(keyboard_uart_framing_error)
+    );
+
+    midi_note_parser u_keyboard_midi_note_parser (
+        .clk                   (clk_sys),
+        .rst_n                 (rst_n_sys),
+        .byte_data             (keyboard_uart_byte),
+        .byte_valid            (keyboard_uart_byte_valid),
+        .note_event_valid      (keyboard_note_event_valid),
+        .note_event_on         (keyboard_note_event_on),
+        .note_event_channel    (keyboard_note_event_channel),
+        .note_event_note       (keyboard_note_event_note),
+        .note_event_velocity   (keyboard_note_event_velocity),
+        .control_change_valid  (),
+        .control_change_channel(),
+        .control_change_number (),
+        .control_change_value  ()
+    );
+
+    // 复用现有8项双入口事件FIFO。先保留板载USB-UART事件，再保留实体键盘事件。
+    control_event_merge u_midi_note_event_merge (
+        .clk      (clk_sys),
+        .rst_n    (rst_n_sys),
+        .valid_a  (shared_note_event_valid),
+        .data_a   ({3'd0, shared_note_event_on,
+                    shared_note_event_channel, shared_note_event_note,
+                    shared_note_event_velocity}),
+        .valid_b  (keyboard_note_event_valid),
+        .data_b   ({3'd0, keyboard_note_event_on,
+                    keyboard_note_event_channel, keyboard_note_event_note,
+                    keyboard_note_event_velocity}),
+        .out_valid(merged_note_event_valid),
+        .out_data (merged_note_event),
+        .overflow (midi_note_event_overflow)
+    );
+
+    assign midi_note_event_valid = merged_note_event_valid;
+    assign midi_note_event_on = merged_note_event[18];
+    assign midi_note_event_channel = merged_note_event[17:14];
+    assign midi_note_event_note = merged_note_event[13:7];
+    assign midi_note_event_velocity = merged_note_event[6:0];
 
     uart_rx #(.CLK_HZ(50000000), .BAUD_RATE(CONTROL_UART_BAUD_RATE)) u_control_uart_rx (
         .clk(clk_sys), .rst_n(rst_n_sys), .rx(control_uart_rx),
@@ -830,6 +916,11 @@ module top #(
         .compressor_release        (compressor_release_target),
         .compressor_makeup         (compressor_makeup_target),
         .compressor_mix            (compressor_mix_target),
+        .vibrato_enable            (vibrato_enable),
+        .vibrato_rate              (vibrato_rate),
+        .vibrato_depth             (vibrato_depth),
+        .portamento_enable         (portamento_enable),
+        .portamento_time           (portamento_time),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
         .osc_a_detune_amount       (osc_a_detune_amount),
@@ -856,6 +947,32 @@ module top #(
         .osc_b_warp_amount         (osc_b_warp_amount_target),
         .osc_b_level               (osc_b_level),
         .osc_b_wavetable_index     (osc_b_wavetable_index)
+    );
+
+    // 共享演奏音高层：Portamento开启时把Note流转换为最后音符优先的
+    // 单音Legato；同一条滑音基础步进同时供给OSC A和OSC B。
+    performance_pitch_controller u_performance_pitch_controller (
+        .clk                       (clk_sys),
+        .rst_n                     (rst_n_sys),
+        .sample_tick               (sample_tick),
+        .note_event_valid          (routed_note_event_valid),
+        .note_event_on             (routed_note_event_on),
+        .note_event_note           (routed_note_event_note),
+        .note_event_velocity       (routed_note_event_velocity),
+        .vibrato_enable            (vibrato_enable),
+        .vibrato_rate              (vibrato_rate),
+        .vibrato_depth             (vibrato_depth),
+        .portamento_enable         (portamento_enable),
+        .portamento_time           (portamento_time),
+        .routed_note_event_valid   (pitch_note_event_valid),
+        .routed_note_event_on      (pitch_note_event_on),
+        .routed_note_event_note    (pitch_note_event_note),
+        .routed_note_event_velocity(pitch_note_event_velocity),
+        .glide_override_enable     (glide_override_enable),
+        .glide_base_step           (glide_base_step),
+        .vibrato_ratio_delta_q16   (vibrato_ratio_delta_q16),
+        .debug_current_pitch_q16   (debug_glide_current_pitch_q16),
+        .debug_target_pitch_q16    (debug_glide_target_pitch_q16)
     );
 
     adsr_parameter_mapper u_osc_a_adsr_parameter_mapper (
@@ -886,10 +1003,10 @@ module top #(
     ) u_osc_a_task_scheduler (
         .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (routed_note_event_valid),
-        .note_event_on           (routed_note_event_on),
-        .note_event_note         (routed_note_event_note),
-        .note_event_velocity     (routed_note_event_velocity),
+        .note_event_valid        (pitch_note_event_valid),
+        .note_event_on           (pitch_note_event_on),
+        .note_event_note         (pitch_note_event_note),
+        .note_event_velocity     (pitch_note_event_velocity),
         .unison_count            (osc_a_unison_count),
         .detune_amount           (lfo_osc_a_detune_target),
         .task_idle_mask          (osc_a_task_idle_mask),
@@ -898,6 +1015,8 @@ module top #(
         .task_update_phase_step  (osc_a_task_update_phase_step),
         .task_update_base_step(osc_a_task_update_base_step),
         .task_update_detune_unit(osc_a_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_a_task_update_detune_magnitude),
         .task_update_detune_negative(osc_a_task_update_detune_negative),
         .task_update_velocity    (osc_a_task_update_velocity),
         .task_update_enable      (osc_a_task_update_enable),
@@ -912,10 +1031,10 @@ module top #(
     ) u_osc_b_task_scheduler (
         .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (routed_note_event_valid),
-        .note_event_on           (routed_note_event_on),
-        .note_event_note         (routed_note_event_note),
-        .note_event_velocity     (routed_note_event_velocity),
+        .note_event_valid        (pitch_note_event_valid),
+        .note_event_on           (pitch_note_event_on),
+        .note_event_note         (pitch_note_event_note),
+        .note_event_velocity     (pitch_note_event_velocity),
         .unison_count            (osc_b_unison_count),
         .detune_amount           (lfo_osc_b_detune_target),
         .task_idle_mask          (osc_b_task_idle_mask),
@@ -924,6 +1043,8 @@ module top #(
         .task_update_phase_step  (osc_b_task_update_phase_step),
         .task_update_base_step(osc_b_task_update_base_step),
         .task_update_detune_unit(osc_b_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_b_task_update_detune_magnitude),
         .task_update_detune_negative(osc_b_task_update_detune_negative),
         .task_update_velocity    (osc_b_task_update_velocity),
         .task_update_enable      (osc_b_task_update_enable),
@@ -966,7 +1087,12 @@ module top #(
         .detune_amount(lfo_osc_a_detune_target),
         .task_update_base_step(osc_a_task_update_base_step),
         .task_update_detune_unit(osc_a_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_a_task_update_detune_magnitude),
         .task_update_detune_negative(osc_a_task_update_detune_negative),
+        .glide_override_enable(glide_override_enable),
+        .glide_override_base_step(glide_base_step),
+        .vibrato_ratio_delta_q16(vibrato_ratio_delta_q16),
         .task_update_velocity      (osc_a_task_update_velocity),
         .task_update_enable        (osc_a_task_update_enable),
         .task_update_phase_reset   (osc_a_task_update_phase_reset),
@@ -1014,7 +1140,12 @@ module top #(
         .detune_amount(lfo_osc_b_detune_target),
         .task_update_base_step(osc_b_task_update_base_step),
         .task_update_detune_unit(osc_b_task_update_detune_unit),
+        .task_update_detune_magnitude(
+            osc_b_task_update_detune_magnitude),
         .task_update_detune_negative(osc_b_task_update_detune_negative),
+        .glide_override_enable(glide_override_enable),
+        .glide_override_base_step(glide_base_step),
+        .vibrato_ratio_delta_q16(vibrato_ratio_delta_q16),
         .task_update_velocity      (osc_b_task_update_velocity),
         .task_update_enable        (osc_b_task_update_enable),
         .task_update_phase_reset   (osc_b_task_update_phase_reset),

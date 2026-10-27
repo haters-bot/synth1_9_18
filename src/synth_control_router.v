@@ -67,6 +67,12 @@ module synth_control_router #(
     output reg [6:0]  compressor_makeup,
     output reg [6:0]  compressor_mix,
 
+    output reg        vibrato_enable,
+    output reg [6:0]  vibrato_rate,
+    output reg [6:0]  vibrato_depth,
+    output reg        portamento_enable,
+    output reg [6:0]  portamento_time,
+
     output reg [6:0]  osc_a_wt_position_target,
     output reg [2:0]  osc_a_waveform_select,
     output reg [6:0]  osc_a_detune_amount,
@@ -161,6 +167,15 @@ module synth_control_router #(
     localparam [6:0] CC_COMPRESSOR_RELEASE = 7'd79;
     localparam [6:0] CC_COMPRESSOR_MAKEUP  = 7'd80;
     localparam [6:0] CC_COMPRESSOR_MIX     = 7'd81;
+    localparam [6:0] CC_VIBRATO_ENABLE     = 7'd82;
+    localparam [6:0] CC_VIBRATO_RATE       = 7'd83;
+    localparam [6:0] CC_VIBRATO_DEPTH      = 7'd84;
+    localparam [6:0] CC_PORTAMENTO_ENABLE  = 7'd85;
+    localparam [6:0] CC_PORTAMENTO_TIME    = 7'd86;
+
+    localparam [6:0] MIDI_CC_MOD_WHEEL       = 7'd1;
+    localparam [6:0] MIDI_CC_PORTAMENTO_TIME = 7'd5;
+    localparam [6:0] MIDI_CC_PORTAMENTO_ON   = 7'd65;
 
     function [3:0] clamp_unison_count;
         input [6:0] requested_count;
@@ -236,6 +251,11 @@ module synth_control_router #(
             compressor_release  <= 7'd80;
             compressor_makeup   <= 7'd0;
             compressor_mix      <= 7'd127;
+            vibrato_enable      <= 1'b0;
+            vibrato_rate        <= 7'd52;
+            vibrato_depth       <= 7'd0;
+            portamento_enable   <= 1'b0;
+            portamento_time     <= 7'd80;
 
             osc_a_wt_position_target <= 7'd0;
             osc_a_waveform_select    <= 3'd2;
@@ -415,8 +435,39 @@ module synth_control_router #(
                         compressor_makeup <= raw_control_change_value;
                     CC_COMPRESSOR_MIX:
                         compressor_mix <= raw_control_change_value;
+                    CC_VIBRATO_ENABLE:
+                        vibrato_enable <= (raw_control_change_value != 7'd0);
+                    CC_VIBRATO_RATE:
+                        vibrato_rate <= raw_control_change_value;
+                    CC_VIBRATO_DEPTH:
+                        vibrato_depth <= raw_control_change_value;
+                    CC_PORTAMENTO_ENABLE:
+                        portamento_enable
+                            <= (raw_control_change_value != 7'd0);
+                    CC_PORTAMENTO_TIME:
+                        portamento_time <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
+                    end
+                endcase
+            end
+
+            // 真正的MIDI键盘通常在演奏通道发送标准控制器：Mod Wheel、
+            // Portamento Time和Portamento On/Off。专用控制UART仍可使用
+            // 通道16的CC82～86，两条路径互不删除。
+            if (raw_control_change_valid
+                && (raw_control_change_channel == PERFORMANCE_CHANNEL)) begin
+                case (raw_control_change_number)
+                    MIDI_CC_MOD_WHEEL: begin
+                        vibrato_depth <= raw_control_change_value;
+                        vibrato_enable <= (raw_control_change_value != 7'd0);
+                    end
+                    MIDI_CC_PORTAMENTO_TIME:
+                        portamento_time <= raw_control_change_value;
+                    MIDI_CC_PORTAMENTO_ON:
+                        portamento_enable
+                            <= (raw_control_change_value >= 7'd64);
+                    default: begin
                     end
                 endcase
             end

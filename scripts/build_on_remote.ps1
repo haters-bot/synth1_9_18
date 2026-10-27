@@ -6,7 +6,9 @@ param(
     [string]$RemoteUser,
     [string]$RemoteProjectRoot = "D:\FPGA\synth1_9_18",
     [string]$RemoteShare,
-    [string]$Branch = "main"
+    [string]$Branch = "main",
+    [ValidateSet("Signoff", "Fast", "Incremental")]
+    [string]$BuildProfile = "Signoff"
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,7 +58,13 @@ Invoke-LocalGit push origin "HEAD:$Branch" | ForEach-Object { Write-Host $_ }
 $escapedProjectRoot = $RemoteProjectRoot.Replace("'", "''")
 $remotePowerShell = @"
 Set-Location -LiteralPath '$escapedProjectRoot'
-& .\scripts\remote_build.ps1 -Branch '$Branch'
+# Update before invoking the build script. If remote_build.ps1 itself changed,
+# PowerShell must load the new file rather than continue an already parsed copy.
+git fetch origin '$Branch'
+if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }
+git pull --ff-only origin '$Branch'
+if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }
+& .\scripts\remote_build.ps1 -Branch '$Branch' -BuildProfile '$BuildProfile' -SkipPull
 if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }
 "@
 $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($remotePowerShell))

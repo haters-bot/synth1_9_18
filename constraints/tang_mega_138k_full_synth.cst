@@ -174,6 +174,9 @@ IO_PORT "uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 // Dedicated cross-board MIDI RX: PMOD1 IO2, J8 pin 9, 3.3V.
 IO_LOC "midi_gpio_rx" AB21;
 IO_PORT "midi_gpio_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+// 3.3 V UART RX from the external physical MIDI keyboard converter.
+IO_LOC "keyboard_uart_rx" E19;
+IO_PORT "keyboard_uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 
 // Onboard SD card in 1-bit SD mode.
 IO_LOC "sd_clk" V15;

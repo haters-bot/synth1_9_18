@@ -70,6 +70,11 @@ COMPRESSOR_ATTACK_CC = 78
 COMPRESSOR_RELEASE_CC = 79
 COMPRESSOR_MAKEUP_CC = 80
 COMPRESSOR_MIX_CC = 81
+VIBRATO_ENABLE_CC = 82
+VIBRATO_RATE_CC = 83
+VIBRATO_DEPTH_CC = 84
+PORTAMENTO_ENABLE_CC = 85
+PORTAMENTO_TIME_CC = 86
 # 三个独立三点LFO共享同一个8槽调制矩阵和一次原子提交。
 FILTER_LFO_PARAMETER_SETS = (
     {
@@ -197,6 +202,157 @@ DISTORTION_TYPE_VALUES = {
     "Foldback": 2,
 }
 
+# 音色预设只组合现有协议参数，不引入新的FPGA控制命令。
+# 钢琴和提琴分别使用测试波表包中的8号、9号波表。
+SYNTH_PRESETS = {
+    "合成钢琴（波表8）": {
+        "controls": {
+            "pan": 64,
+            "filter_mode": "低通",
+            "filter_cutoff": 105,
+            "filter_resonance": 8,
+            "filter_mix": 127,
+            "master_level": 105,
+            "effect_mode": "Reverb",
+            "delay_time": 64,
+            "delay_feedback": 32,
+            "delay_mix": 0,
+            "reverb_size": 55,
+            "reverb_decay": 60,
+            "reverb_mix": 22,
+            "distortion_enabled": False,
+            "distortion_type": "Soft Clip",
+            "distortion_drive": 24,
+            "distortion_tone": 127,
+            "distortion_mix": 0,
+            "chorus_enabled": False,
+            "chorus_rate": 12,
+            "chorus_depth": 20,
+            "chorus_delay": 40,
+            "chorus_feedback": 8,
+            "chorus_mix": 0,
+            "phaser_enabled": False,
+            "phaser_rate": 20,
+            "phaser_depth": 32,
+            "phaser_center": 64,
+            "phaser_feedback": 8,
+            "phaser_mix": 0,
+            "compressor_enabled": False,
+            "compressor_threshold": 96,
+            "compressor_ratio": 48,
+            "compressor_attack": 12,
+            "compressor_release": 64,
+            "compressor_makeup": 0,
+            "compressor_mix": 127,
+        },
+        "oscillators": {
+            "A": {
+                "enabled": True,
+                "waveform": "SD/DDR波表",
+                "warp_mode": "关闭",
+                "warp_amount": 0,
+                "wavetable_index": 8,
+                "wt_position": 112,
+                "detune": 64,
+                "unison": 1,
+                "level": 105,
+                "attack": 0,
+                "decay": 92,
+                "sustain": 0,
+                "release": 48,
+            },
+            "B": {
+                "enabled": True,
+                "waveform": "SD/DDR波表",
+                "warp_mode": "关闭",
+                "warp_amount": 0,
+                "wavetable_index": 8,
+                "wt_position": 0,
+                "detune": 64,
+                "unison": 1,
+                "level": 28,
+                "attack": 0,
+                "decay": 36,
+                "sustain": 0,
+                "release": 24,
+            },
+        },
+    },
+    "合成提琴（波表9）": {
+        "controls": {
+            "pan": 64,
+            "filter_mode": "低通",
+            "filter_cutoff": 88,
+            "filter_resonance": 14,
+            "filter_mix": 120,
+            "master_level": 100,
+            "effect_mode": "Reverb",
+            "delay_time": 64,
+            "delay_feedback": 32,
+            "delay_mix": 0,
+            "reverb_size": 65,
+            "reverb_decay": 75,
+            "reverb_mix": 30,
+            "distortion_enabled": False,
+            "distortion_type": "Soft Clip",
+            "distortion_drive": 24,
+            "distortion_tone": 127,
+            "distortion_mix": 0,
+            "chorus_enabled": True,
+            "chorus_rate": 12,
+            "chorus_depth": 24,
+            "chorus_delay": 40,
+            "chorus_feedback": 10,
+            "chorus_mix": 26,
+            "phaser_enabled": False,
+            "phaser_rate": 20,
+            "phaser_depth": 32,
+            "phaser_center": 64,
+            "phaser_feedback": 8,
+            "phaser_mix": 0,
+            "compressor_enabled": False,
+            "compressor_threshold": 96,
+            "compressor_ratio": 48,
+            "compressor_attack": 20,
+            "compressor_release": 80,
+            "compressor_makeup": 0,
+            "compressor_mix": 127,
+        },
+        "oscillators": {
+            "A": {
+                "enabled": True,
+                "waveform": "SD/DDR波表",
+                "warp_mode": "关闭",
+                "warp_amount": 0,
+                "wavetable_index": 9,
+                "wt_position": 78,
+                "detune": 24,
+                "unison": 2,
+                "level": 95,
+                "attack": 56,
+                "decay": 40,
+                "sustain": 112,
+                "release": 72,
+            },
+            "B": {
+                "enabled": True,
+                "waveform": "SD/DDR波表",
+                "warp_mode": "关闭",
+                "warp_amount": 0,
+                "wavetable_index": 9,
+                "wt_position": 42,
+                "detune": 18,
+                "unison": 1,
+                "level": 42,
+                "attack": 60,
+                "decay": 48,
+                "sustain": 105,
+                "release": 72,
+            },
+        },
+    },
+}
+
 
 def note_name(note: int) -> str:
     return f"{NOTE_NAMES[note % 12]}{note // 12 - 1}"
@@ -226,6 +382,7 @@ class MidiUartSender:
         self.baud_rate = tk.StringVar(value="31250")
         self.channel = tk.IntVar(value=1)
         self.velocity = tk.IntVar(value=100)
+        self.preset_name = tk.StringVar(value="选择音色…")
         self.pan = tk.IntVar(value=64)
         self.filter_mode = tk.StringVar(value="旁路")
         self.filter_cutoff = tk.IntVar(value=127)
@@ -263,6 +420,11 @@ class MidiUartSender:
         self.compressor_release = tk.IntVar(value=80)
         self.compressor_makeup = tk.IntVar(value=0)
         self.compressor_mix = tk.IntVar(value=127)
+        self.vibrato_enabled = tk.BooleanVar(value=False)
+        self.vibrato_rate = tk.IntVar(value=52)
+        self.vibrato_depth = tk.IntVar(value=0)
+        self.portamento_enabled = tk.BooleanVar(value=False)
+        self.portamento_time = tk.IntVar(value=80)
         self.filter_lfo_enabled = [
             tk.BooleanVar(value=False) for _ in range(3)
         ]
@@ -397,6 +559,27 @@ class MidiUartSender:
             row=1, column=0, columnspan=5, padx=4, pady=(8, 0), sticky="w"
         )
 
+        ttk.Label(controls, text="音色预设").grid(
+            row=2, column=0, padx=4, pady=(8, 0), sticky="e"
+        )
+        preset_box = ttk.Combobox(
+            controls,
+            textvariable=self.preset_name,
+            values=tuple(SYNTH_PRESETS),
+            width=22,
+            state="readonly",
+        )
+        preset_box.grid(
+            row=2, column=1, columnspan=2, padx=4, pady=(8, 0), sticky="w"
+        )
+        preset_box.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self.apply_selected_preset(),
+        )
+        ttk.Button(
+            controls, text="重新应用音色", command=self.apply_selected_preset
+        ).grid(row=2, column=3, padx=4, pady=(8, 0), sticky="w")
+
         parameter_controls = ttk.LabelFrame(
             self.main_content, text="双振荡器参数（松开滑块时发送）", padding=10
         )
@@ -510,11 +693,56 @@ class MidiUartSender:
             ),
         )
 
+        pitch_frame = ttk.LabelFrame(
+            parameter_controls, text="颤音与单音Legato滑音", padding=6
+        )
+        pitch_frame.grid(
+            row=2, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+        )
+        ttk.Checkbutton(
+            pitch_frame,
+            text="开启Vibrato",
+            variable=self.vibrato_enabled,
+            command=lambda: self.send_synth_control(
+                VIBRATO_ENABLE_CC, 127 if self.vibrato_enabled.get() else 0
+            ),
+        ).grid(row=0, column=0, padx=4, sticky="w")
+        pitch_specs = (
+            ("Vibrato Rate", self.vibrato_rate, VIBRATO_RATE_CC),
+            ("Vibrato Depth", self.vibrato_depth, VIBRATO_DEPTH_CC),
+            ("Glide Time", self.portamento_time, PORTAMENTO_TIME_CC),
+        )
+        for index, (label, variable, controller) in enumerate(pitch_specs):
+            column = 1 + index * 2
+            ttk.Label(pitch_frame, text=label).grid(
+                row=0, column=column, padx=(8, 2), sticky="e"
+            )
+            scale = tk.Scale(
+                pitch_frame, from_=0, to=127, orient=tk.HORIZONTAL,
+                variable=variable, length=145,
+            )
+            scale.grid(row=0, column=column + 1, padx=2)
+            scale.bind(
+                "<ButtonRelease-1>",
+                lambda _event, cc=controller, var=variable: (
+                    self.send_synth_control(cc, var.get())
+                ),
+            )
+        ttk.Checkbutton(
+            pitch_frame,
+            text="开启单音Legato Portamento",
+            variable=self.portamento_enabled,
+            command=lambda: self.send_synth_control(
+                PORTAMENTO_ENABLE_CC,
+                127 if self.portamento_enabled.get() else 0,
+            ),
+        ).grid(row=1, column=0, columnspan=3, padx=4, sticky="w")
+
         lfo_frame = ttk.LabelFrame(
             parameter_controls, text="FPGA通用LFO与调制路由", padding=6
         )
         lfo_frame.grid(
-            row=2, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+            row=3, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
         )
 
         for lfo_index in range(3):
@@ -587,7 +815,7 @@ class MidiUartSender:
             parameter_controls, text="全局效果器", padding=6
         )
         effects_frame.grid(
-            row=3, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+            row=4, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
         )
         ttk.Label(effects_frame, text="模式").grid(row=0, column=0, padx=4)
         effect_mode_box = ttk.Combobox(
@@ -639,7 +867,7 @@ class MidiUartSender:
             padding=6,
         )
         advanced_effects_frame.grid(
-            row=4, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
+            row=5, column=0, columnspan=2, padx=6, pady=(6, 0), sticky="ew"
         )
         effect_blocks = (
             (
@@ -738,7 +966,7 @@ class MidiUartSender:
             osc_frame = ttk.LabelFrame(
                 parameter_controls, text=f"OSC {osc_name}", padding=8
             )
-            osc_frame.grid(row=5, column=column, padx=6, pady=(6, 0))
+            osc_frame.grid(row=6, column=column, padx=6, pady=(6, 0))
             self._build_oscillator_controls(osc_frame, osc_name)
 
         keyboard = ttk.LabelFrame(
@@ -1051,6 +1279,38 @@ class MidiUartSender:
         if self.send_control_change(FILTER_MODE_CC, value, CONTROL_CHANNEL):
             self.status.set(f"全局滤波器模式：{mode_name}")
 
+    def apply_selected_preset(self) -> None:
+        preset_name = self.preset_name.get()
+        preset = SYNTH_PRESETS.get(preset_name)
+        if preset is None:
+            self.status.set("请先选择一个音色预设")
+            return
+
+        for control_name, value in preset["controls"].items():
+            getattr(self, control_name).set(value)
+        for osc_name, values in preset["oscillators"].items():
+            controls = self.osc_controls[osc_name]
+            for control_name, value in values.items():
+                controls[control_name].set(value)
+
+        # 预设不继承上一个音色的LFO路由，避免隐藏调制导致听感不确定。
+        for enabled in self.filter_lfo_enabled:
+            enabled.set(False)
+        for route in self.lfo_routes:
+            route["enabled"].set(False)
+            route["source"].set("LFO 1")
+            route["destination"].set("无")
+            route["depth"].set(0)
+
+        connected = self.port is not None and self.port.is_open
+        if connected:
+            self.send_all_synth_controls()
+            if self.port is not None and self.port.is_open:
+                self.status.set(f"已应用音色：{preset_name}")
+                self._append_log(f"应用音色预设：{preset_name}")
+        else:
+            self.status.set(f"已载入音色：{preset_name}；连接串口后自动发送")
+
     def send_effect_mode_selection(self) -> None:
         mode_name = self.effect_mode.get()
         value = EFFECT_MODE_VALUES.get(mode_name, EFFECT_MODE_VALUES["旁路"])
@@ -1219,6 +1479,16 @@ class MidiUartSender:
         )
         self.send_synth_control(FILTER_MIX_CC, self.filter_mix.get())
         self.send_synth_control(MASTER_LEVEL_CC, self.master_level.get())
+        self.send_synth_control(
+            VIBRATO_ENABLE_CC, 127 if self.vibrato_enabled.get() else 0
+        )
+        self.send_synth_control(VIBRATO_RATE_CC, self.vibrato_rate.get())
+        self.send_synth_control(VIBRATO_DEPTH_CC, self.vibrato_depth.get())
+        self.send_synth_control(
+            PORTAMENTO_ENABLE_CC,
+            127 if self.portamento_enabled.get() else 0,
+        )
+        self.send_synth_control(PORTAMENTO_TIME_CC, self.portamento_time.get())
         self.send_effect_mode_selection()
         self.send_synth_control(DELAY_TIME_CC, self.delay_time.get())
         self.send_synth_control(DELAY_FEEDBACK_CC, self.delay_feedback.get())

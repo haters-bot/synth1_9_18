@@ -44,8 +44,12 @@ module oscillator_tdm_core #(
     input  wire [31:0]           task_update_phase_step,
     input wire [31:0] task_update_base_step,
     input wire [34:0] task_update_detune_unit,
+    input wire [2:0] task_update_detune_magnitude,
     input wire task_update_detune_negative,
     input wire [6:0] detune_amount,
+    input wire glide_override_enable,
+    input wire [31:0] glide_override_base_step,
+    input wire signed [12:0] vibrato_ratio_delta_q16,
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
@@ -73,11 +77,26 @@ module oscillator_tdm_core #(
     // 系数仅在新音符分配时更新，Note Off不改系数，Release期间仍可调制。
     reg [31:0] base_step_state [0:SLOTS_PER_ENGINE-1];
     reg [34:0] detune_unit_state [0:SLOTS_PER_ENGINE-1];
+    reg [2:0] detune_magnitude_state [0:SLOTS_PER_ENGINE-1];
     reg detune_negative_state [0:SLOTS_PER_ENGINE-1];
     reg [6:0] detune_batch;
+    reg glide_override_enable_batch;
+    reg [31:0] glide_override_base_step_batch;
+    reg signed [12:0] vibrato_ratio_delta_batch;
     reg [41:0] request_detune_product;
+    reg signed [45:0] request_vibrato_product;
     reg request_detune_negative;
     wire [41:0] rounded_live_detune = request_detune_product + 42'd32;
+    wire signed [32:0] request_vibrato_delta
+        = request_vibrato_product >>> 16;
+    wire signed [34:0] signed_live_detune_delta
+        = request_detune_negative
+        ? -$signed({3'd0, rounded_live_detune[37:6]})
+        :  $signed({3'd0, rounded_live_detune[37:6]});
+    wire signed [34:0] signed_live_phase_step
+        = $signed({3'd0, request_phase_step})
+        + {{2{request_vibrato_delta[32]}}, request_vibrato_delta}
+        + signed_live_detune_delta;
     reg [31:0] phase_step_state [0:SLOTS_PER_ENGINE-1];
     reg        enable_state [0:SLOTS_PER_ENGINE-1];
     reg        gate_state [0:SLOTS_PER_ENGINE-1];
@@ -151,6 +170,8 @@ module oscillator_tdm_core #(
     wire signed [15:0] triangle_wave_sample;
     wire signed [15:0] square_wave_sample;
     wire signed [15:0] sawtooth_wave_sample;
+    wire [31:0] issue_live_base_step;
+    wire [34:0] issue_live_detune_unit;
     reg  signed [15:0] current_wave_sample;
 
     wire [22:0] velocity_product;
@@ -179,6 +200,53 @@ module oscillator_tdm_core #(
     wire signed [PARTIAL_SUM_WIDTH-1:0] sum_with_current_slot;
 
     integer reset_index;
+
+    function [34:0] make_live_detune_unit;
+        input [31:0] base_step;
+        input [2:0] magnitude;
+        reg [31:0] unit_step;
+        begin
+            unit_step = (base_step >> 10)
+                      + (base_step >> 13)
+                      + (base_step >> 14);
+            case (magnitude)
+                3'd0: make_live_detune_unit = 35'd0;
+                3'd1: make_live_detune_unit = unit_step;
+                3'd2: make_live_detune_unit = unit_step << 1;
+                3'd3: make_live_detune_unit = unit_step
+                                               + (unit_step << 1);
+                3'd4: make_live_detune_unit = unit_step << 2;
+                3'd5: make_live_detune_unit = unit_step
+                                               + (unit_step << 2);
+                3'd6: make_live_detune_unit = (unit_step << 1)
+                                               + (unit_step << 2);
+                default: make_live_detune_unit = unit_step
+                                               + (unit_step << 1)
+                                               + (unit_step << 2);
+            endcase
+        end
+    endfunction
+
+    function [31:0] saturate_live_phase_step;
+        input signed [34:0] value;
+        begin
+            if (value <= 35'sd0)
+                saturate_live_phase_step = 32'd1;
+            else if (value > $signed({3'd0, 32'hFFFFFFFF}))
+                saturate_live_phase_step = 32'hFFFFFFFF;
+            else
+                saturate_live_phase_step = value[31:0];
+        end
+    endfunction
+
+    assign issue_live_base_step = glide_override_enable_batch
+                                ? glide_override_base_step_batch
+                                : base_step_state[issue_slot];
+    assign issue_live_detune_unit = glide_override_enable_batch
+                                  ? make_live_detune_unit(
+                                        glide_override_base_step_batch,
+                                        detune_magnitude_state[issue_slot])
+                                  : detune_unit_state[issue_slot];
 
     assign issue_phase = phase_state[issue_slot];
     assign issue_raw_wave_address = issue_phase[31:24];
@@ -355,7 +423,13 @@ module oscillator_tdm_core #(
             request_phase     <= 32'd0;
             request_wave_address <= 8'd0;
             request_phase_step <= 32'd0;
-            detune_batch <= 0; request_detune_product <= 0; request_detune_negative <= 0;
+            detune_batch <= 0;
+            glide_override_enable_batch <= 1'b0;
+            glide_override_base_step_batch <= 32'd0;
+            vibrato_ratio_delta_batch <= 13'sd0;
+            request_detune_product <= 0;
+            request_vibrato_product <= 0;
+            request_detune_negative <= 0;
             request_enable    <= 1'b0;
             request_gate      <= 1'b0;
             request_envelope_stage <= ENV_IDLE;
@@ -386,7 +460,9 @@ module oscillator_tdm_core #(
                  reset_index = reset_index + 1) begin
                 phase_state[reset_index] <= 32'd0;
                 phase_step_state[reset_index] <= 32'd0;
-                base_step_state[reset_index] <= 0; detune_unit_state[reset_index] <= 0;
+                base_step_state[reset_index] <= 0;
+                detune_unit_state[reset_index] <= 0;
+                detune_magnitude_state[reset_index] <= 3'd0;
                 detune_negative_state[reset_index] <= 0;
                 enable_state[reset_index] <= 1'b0;
                 gate_state[reset_index] <= 1'b0;
@@ -425,6 +501,11 @@ module oscillator_tdm_core #(
                     warp_mode_batch <= warp_mode;
                     warp_amount_batch <= warp_amount;
                     detune_batch <= detune_amount;
+                    glide_override_enable_batch <= glide_override_enable;
+                    glide_override_base_step_batch
+                        <= glide_override_base_step;
+                    vibrato_ratio_delta_batch
+                        <= vibrato_ratio_delta_q16;
                     attack_phase_step_batch <= attack_phase_step;
                     decay_phase_step_batch <= decay_phase_step;
                     sustain_level_batch <= sustain_level;
@@ -454,9 +535,9 @@ module oscillator_tdm_core #(
                     pipe_phase <= request_phase;
                     pipe_wave_address <= request_wave_address;
                     if (REALTIME_DETUNE_ENABLE)
-                        pipe_phase_step <= request_detune_negative
-                            ? request_phase_step - rounded_live_detune[37:6]
-                            : request_phase_step + rounded_live_detune[37:6];
+                        pipe_phase_step
+                            <= saturate_live_phase_step(
+                                   signed_live_phase_step);
                     else pipe_phase_step <= request_phase_step;
                     pipe_enable <= request_enable;
                     pipe_gate <= request_gate;
@@ -582,8 +663,12 @@ module oscillator_tdm_core #(
                     request_phase  <= phase_state[issue_slot];
                     request_wave_address <= issue_warped_wave_address;
                     request_phase_step <= REALTIME_DETUNE_ENABLE
-                        ? base_step_state[issue_slot] : phase_step_state[issue_slot];
-                    request_detune_product <= detune_unit_state[issue_slot] * detune_batch;
+                        ? issue_live_base_step : phase_step_state[issue_slot];
+                    request_detune_product
+                        <= issue_live_detune_unit * detune_batch;
+                    request_vibrato_product
+                        <= $signed({1'b0, issue_live_base_step})
+                         * $signed(vibrato_ratio_delta_batch);
                     request_detune_negative <= detune_negative_state[issue_slot];
                     request_enable <= enable_state[issue_slot];
                     request_gate   <= gate_state[issue_slot];
@@ -614,6 +699,8 @@ module oscillator_tdm_core #(
                 if (task_update_enable && task_update_phase_reset) begin
                     base_step_state[task_update_slot] <= task_update_base_step;
                     detune_unit_state[task_update_slot] <= task_update_detune_unit;
+                    detune_magnitude_state[task_update_slot]
+                        <= task_update_detune_magnitude;
                     detune_negative_state[task_update_slot] <= task_update_detune_negative;
                 end
                 if (task_update_enable) begin

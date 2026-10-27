@@ -9,12 +9,17 @@ module tb_top_midi_input;
     reg rst_n;
     reg uart_rx;
     reg midi_gpio_rx;
+    reg control_uart_rx;
+    reg keyboard_uart_rx;
 
     wire MAX_SD;
     wire MAX_GAIN;
     wire MAX_DIN;
     wire MAX_BCLK;
     wire MAX_LRC;
+    wire VIS_BCLK;
+    wire VIS_LRC;
+    wire VIS_DIN;
     wire PA_EN;
     wire sd_clk;
     tri  sd_cmd;
@@ -50,6 +55,8 @@ module tb_top_midi_input;
 
     top #(
         .UART_BAUD_RATE(TEST_UART_BAUD),
+        .CONTROL_UART_BAUD_RATE(TEST_UART_BAUD),
+        .KEYBOARD_UART_BAUD_RATE(TEST_UART_BAUD),
         .DEFAULT_UNISON_COUNT(1),
         // 本测试专注 MIDI 路由顺序；容量由独立的 2×32 测试覆盖。
         .OSC_ENGINE_COUNT(1),
@@ -60,11 +67,16 @@ module tb_top_midi_input;
         .rst_n   (rst_n),
         .uart_rx (uart_rx),
         .midi_gpio_rx(midi_gpio_rx),
+        .control_uart_rx(control_uart_rx),
+        .keyboard_uart_rx(keyboard_uart_rx),
         .MAX_SD  (MAX_SD),
         .MAX_GAIN(MAX_GAIN),
         .MAX_DIN (MAX_DIN),
         .MAX_BCLK(MAX_BCLK),
         .MAX_LRC (MAX_LRC),
+        .VIS_BCLK(VIS_BCLK),
+        .VIS_LRC (VIS_LRC),
+        .VIS_DIN (VIS_DIN),
         .PA_EN   (PA_EN),
         .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
         .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),
@@ -279,6 +291,8 @@ module tb_top_midi_input;
         rst_n = 1'b0;
         uart_rx = 1'b1;
         midi_gpio_rx = 1'b1;
+        control_uart_rx = 1'b1;
+        keyboard_uart_rx = 1'b1;
         sd_dat0 = 1'b1;
         errors = 0;
         osc_a_update_count = 0;

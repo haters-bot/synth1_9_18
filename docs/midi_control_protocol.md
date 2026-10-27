@@ -138,6 +138,11 @@ BF 14 55    通道16，OSC A的CC20，WT Position=85
 | Reverb | Size | 16 | 55 | 0～127 | 64 |
 | Reverb | Decay | 16 | 56 | 0～127 | 72 |
 | Reverb | Mix | 16 | 57 | 0～127 | 48 |
+| 演奏音高 | Vibrato Enable | 16 | 82 | 0=关闭，1～127=开启 | 关闭 |
+| 演奏音高 | Vibrato Rate | 16 | 83 | 0～127，约0.1～12.1 Hz | 52 |
+| 演奏音高 | Vibrato Depth | 16 | 84 | 0～127，最大约正负100 cent | 0 |
+| 演奏音高 | Portamento Enable | 16 | 85 | 0=关闭，1～127=开启 | 关闭 |
+| 演奏音高 | Portamento Time | 16 | 86 | 0～127，见下文 | 80 |
 
 两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
 波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。
@@ -191,9 +196,40 @@ N=4： -3, -1, +1, +3
 - `CC22=64`：保持加入可调Detune之前的默认间距；
 - `CC22=127`：约为默认间距的1.984倍。
 
-Detune和Unison在Note On到达时锁存到本次分配过程。演奏中的音符不会因为旋钮变化
-而突然重建槽位，能够避免相位复位、声部跳变和明显爆音。后续如果需要实时Unison
-调制，应为活动槽位保存基础相位步进，再通过平滑控制路径更新偏移。
+Unison成员位置在Note On到达时锁存，Detune深度则由活动槽位实时读取。改变Detune
+不会重建槽位或复位相位。Portamento开启时，实时Detune偏移会根据共享滑音基础频率
+重新计算，因此OSC A/B以及各Unison成员在跨音程滑动时仍保持相对音程关系。
+
+### 6.1 Vibrato与单音Legato Portamento
+
+Vibrato使用FPGA内部256点正弦表，以96 kHz控制速率更新相位。`CC84=127`时深度约为
+正负一个半音；它产生有符号Q16频率比例偏移，并在TDM核心的实时Detune路径中改变
+`phase_step`，不会清零相位或重新触发包络。Portamento关闭时，该比例同样可以作用于
+多个复音槽位。
+
+Portamento开启后，最多保存8个同时按住的音符，并按“最后按下音符优先”工作：
+
+1. 第一个Note On建立单音任务并触发包络；
+2. 继续按下其他音符只更新目标音高，不重新分配槽位、不重触发包络；
+3. 松开当前最高优先级音符时，目标返回仍按住的上一个音符；
+4. 最后一个音符松开时才向A/B两个调度器发送Note Off。
+
+OSC A与OSC B共享同一个Q7.16滑音音高和`glide_base_step`，之后才分别叠加各自的
+Unison/Detune，因此两路不会因独立舍入或独立调度而产生滑音不同步。`CC86`采用固定
+音程速率分段；下面的时间表示跨越一个八度的大约耗时：
+
+```text
+  0：立即到达
+  1～15：5 ms       16～31：10 ms
+ 32～47：20 ms      48～63：50 ms
+ 64～79：100 ms     80～95：250 ms
+ 96～111：500 ms   112～119：1 s
+120～127：2 s
+```
+
+除了通道16的自定义控制，演奏通道1也兼容常见MIDI映射：`CC1`控制Vibrato Depth并
+自动开关Vibrato，`CC5`控制Portamento Time，`CC65`以64为阈值控制Portamento开关。
+为避免切换单音/复音所有权时听到Release尾音改变，建议在没有按键时切换Portamento。
 
 ## 7. WT Position数据通路
 
@@ -361,6 +397,7 @@ Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通�
 - “演奏通道”只影响Note On和Note Off，正常测试保持通道1；
 - OSC A/B及全局参数固定通过通道16发送；
 - 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
+- 音色预设下拉框可一次载入并发送完整参数组合；当前包含使用DDR波表8的合成钢琴和使用DDR波表9的合成提琴，切换预设时会关闭旧LFO路由，避免残留调制影响新音色；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
 - 全局效果器面板通过CC51～57控制Delay和Reverb，通过CC58～81独立控制Distortion、
   Chorus、Phaser和Compressor；
@@ -492,3 +529,12 @@ CC参数继续作为各目标的基础值。
 板测：先用原口Note On维持声音，新口发送 `BF 2E 20` 修改OSC A Level=32；再用原口发送 `BF 2E 7F` 恢复127。随后从新口发送LFO配置，确认活动音符产生调制。抓取control_uart_byte_valid、control_uart_framing_error、merged_control_valid、control_event_overflow定位输入问题。
 
 本次已运行ModelSim路由及顶层回归，包含新增目标、同拍双UART CC、独立SysEx和按住音符实时Detune检查。未运行综合布线，资源增量与时序仍需下一次报告确认。
+
+## 实体MIDI键盘UART输入（2026-10-26）
+
+- `keyboard_uart_rx`：FPGA E19，3.3 V TTL UART RX，内部上拉，空闲高电平。
+- 默认格式为31250 baud、8N1，由顶层参数`KEYBOARD_UART_BAUD_RATE`配置。
+- MIDI DIN/TRS电流环不能直接连接FPGA；必须先经过光耦或合规的MIDI接收转换电路，向E19输出3.3 V UART电平，并与FPGA共地。
+- 板载USB-UART与实体键盘口分别使用独立UART接收器和独立MIDI Running Status解析器，解析完成后通过8项事件FIFO合并，避免两路原始字节交织。
+- 实体键盘口第一版只接收Note On、Note Off、MIDI通道、音高和力度。其Control Change不会进入音色参数控制链；音色控制仍由原USB-UART或C19独立控制口负责。
+- 同拍到达时先保留板载USB-UART事件，再保留实体键盘事件；`midi_note_event_overflow`记录队列溢出，复位后清零。

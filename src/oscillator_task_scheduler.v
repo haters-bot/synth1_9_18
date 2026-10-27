@@ -26,6 +26,7 @@ module oscillator_task_scheduler #(
     output reg [31:0] task_update_phase_step,
     output reg [31:0] task_update_base_step,
     output reg [34:0] task_update_detune_unit,
+    output reg [2:0] task_update_detune_magnitude,
     output reg task_update_detune_negative,
     output reg [6:0]  task_update_velocity,
     output reg        task_update_enable,
@@ -64,6 +65,7 @@ module oscillator_task_scheduler #(
     reg [2:0] state_after_latch;
     reg [31:0] pending_base_phase_step_latched;
     reg [34:0] pending_member_detune_unit [0:MAX_UNISON-1];
+    reg [2:0] pending_member_detune_magnitude [0:MAX_UNISON-1];
     reg pending_member_detune_negative [0:MAX_UNISON-1];
     reg [31:0] pending_member_phase_step [0:MAX_UNISON-1];
     reg [3:0] phase_calc_index;
@@ -161,6 +163,18 @@ module oscillator_task_scheduler #(
         end
     endfunction
 
+    function [2:0] make_detune_magnitude;
+        input [3:0] member_index;
+        input [3:0] member_count;
+        integer position;
+        integer magnitude;
+        begin
+            position = member_index*2 - (member_count - 1);
+            magnitude = (position < 0) ? -position : position;
+            make_detune_magnitude = magnitude[2:0];
+        end
+    endfunction
+
     assign allocation_candidate = balanced_slot(scan_index);
     assign rounded_detune_product = detune_product_stage + 42'd32;
     assign rounded_detune_delta = rounded_detune_product[37:6];
@@ -206,6 +220,7 @@ module oscillator_task_scheduler #(
             task_update_slot <= 8'd0;
             task_update_phase_step <= 32'd0;
             task_update_base_step <= 0; task_update_detune_unit <= 0;
+            task_update_detune_magnitude <= 3'd0;
             task_update_detune_negative <= 0;
             task_update_velocity <= 7'd0;
             task_update_enable <= 1'b0;
@@ -339,6 +354,10 @@ module oscillator_task_scheduler #(
 
                 STATE_DETUNE_STORE: begin
                     pending_member_detune_unit[phase_calc_index] <= detune_delta_stage;
+                    pending_member_detune_magnitude[phase_calc_index]
+                        <= make_detune_magnitude(
+                               phase_calc_index,
+                               pending_unison_count);
                     pending_member_detune_negative[phase_calc_index] <= detune_negative_product_stage;
                     pending_member_phase_step[phase_calc_index]
                         <= calculated_phase_step;
@@ -365,6 +384,9 @@ module oscillator_task_scheduler #(
                         task_update_phase_reset <= 1'b1;
                         task_update_base_step <= pending_base_phase_step_latched;
                         task_update_detune_unit <= pending_member_detune_unit[pending_member_index];
+                        task_update_detune_magnitude
+                            <= pending_member_detune_magnitude[
+                                   pending_member_index];
                         task_update_detune_negative <= pending_member_detune_negative[pending_member_index];
 
                         slot_note[allocation_candidate] <= pending_note;
@@ -427,6 +449,9 @@ module oscillator_task_scheduler #(
                             task_update_phase_reset <= 1'b1;
                             task_update_base_step <= pending_base_phase_step_latched;
                             task_update_detune_unit <= pending_member_detune_unit[pending_member_index];
+                            task_update_detune_magnitude
+                                <= pending_member_detune_magnitude[
+                                       pending_member_index];
                             task_update_detune_negative <= pending_member_detune_negative[pending_member_index];
                             slot_note[scan_index] <= pending_note;
                             slot_phase_step[scan_index]
