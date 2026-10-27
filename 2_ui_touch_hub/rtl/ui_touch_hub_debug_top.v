@@ -1,4 +1,4 @@
-// Diagnostic top: U15 outputs binary trace at 115200, not audio MIDI.
+// Diagnostic top: C14 outputs physical knob/link ASCII; U15 remains MIDI.
 module ui_touch_hub_debug_top (
 
     input  wire        clk,             // 板载 50MHz 有源晶振 (V22)
@@ -31,6 +31,15 @@ module ui_touch_hub_debug_top (
     // U15: normal build MIDI 31250; diagnostic build trace 115200.
     output wire        midi_uart_tx,
 
+    // Audio-board I2S visualization return: R19/U21/R17 on the UI board.
+    input  wire        audio_vis_bclk,
+    input  wire        audio_vis_lrc,
+    input  wire        audio_vis_din,
+
+    // External debug UART: C14=TX, E13=RX (3.3V TTL).
+    output wire        debug_uart_tx,
+    input  wire        debug_uart_rx,
+
     // 板载状态指示灯
     output wire [1:0]  led,             // T18: PLL Lock, R18: Heartbeat
 
@@ -42,7 +51,7 @@ module ui_touch_hub_debug_top (
     output wire        audio_link_tx
 
 );
-ui_touch_hub_top #(.DEBUG_TOUCH_LOG(1)) u_hub(
+ui_touch_hub_top #(.DEBUG_TOUCH_LOG(0),.DEBUG_KNOB_ASCII(1)) u_hub(
     .clk(clk),
     .rst_n(rst_n),
     .usb_dp(usb_dp),
@@ -62,7 +71,12 @@ ui_touch_hub_top #(.DEBUG_TOUCH_LOG(1)) u_hub(
     .knob_int_n(knob_int_n),
     .knob_reset_n(knob_reset_n),
     .midi_uart_tx(midi_uart_tx),
+    .audio_vis_bclk(audio_vis_bclk),
+    .audio_vis_lrc(audio_vis_lrc),
+    .audio_vis_din(audio_vis_din),
     .audio_link_tx(audio_link_tx),
+    .debug_uart_tx(debug_uart_tx),
+    .debug_uart_rx(debug_uart_rx),
     .led(led),
     .tmds_clk_p_0(tmds_clk_p_0),
     .tmds_clk_n_0(tmds_clk_n_0),

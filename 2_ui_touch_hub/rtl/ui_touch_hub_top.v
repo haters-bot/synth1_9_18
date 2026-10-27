@@ -17,7 +17,8 @@
 // ==============================================================================
 
 module ui_touch_hub_top #(
-    parameter DEBUG_TOUCH_LOG=0
+    parameter DEBUG_TOUCH_LOG=0,
+    parameter DEBUG_KNOB_ASCII=0
 )(
     input  wire        clk,             // 板载 50MHz 有源晶振 (V22)
     input  wire        rst_n,           // 板载复位按键 S2 (AA13, 低有效)
@@ -50,6 +51,17 @@ module ui_touch_hub_top #(
     output wire        midi_uart_tx,
     // PMOD1 IO2/AB21: dedicated 3.3V UART TX to audio-board J8 pin 9.
     output wire        audio_link_tx,
+
+    // Audio-board I2S visualization return (audio board VIS_* pins).
+    // UI board inputs: R19=BCLK, U21=LRC, R17=DIN.
+    input  wire        audio_vis_bclk,
+    input  wire        audio_vis_lrc,
+    input  wire        audio_vis_din,
+
+    // External debug UART on the user header: C14=TX, E13=RX (3.3V TTL).
+    // TX mirrors the selected monitor stream; RX is reserved for commands.
+    output wire        debug_uart_tx,
+    input  wire        debug_uart_rx,
 
     // 板载状态指示灯
     output wire [1:0]  led,             // T18: PLL Lock, R18: Heartbeat
@@ -309,11 +321,19 @@ module ui_touch_hub_top #(
     wire        spi_param_valid;
     wire [7:0]  spi_param_id;
     wire [6:0]  spi_param_val;
+    wire        spi_param_cw;
+    wire        spi_link_valid;
+    wire        spi_link_chip;
+    wire        spi_link_up;
 
     wire        knob_select_valid;
     wire [7:0]  knob_select_id;
+    wire [1:0]  knob_select_action;
 
-    knob_spi_rx u_knob_spi (
+    knob_spi_rx #(
+        .CLK_HZ(50000000), .SPI_HZ(1000000), .RESET_HOLD_CYCLES(100000),
+        .SWITCH_DEBOUNCE_SCANS(5)
+    ) u_knob_spi (
         .clk          (clk_pixel),
         .rst_n        (sys_rst_n_sync),
         .spi_sdo      (knob_sdo),
@@ -326,8 +346,13 @@ module ui_touch_hub_top #(
         .param_valid  (spi_param_valid),
         .param_id     (spi_param_id),
         .param_val    (spi_param_val),
+        .param_cw     (spi_param_cw),
         .select_valid (knob_select_valid),
-        .select_id    (knob_select_id)
+        .select_id    (knob_select_id),
+        .select_action(knob_select_action),
+        .spi_link_valid(spi_link_valid),
+        .spi_link_chip(spi_link_chip),
+        .spi_link_up(spi_link_up)
     );
 
     // --------------------------------------------------------------------------
@@ -358,6 +383,15 @@ module ui_touch_hub_top #(
     wire [7:0]  midi_cc_param_id;
     wire [6:0]  midi_cc_val;
 
+    // A physical detent is a +/-1 step on the same active parameter register
+    // used by touch. Preserve existing navigation/touch priority on collisions.
+    wire        merged_delta_valid = navigation_delta_valid | touch_delta_valid | spi_param_valid;
+    wire [7:0]  merged_delta_id = navigation_delta_valid ? navigation_delta_id :
+                                  touch_delta_valid ? selected_param_id : spi_param_id;
+    wire signed [7:0] merged_delta_value = navigation_delta_valid ? navigation_delta_value :
+                                           touch_delta_valid ? touch_delta_val :
+                                           (spi_param_cw ? 8'sd1 : -8'sd1);
+
     curve_touch_editor #(.USE_DISPLAY_GEOMETRY(1)) u_curve_editor (
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down && !binding_capture && !navigation_capture),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
@@ -376,13 +410,13 @@ module ui_touch_hub_top #(
         .curve_update_values(curve_update_values),.midi_tx_busy(midi_tx_busy),
         .clk               (clk_pixel),
         .rst_n             (sys_rst_n_sync),
-        .touch_delta_valid (navigation_delta_valid | touch_delta_valid),
-        .touch_selected_id (navigation_delta_valid ? navigation_delta_id : selected_param_id),
-        .touch_delta_val   (navigation_delta_valid ? navigation_delta_value : touch_delta_val),
+        .touch_delta_valid (merged_delta_valid),
+        .touch_selected_id (merged_delta_id),
+        .touch_delta_val   (merged_delta_value),
         .btn_tap_valid     (btn_tap_valid),
         .btn_tap_id        (btn_tap_id),
         .btn_tap_action    (btn_tap_action),
-        .spi_param_valid   (spi_param_valid && spi_param_id < 8'h60),
+        .spi_param_valid   (1'b0),
         .spi_param_id      (spi_param_id),
         .spi_param_val     (spi_param_val),
         .val_macro1        (val_macro1),
@@ -457,12 +491,28 @@ module ui_touch_hub_top #(
     wire        render_den;
     wire [23:0] render_pixel;
     wire [59:0] trace_lfo_state;
+    wire signed [15:0] audio_vis_sample;
+    wire audio_vis_sample_valid;
+    wire audio_vis_link_up;
+
+    i2s_visual_rx #(
+        .LINK_TIMEOUT_CYCLES(12_500_000) // 250 ms without BCLK = disconnected
+    ) u_audio_vis_rx (
+        .clk       (clk_pixel),
+        .rst_n     (sys_rst_n_sync),
+        .i2s_bclk  (audio_vis_bclk),
+        .i2s_lrc   (audio_vis_lrc),
+        .i2s_din   (audio_vis_din),
+        .sample    (audio_vis_sample),
+        .sample_valid(audio_vis_sample_valid),
+        .link_up   (audio_vis_link_up)
+    );
 
     ui_top_renderer u_render (
         .navigation_capture(navigation_capture),.navigation_delta_valid(navigation_delta_valid),
         .navigation_delta_id(navigation_delta_id),.navigation_delta_value(navigation_delta_value),
         .display_env_snapshot(display_env_values),
-        .external_param_valid(spi_param_valid),.external_param_id(spi_param_id),.external_param_value(spi_param_val),
+        .external_param_valid(1'b0),.external_param_id(spi_param_id),.external_param_value(7'd0),
         .binding_capture(binding_capture),
         .fx_event_valid(fx_event_valid),.fx_event_id(fx_event_id),.fx_event_value(fx_event_value),
         .route_event_valid(route_event_valid),.route_event_target(route_event_target),
@@ -552,6 +602,9 @@ module ui_touch_hub_top #(
         .usb_dbg_report    (usb_dbg_report),
         .usb_dbg_regs      (usb_dbg_regs),
         .usb_dbg_pkt_cnt   (usb_dbg_pkt_cnt),
+        .audio_sample_valid(audio_vis_sample_valid),
+        .audio_sample     (audio_vis_sample),
+        .audio_link_up     (audio_vis_link_up),
         .out_hsync         (render_hsync),
         .out_vsync         (render_vsync),
         .out_den           (render_den),
@@ -619,114 +672,27 @@ module ui_touch_hub_top #(
         .tx_busy       (midi_tx_busy)
     );
 
-    // Diagnostic firmware uses the existing board USB-UART TX, never injects
-    // trace bytes into MIDI. Internal MIDI generation/busy timing stays intact.
+    // Diagnostic UI trace remains independently selectable. The current
+    // knob test build keeps MIDI on U15 and sends knob text only on C14.
     generate if(DEBUG_TOUCH_LOG) begin: g_trace
-        // Keep the cross-board audio input idle while U15 carries trace records.
         assign audio_link_tx=1'b1;
-        reg [15:0] trace_raw_x,trace_raw_y;
-        reg [1:0] trace_source;
-        always @(posedge clk_pixel or negedge sys_rst_n_sync) begin
-            if(!sys_rst_n_sync) begin trace_raw_x<=0;trace_raw_y<=0;trace_source<=0;end
-            else if(merged_touch_valid) begin
-                trace_raw_x<=merged_touch_x;trace_raw_y<=merged_touch_y;
-                trace_source<=usb_touch_valid ? 2'd1 : hspi_touch_valid ? 2'd2 : 2'd3;
-            end
-        end
-        reg [6:0] observed_value;
-        reg observed_value_valid;
-        always @(*) begin
-            observed_value=0;observed_value_valid=1;
-            case(selected_param_id)
-                8'h01:observed_value=val_macro1;
-                8'h02:observed_value=val_macro2;
-                8'h03:observed_value=val_macro3;
-                8'h04:observed_value=val_macro4;
-                8'h05:observed_value=val_master_vol;
-                8'h0A:observed_value={6'd0,val_osca_power};
-                8'h0B:observed_value={6'd0,val_oscb_power};
-                8'h0C:observed_value={6'd0,val_flt_power};
-                8'h0E:observed_value={5'd0,val_osca_wave};
-                8'h0F:observed_value={5'd0,val_oscb_wave};
-                8'h10:observed_value={3'd0,val_osca_oct};
-                8'h11:observed_value={2'd0,val_osca_semi};
-                8'h12:observed_value=val_osca_fine;
-                8'h13:observed_value=val_osca_unison;
-                8'h14:observed_value=val_osca_detune;
-                8'h15:observed_value=val_osca_blend;
-                8'h16:observed_value=val_osca_phase;
-                8'h17:observed_value=val_osca_wt_pos;
-                8'h18:observed_value=val_osca_warp;
-                8'h19:observed_value=val_osca_pan;
-                8'h1A:observed_value=val_osca_vol;
-                8'h1B:observed_value=val_osca_rand;
-                8'h20:observed_value={3'd0,val_oscb_oct};
-                8'h21:observed_value={2'd0,val_oscb_semi};
-                8'h22:observed_value=val_oscb_fine;
-                8'h23:observed_value=val_oscb_unison;
-                8'h24:observed_value=val_oscb_detune;
-                8'h25:observed_value=val_oscb_blend;
-                8'h26:observed_value=val_oscb_phase;
-                8'h27:observed_value=val_oscb_wt_pos;
-                8'h28:observed_value=val_oscb_warp;
-                8'h29:observed_value=val_oscb_pan;
-                8'h2A:observed_value=val_oscb_vol;
-                8'h2B:observed_value=val_oscb_rand;
-                8'h30:observed_value=val_flt_cutoff;
-                8'h31:observed_value=val_flt_res;
-                8'h32:observed_value=val_flt_pan;
-                8'h33:observed_value=val_flt_drive;
-                8'h34:observed_value=val_flt_fat;
-                8'h35:observed_value=val_flt_mix;
-                8'h36:observed_value={6'd0,val_flt_route_a};
-                8'h37:observed_value={6'd0,val_flt_route_b};
-                8'h38:observed_value={6'd0,val_flt_route_n};
-                8'h39:observed_value={6'd0,val_flt_route_s};
-                8'h3A:observed_value={6'd0,val_flt_keytrack};
-                8'h3B:observed_value={5'd0,val_flt_type};
-                8'h40:observed_value=val_env_attack;
-                8'h41:observed_value=val_env_hold;
-                8'h42:observed_value=val_env_decay;
-                8'h43:observed_value=val_env_sustain;
-                8'h44:observed_value=val_env_release;
-                8'h45:observed_value={5'd0,val_env_tab};
-                8'h50:observed_value=val_fx_reverb;
-                8'h51:observed_value=val_fx_delay;
-                8'h52:observed_value=val_fx_chorus;
-                8'h53:observed_value=val_portamento;
-                8'h54:observed_value={6'd0,val_slot_bypass[0]};
-                8'h55:observed_value={6'd0,val_slot_bypass[1]};
-                8'h56:observed_value={6'd0,val_slot_bypass[2]};
-                8'h57:observed_value={6'd0,val_slot_bypass[3]};
-                default:observed_value_valid=0;
-            endcase
-        end
-        ui_debug_trace u_trace(
-            .clk(clk_pixel),.rst_n(sys_rst_n_sync),
-            .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_source(trace_source),
-            .raw_x(trace_raw_x),.raw_y(trace_raw_y),.ui_x(ui_touch_x),.ui_y(ui_touch_y),
-            .selected_id(selected_param_id),.selected_valid(selected_param_id!=8'd0),
-            .selected_value(observed_value),.selected_value_valid(observed_value_valid),
-            .btn_valid(btn_tap_valid),.btn_id(btn_tap_id),.btn_action(btn_tap_action),
-            .delta_valid(touch_delta_valid),.delta_value(touch_delta_val),
-            .cc_valid(midi_cc_req),.cc_id(midi_cc_param_id),.cc_value(midi_cc_val),
-            .spi_valid(spi_param_valid),.spi_id(spi_param_id),.spi_value(spi_param_val),
-            .curve_valid(curve_update_valid),.curve_filter(curve_update_filter),
-            .curve_tab(curve_update_tab),.curve_mask(curve_update_mask),.curve_values(curve_update_values),
-            .env_tab(val_env_tab),.lfo_tab(trace_lfo_state[59:58]),.lfo_preset(trace_lfo_state[57:56]),
-            .lfo_rate(trace_lfo_state[55:53]),.lfo_once(trace_lfo_state[52]),
-            .lfo_stepped(trace_lfo_state[51]),.lfo_nodes(trace_lfo_state[48:0]),
-            .button_state({14'd0,val_slot_bypass,val_flt_keytrack,val_flt_route_s,val_flt_route_n,
-                val_flt_route_b,val_flt_route_a,val_flt_type,val_oscb_wave,val_osca_wave,
-                val_flt_power,val_oscb_power,val_osca_power}),
-            .uart_tx(midi_uart_tx),.dropped_records()
-        );
+        assign midi_uart_tx=audio_midi_tx;
     end else begin: g_midi
         assign midi_uart_tx=audio_midi_tx;
         assign audio_link_tx=audio_midi_tx;
     end endgenerate
 
-    // --------------------------------------------------------------------------
+    generate if(DEBUG_KNOB_ASCII) begin: g_knob_ascii
+        knob_ascii_trace #(.FIFO_BITS(2)) u_knob_trace(
+            .clk(clk_pixel),.rst_n(sys_rst_n_sync),
+            .knob_valid(spi_param_valid),.knob_id(spi_param_id),.knob_cw(spi_param_cw),
+            .button_valid(knob_select_valid),.button_id(knob_select_id),.button_action(knob_select_action),
+            .link_valid(spi_link_valid),.link_chip(spi_link_chip),.link_up(spi_link_up),
+            .uart_tx(debug_uart_tx)
+        );
+    end else begin: g_debug_uart_mirror
+        assign debug_uart_tx=midi_uart_tx;
+    end endgenerate    // --------------------------------------------------------------------------
     // 9. 心跳与系统状态指示
     // --------------------------------------------------------------------------
     reg [26:0] heartbeat_cnt;

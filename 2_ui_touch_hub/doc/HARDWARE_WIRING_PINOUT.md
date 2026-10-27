@@ -65,9 +65,9 @@
 | `VCC` | 独立 Type-C 3.3 V 输入 | — | 原理图网络为 `3.3V-IN -> VCC`；不接 FPGA I/O，禁止直接接 5 V |
 | `GND` | GND | — | 两板公共地，必须连接 |
 
-TXE8148 的 48 个 GPIO 在本 PCB 上按端口分成三个 16 路 bank，而不是按单个 EC11 交错排列：`P0/P1 -> A`、`P2/P3 -> B`、`P4/P5 -> SW`。第一颗芯片的 16 路 bank 对应旋钮 1..16，第二颗芯片对应旋钮 17..32；例如第一颗的旋钮 1 使用 `P0.0`、`P2.0`、`P4.0`，旋钮 9 使用 `P1.0`、`P3.0`、`P5.0`。`SW` 按主动低处理。
+经独立 FPGA 探针与 STM32 参考固件验证，TXE8148 GPIO 按每个 EC11 连续三个输入位读取：`A=GPIO[3*k]`、`B=GPIO[3*k+1]`、`SW=GPIO[3*k+2]`。U1/K01 对应 `P0.0/P0.1/P0.2`，K02 对应 `P0.3/P0.4/P0.5`，K16 对应 `P5.5/P5.6/P5.7`；U2 同样映射到 K17..K32。`SW` 按主动低处理。旧版按 P0/P1、P2/P3、P4/P5 分 bank 的说明不适用于当前已验证接法。
 
-实体四区和 UI 的关系为：左上/Upper-left → OSC A，左下/Lower-left → ENV/Global，右上/Upper-right → OSC B，右下/Lower-right → Filter/FX。旋转事件修改对应参数；当前实体按压事件已在接收器内识别，但尚未接入全局 UI 持久选中态。
+实体四区和 UI 的关系为：左上/Upper-left → OSC A，左下/Lower-left → ENV/Global，右上/Upper-right → OSC B，右下/Lower-right → Filter/FX。旋转事件通过共享参数中枢对当前参数增减一个 detent，使屏幕值和音频参数共用同一状态；按压/释放继续作为诊断事件记录，尚不改变全局 UI 选择状态。
 
 FPGA 侧 I/O 使用 3.3 V LVCMOS。PCB 原理图显示 TXE8148 与 Type-C VCC 共用 `3.3V-IN`；因此必须使用 3.3 V 供电并共地，不能用 5 V 代替。
 

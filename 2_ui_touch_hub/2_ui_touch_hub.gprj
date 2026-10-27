@@ -44,10 +44,12 @@
         <File path="rtl/touch_intake/touch_event_router.v" type="file.verilog" enable="1"/>
         <File path="rtl/touch_intake/curve_touch_editor.v" type="file.verilog" enable="1"/>
         <File path="rtl/knob_spi_intake/knob_spi_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/i2s_visual_rx.v" type="file.verilog" enable="1"/>
         <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
         <File path="rtl/midi_uart_tx/midi_uart_tx.v" type="file.verilog" enable="1"/>
         <File path="rtl/midi_uart_tx/lfo_sysex_tx.v" type="file.verilog" enable="1"/>
         <File path="rtl/debug/ui_debug_trace.v" type="file.verilog" enable="1"/>
+        <File path="rtl/debug/knob_ascii_trace.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_touch_hub_top.v" type="file.verilog" enable="1"/>
         <File path="constraints/ui_touch_hub.cst" type="file.cst" enable="1"/>
         <File path="constraints/ui_touch_hub.sdc" type="file.sdc" enable="1"/>

@@ -74,6 +74,11 @@ module ui_top_renderer (
     input  wire       ui_touch_valid, ui_touch_down,
     input  wire [13:0] ui_touch_x, ui_touch_y,
 
+    // Audio-board I2S monitor samples in the UI pixel clock domain.
+    input  wire        audio_sample_valid,
+    input  wire signed [15:0] audio_sample,
+    input  wire        audio_link_up,
+
     // Reserved logical adapter; same clock, one-cycle normalized parameter events.
     input wire external_param_valid,
     input wire [7:0] external_param_id,
@@ -149,6 +154,7 @@ module ui_top_renderer (
         .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
         .show_diagnostics(show_diagnostics),.usb_connected(usb_connected),.usb_error(usb_conn_err),
         .macro_values({val_macro4,val_macro3,val_macro2,val_macro1}),
+        .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),.audio_link_up(audio_link_up),
         .out_hit(navigation_hit),.out_rgb(navigation_rgb));
     always @(posedge clk) begin
         raster_hsync<=in_hsync;raster_vsync<=in_vsync;raster_den<=in_den;
@@ -976,7 +982,10 @@ module ui_top_renderer (
             pixel_mux = btn_rgb;
         end
         // Priority 3: Top Universal HUD Adjustment Bar
-        else if (hit_hud) begin
+        // R17 navigation covers the entire legacy HUD rectangle in every
+        // view. Disable this unreachable drawing path explicitly so its
+        // cached-font/pixel mux cannot consume routed timing resources.
+        else if (1'b0 && hit_hud) begin
             pixel_mux = hud_rgb;
         end
         // Priority 4: Scopes & Dynamic Curves
@@ -1025,7 +1034,7 @@ module ui_top_renderer (
         end else begin
             base_pixel0<=pixel_mux;
             top_hit0<=in_contact_diag || contact_cross || hit_curve_hint || hit_fx || hit_btn;
-            hud_hit0<=hit_hud;filter_hit0<=hit_flt;
+            hud_hit0<=1'b0;filter_hit0<=hit_flt;
             if(top_hit0) base_pixel<=base_pixel0;
             else if(hit_knob) base_pixel<=knob_rgb;
             else if(hud_hit0) base_pixel<=base_pixel0;

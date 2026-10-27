@@ -29,7 +29,9 @@ def inspect_build(build):
     build=Path(build).resolve()
     pnr=build/'impl/pnr'
     manifest=json.loads((build/'source_manifest.json').read_text())
-    timing=(pnr/'2_ui_touch_hub_tr_content.html').read_text(errors='replace')
+    project_name = ('2_ui_touch_hub_debug' if '2_ui_touch_hub_debug.gprj' in manifest
+                    else '2_ui_touch_hub')
+    timing=(pnr/(project_name+'_tr_content.html')).read_text(errors='replace')
     all_rows=rows(timing)
     summary={r[0]:r[1] for r in all_rows if len(r)==2}
     setup=int(summary['Numbers of Setup Violated Endpoints'])
@@ -63,7 +65,7 @@ def inspect_build(build):
     pulse_values=[float(r[1]) for r in rows(pulse.group(0)) if len(r)>=2 and r[0].isdigit()] if pulse else []
     slack_tables['pulse_width']={'reported_paths':len(pulse_values),
                                  'worst_slack_ns':min(pulse_values) if pulse_values else None}
-    fs=pnr/'2_ui_touch_hub.fs'
+    fs=pnr/(project_name+'.fs')
     mismatches=[p for p,d in manifest.items() if hashlib.sha256((ROOT/p).read_bytes()).hexdigest()!=d]
     copy_mismatches=[p for p,d in manifest.items() if hashlib.sha256((build/p).read_bytes()).hexdigest()!=d]
     log=(build/'build.log').read_text(errors='replace')

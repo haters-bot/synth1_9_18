@@ -2,7 +2,7 @@
 module tb_touch_trace;
     reg clk=0,rst_n=0;
     always #5 clk=~clk;
-    reg tv=0,down=0,bv=0,dv=0,cv=0,sv=0,curvev=0;
+    reg tv=0,down=0,bv=0,dv=0,cv=0,sv=0,curvev=0,linkv=0,linkchip=0,linkup=0;
     reg [1:0] ltab=0;
     reg [48:0] nodes={7'd0,7'd16,7'd32,7'd64,7'd96,7'd127,7'd0};
     wire tx;
@@ -16,6 +16,9 @@ module tb_touch_trace;
         .btn_valid(bv),.btn_id(8'h45),.btn_action(2'd1),.delta_valid(dv),.delta_value(-8'sd4),
         .cc_valid(cv),.cc_id(8'h30),.cc_value(7'd99),
         .spi_valid(sv),.spi_id(8'h13),.spi_value(7'd6),
+        .spi_cw(1'b1),
+        .panel_button_valid(1'b0),.panel_button_id(8'd0),.panel_button_action(2'd0),
+        .spi_link_valid(linkv),.spi_link_chip(linkchip),.spi_link_up(linkup),
         .curve_valid(curvev),.curve_filter(1'b0),.curve_tab(2'd1),.curve_mask(5'b10101),
         .curve_values({7'd111,7'd90,7'd40,7'd0,7'd10}),
         .env_tab(2'd1),.lfo_tab(ltab),.lfo_preset(2'd2),.lfo_nodes(nodes),.lfo_rate(3'd4),
@@ -40,8 +43,8 @@ module tb_touch_trace;
         repeat(4)@(negedge clk);rst_n=1;
         repeat(40)@(negedge clk);
         // Simultaneous classes must all survive one batch.
-        tv=1;down=1;bv=1;dv=1;cv=1;sv=1;curvev=1;
-        @(negedge clk);tv=0;bv=0;dv=0;cv=0;sv=0;curvev=0;
+        tv=1;down=1;bv=1;dv=1;cv=1;sv=1;curvev=1;linkv=1;linkchip=0;linkup=1;
+        @(negedge clk);tv=0;bv=0;dv=0;cv=0;sv=0;curvev=0;linkv=0;
         repeat(40)@(negedge clk);
         // An event exactly on flush must start another batch.
         tv=1;down=0;@(negedge clk);tv=0;
@@ -55,10 +58,10 @@ module tb_touch_trace;
         end
         repeat(100)@(negedge clk);
         if(drops==0)$fatal(1,"Overflow counter missing");
-        repeat(1020000)@(negedge clk); // next status reports loss after the burst
+        repeat(1020000)@(negedge clk); // allow the event trace FIFO to drain
         if(dut.count!=0 || dut.sending)$fatal(1,"Trace did not drain");
         $fclose(fd);
-        $display("PASS: waveform UART, simultaneous events, flush boundary, bounded FIFO overflow and heartbeat; drops=%0d",drops);
+        $display("PASS: waveform UART, simultaneous events, flush boundary, bounded FIFO overflow and event-only output; drops=%0d",drops);
         $finish;
     end
     initial begin #20000000;$fatal(1,"Trace test timeout");end

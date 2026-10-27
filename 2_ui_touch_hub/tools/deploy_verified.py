@@ -10,8 +10,10 @@ import base64
 import functools
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import threading
 from datetime import datetime
@@ -19,8 +21,22 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCAL_IP = "10.136.125.235"
-REMOTE_IP = "10.136.125.157"
+
+# Campus IPv6 is the working path: ~4ms RTT and 10/10 connect success, versus
+# ZeroTier relay at 400ms+ RTT with 65% loss. The ZeroTier addresses stay as an
+# explicit fallback for networks without IPv6.
+LOCAL_IP = os.environ.get("GAOYUN_LOCAL_IP", "240c:c283:4007:92f6:33dd:5a1d:ff72:c489")
+REMOTE_IP = os.environ.get("GAOYUN_REMOTE_IP", "240c:c283:4007:9527:557c:f808:60e6:3b89")
+IPV6 = ":" in REMOTE_IP
+
+
+def ssh_host(ip):
+    """Bracket a literal IPv6 address for ssh/scp/URL use."""
+    return f"[{ip}]" if ":" in ip else ip
+
+
+class IPv6HTTPServer(HTTPServer):
+    address_family = socket.AF_INET6
 
 
 class RemoteCommandError(RuntimeError):
@@ -33,14 +49,21 @@ class RemoteCommandError(RuntimeError):
 
 
 def remote(ps, timeout=180):
-    encoded = base64.b64encode(ps.encode("utf-16le")).decode("ascii")
-    result = subprocess.run(
-        ["ssh", "-p", "22", "-b", LOCAL_IP, "-o", "BatchMode=yes",
-         "-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=10",
-         "-o", "ServerAliveCountMax=3", f"Administrator@{REMOTE_IP}",
-         f"powershell -NoProfile -EncodedCommand {encoded}"],
-        capture_output=True, timeout=timeout,
-    )
+    # The script travels over stdin, so no caller-supplied text is ever part of
+    # the remote command line. subprocess gets an argument list (shell=False).
+    args = ["ssh", "-p", "22"]
+    if IPV6:
+        args.extend(["-6"])
+    else:
+        args.extend(["-b", LOCAL_IP])
+    args.extend([
+        "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
+        "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3",
+        "Administrator@" + ssh_host(REMOTE_IP),
+        "powershell -NoProfile -NonInteractive -Command -",
+    ])
+    result = subprocess.run(args, input=ps.encode("utf-8"),
+                            capture_output=True, timeout=timeout)
     if result.returncode:
         raise RemoteCommandError(result)
     return result.stdout
@@ -121,7 +144,8 @@ def main():
     remote_dir = f"D:/gaoyun_deploy/{run}"
     manifest["remote_dir"] = remote_dir
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    server = HTTPServer((LOCAL_IP, 8899), functools.partial(
+    server_cls = IPv6HTTPServer if IPV6 else HTTPServer
+    server = server_cls((LOCAL_IP, 8899), functools.partial(
         SimpleHTTPRequestHandler, directory=str(output)))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -132,7 +156,7 @@ $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 if (Test-Path -LiteralPath '{remote_dir}') {{ throw 'Deployment directory already exists' }}
 New-Item -ItemType Directory -Path '{remote_dir}' | Out-Null
-Invoke-WebRequest -Uri 'http://{LOCAL_IP}:8899/firmware.zip' -OutFile '{remote_dir}/firmware.zip' -UseBasicParsing -TimeoutSec 90
+Invoke-WebRequest -Uri 'http://{ssh_host(LOCAL_IP)}:8899/firmware.zip' -OutFile '{remote_dir}/firmware.zip' -UseBasicParsing -TimeoutSec 90
 Expand-Archive -LiteralPath '{remote_dir}/firmware.zip' -DestinationPath '{remote_dir}'
 $actual=(Get-FileHash -LiteralPath '{remote_dir}/2_ui_touch_hub.fs' -Algorithm SHA256).Hash
 if ($actual -ne '{digest}') {{ throw "Bitstream hash mismatch: $actual" }}

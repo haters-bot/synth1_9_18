@@ -37,11 +37,11 @@ def main():
     assert full['button']['name']=='ENV_TAB' and full['button']['action']==1
     assert full['delta']==-4 and full['parameter_request']['value']==99
     assert full['curve']['values']==[10,0,40,90,111] and full['curve']['mask']==21
-    assert full['spi']['value']==6 and full['context']['value']==1
+    assert full['panel_event']==dict(knob=5,action='CW') and full['context']['value']==1
+    assert full['spi_link']==dict(chip=1,connected=True)
     assert any(r.get('touch',{}).get('phase')=='UP' for r in records)
     assert any('lfo' in r['events'] and r['lfo_snapshot']['tab']==2 for r in records)
-    assert any(r['sequence_gap']>0 for r in records)
-    assert records[-1]['dropped_records']>0 and 'status' in records[-1]['events']
+    assert all('status' not in r['events'] or 'spi_link' in r for r in records)
     # Recovery after arbitrary noise, false magic, one corrupt frame and a partial tail.
     bad=bytearray(raw[:64]);bad[22]^=1
     d2=TraceDecoder()

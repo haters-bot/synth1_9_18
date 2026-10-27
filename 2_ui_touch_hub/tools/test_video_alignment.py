@@ -20,7 +20,7 @@ def main():
     ports=source[source.index('module ui_top_renderer'):source.index(');')]
     live={'clk','rst_n','in_hsync','in_vsync','in_den','in_pixel_x','in_pixel_y'}
     connections=[]
-    for match in re.finditer(r'input\s+wire\s*(\[\d+:\d+\])?\s*([^\n]+)',ports):
+    for match in re.finditer(r'input\s+wire\s*(?:signed\s*)?(\[\d+:\d+\])?\s*([^\n]+)',ports):
         width,names=match.groups()
         for name in names.split('//')[0].rstrip(' ,\r').split(','):
             name=name.strip()

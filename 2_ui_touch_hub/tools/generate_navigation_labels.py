@@ -7,7 +7,7 @@ def main():
     chars=json.loads((ROOT/'tools/ui_font_7x10.json').read_text())['characters']
     lines=[]
     def add(condition,x,y,text,large=False,color='DDE7F4'):
-        lines.append((condition,x,y,text.replace('/',':'),large,color))
+        lines.append((condition.replace('view','text_view'),x,y,text.replace('/',':'),large,color))
     add('1',44,16,'MENU')
     add('1',136,14,'SYNTHESIZER')
     add('1',344,14,'VISUALIZATION')
@@ -17,14 +17,17 @@ def main():
     add('view==0',1040,14,'MASTER')
     add('view!=0',1056,16,'UI TOUCH HUB')
     add('view==1',24,56,'PERFORMANCE MONITOR',True)
-    add('view==1',800,64,'SIX VIEWS / AWAITING INPUT',False,'B3C5D8')
+    add('view==1',800,64,'SIX VIEWS / I2S RETURN',False,'B3C5D8')
     titles=['01 NOTES','02 WAVEFORM','03 STEREO PHASE','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
-    details=['KEYS / VELOCITY','LEFT / RIGHT AUDIO','STEREO PHASE VIEW',
-             'FREQUENCY BARS','SPECTRUM HISTORY','LEVEL / VOICE COUNT']
+    details=['KEYS / VELOCITY','LEFT PCM / 10.7 MS','STEREO PHASE VIEW',
+             'FREQUENCY BARS','SPECTRUM HISTORY','PEAK / AVG ABS / CLIP']
     for i in range(6):
         x=24+(i%3)*418;y=96+(i//3)*296
         add('view==1',x+20,y+12,titles[i],True)
-        add('view==1',x+22,y+56,'EXAMPLE / NOT LIVE',False,'D5AD78')
+        if i in (1,5):
+            add('view==1',x+22,y+56,'I2S PCM INPUT',False,'B3C5D8')
+        else:
+            add('view==1',x+22,y+56,'EXAMPLE / NOT LIVE',False,'D5AD78')
         add('view==1',x+20,y+248,details[i],False,'C0D0E0')
     add('view==2',32,56,'SYSTEM SETTINGS',True)
     for i,title in enumerate(['CONTROLS','DISPLAY','INPUTS','ABOUT']):
@@ -45,7 +48,7 @@ def main():
     add('view==2 && settings_section_id==1',736,232,'VIDEO : 1280 X 720 / 50 MHZ')
     add('view==2 && settings_section_id==1',736,264,'REFRESH : 40.4 HZ')
     add('view==2 && settings_section_id==1',736,304,'FIRMWARE : R17 NAV / SIX SLOTS')
-    add('view==2 && settings_section_id==1',736,344,'AUDIO INPUT : NOT CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==1',736,344,'AUDIO INPUT : I2S RETURN',False,'B3C5D8')
     add('view==2 && settings_section_id==1',736,384,'NOTE INPUT : NOT CONNECTED',False,'D6B989')
     add('view==2 && settings_section_id==1',736,424,'DEPLOYMENT : SRAM')
     add('view==2 && settings_section_id==1',736,480,'TOUCH DIAGNOSTICS')
@@ -63,7 +66,7 @@ def main():
     add('view==2 && settings_section_id==3',64,152,'INPUT STATUS',True)
     add('view==2 && settings_section_id==3 && usb_connected && !usb_error',64,224,'TOUCH USB : CONNECTED',False,'58DDB8')
     add('view==2 && settings_section_id==3 && (!usb_connected || usb_error)',64,224,'TOUCH USB : OFFLINE / ERROR',False,'D0A46C')
-    add('view==2 && settings_section_id==3',64,272,'AUDIO PCM : NOT CONNECTED',False,'D6B989')
+    add('view==2 && settings_section_id==3',64,272,'AUDIO PCM : I2S RETURN',False,'B3C5D8')
     add('view==2 && settings_section_id==3',64,320,'NOTE EVENTS : NOT CONNECTED',False,'D6B989')
     add('view==2 && settings_section_id==3',64,368,'MIDI UART : PARAMETER CONTROL')
     add('view==2 && settings_section_id==3',760,216,'DATA CONNECTIONS',True)
@@ -86,7 +89,7 @@ def main():
         add('view==3',x+20,208,title,True)
         add('view==3',x+20,384,detail,False,'AFC3D8')
     add('view==3',48,544,'PAGE SWITCHING KEEPS SYNTH SETTINGS',False,'B3C5D8')
-    add('view==3',48,576,'AUDIO DATA INPUTS ARE NOT CONNECTED',False,'D6B989')
+    add('view==3',48,576,'AUDIO DATA INPUTS / I2S RETURN',False,'B3C5D8')
     # Parallel one-hot rectangle decode. A serial chain of 97 if-assignments
     # made view -> glyph-coordinate timing unnecessarily deep.
     count=len(lines)
@@ -120,6 +123,18 @@ def main():
         for j,ch in enumerate(text):
             if ch!=' ':out.append(f"13'd{i*64+j}:navigation_char=6'd{chars.index(ch)};\n")
     out.append("default:navigation_char=0;endcase end endfunction\n")
+    # A synchronous ROM replaces the large combinational character decoder.
+    # Keep the function above as an independent regression reference.
+    rom = [0] * 8192
+    for i,(_,_,_,text,_,_) in enumerate(lines):
+        for j,ch in enumerate(text):
+            if ch!=' ':rom[i*64+j]=chars.index(ch)
+    # Gowin 1.9.11 limits elaboration loops to 2000 iterations. Emit the
+    # complete constant image directly instead of an 8192-iteration HDL loop.
+    out.append('reg [5:0] navigation_char_rom[0:8191];\ninitial begin\n')
+    for address,value in enumerate(rom):
+        out.append(f"navigation_char_rom[{address}]=6'd{value};\n")
+    out.append('end\n')
     (ROOT/'rtl/ui_vector_engine/navigation_labels.vh').write_text(''.join(out))
     print(f'{len(lines)} navigation text rectangles generated')
 if __name__=='__main__':main()

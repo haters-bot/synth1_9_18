@@ -25,6 +25,13 @@ module ui_debug_trace #(
     input wire spi_valid,
     input wire [7:0] spi_id,
     input wire [6:0] spi_value,
+    input wire spi_cw,
+    input wire panel_button_valid,
+    input wire [7:0] panel_button_id,
+    input wire [1:0] panel_button_action,
+    input wire spi_link_valid,
+    input wire spi_link_chip,
+    input wire spi_link_up,
     input wire curve_valid,curve_filter,
     input wire [1:0] curve_tab,
     input wire [4:0] curve_mask,
@@ -40,22 +47,22 @@ module ui_debug_trace #(
     localparam DEPTH=1<<FIFO_BITS;
     localparam MS_DIV=CLK_FREQ/1000;
     reg [31:0] sub_ms,tick_ms;
-    reg [9:0] heartbeat;
     wire ms_tick=sub_ms==MS_DIV-1;
-    wire status_tick=ms_tick && heartbeat==999;
     always @(posedge clk or negedge rst_n) begin
-        if(!rst_n) begin sub_ms<=0;tick_ms<=0;heartbeat<=0;end
+        if(!rst_n) begin sub_ms<=0;tick_ms<=0;end
         else if(ms_tick) begin
             sub_ms<=0;tick_ms<=tick_ms+1'b1;
-            heartbeat<=heartbeat==999 ? 0 : heartbeat+1'b1;
         end else sub_ms<=sub_ms+1'b1;
     end
 
     wire [59:0] lfo_state={lfo_tab,lfo_preset,lfo_rate,lfo_once,lfo_stepped,2'b0,lfo_nodes};
     reg [59:0] last_lfo;
-    reg [33:0] last_buttons;
-    wire [7:0] events={status_tick || {env_tab,button_state}!=last_buttons,
-        lfo_state!=last_lfo,spi_valid,curve_valid,cc_valid,delta_valid,btn_valid,touch_valid};
+    // Diagnostic UART is event driven: do not enqueue a periodic heartbeat
+    // or a passive UI-state snapshot. Every emitted frame must have a real
+    // input/control event behind it.
+    wire [7:0] events={spi_link_valid,
+        lfo_state!=last_lfo,(spi_valid || panel_button_valid),curve_valid,
+        cc_valid,delta_valid,btn_valid,touch_valid};
     reg [7:0] pending;
     reg [7:0] batch_timer;
     reg [31:0] sequence_id;
@@ -67,6 +74,10 @@ module ui_debug_trace #(
     reg [7:0] held_btn,held_delta,held_cc_id,held_spi_id;
     reg [1:0] held_action,held_curve_tab;
     reg [6:0] held_cc_value,held_spi_value;
+    reg held_spi_cw;
+    reg [7:0] held_panel_id;
+    reg [1:0] held_panel_action;
+    reg [7:0] held_spi_link_code;
     reg held_curve_filter;
     reg [4:0] held_curve_mask;
     reg [34:0] held_curve_values;
@@ -76,14 +87,17 @@ module ui_debug_trace #(
     // If a new event lands on flush, it starts the next batch, never disappears.
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
-            pending<=8'h80;batch_timer<=BATCH_CYCLES;sequence_id<=0;
-            event_time<=0;last_lfo<=0;last_buttons<=0;
+            pending<=8'h00;batch_timer<=BATCH_CYCLES;sequence_id<=0;
+            event_time<=0;last_lfo<=0;
             held_source<=0;held_down<=0;held_raw_x<=0;held_raw_y<=0;held_x<=0;held_y<=0;
             held_btn<=0;held_action<=0;held_delta<=0;held_cc_id<=0;held_cc_value<=0;
             held_spi_id<=0;held_spi_value<=0;held_curve_filter<=0;
+            held_spi_cw<=1'b1;
             held_curve_tab<=0;held_curve_mask<=0;held_curve_values<=0;
+            held_panel_id<=0;held_panel_action<=0;
+            held_spi_link_code<=0;
         end else begin
-            last_lfo<=lfo_state;last_buttons<={env_tab,button_state};
+            last_lfo<=lfo_state;
             if(touch_valid) begin
                 held_source<=touch_source;held_down<=touch_down;
                 held_raw_x<=raw_x;held_raw_y<=raw_y;held_x<=ui_x;held_y<=ui_y;
@@ -91,7 +105,19 @@ module ui_debug_trace #(
             if(btn_valid) begin held_btn<=btn_id;held_action<=btn_action;end
             if(delta_valid) held_delta<=delta_value;
             if(cc_valid) begin held_cc_id<=cc_id;held_cc_value<=cc_value;end
-            if(spi_valid) begin held_spi_id<=spi_id;held_spi_value<=spi_value;end
+            if(spi_valid) begin
+                held_spi_id<=spi_id;held_spi_value<=spi_value;held_spi_cw<=spi_cw;
+                // Byte 60 classifies the shared SPI/button event flag.
+                // Clear the previous switch edge so rotation frames cannot
+                // replay it; a simultaneous button edge takes priority below.
+                held_panel_action<=2'd0;
+            end
+            if(panel_button_valid) begin
+                held_panel_id<=panel_button_id;
+                held_panel_action<=panel_button_action;
+            end
+            if(spi_link_valid)
+                held_spi_link_code<={3'b000,1'b1,spi_link_chip,1'b0,spi_link_up,1'b0};
             if(curve_valid) begin
                 held_curve_filter<=curve_filter;held_curve_tab<=curve_tab;
                 held_curve_mask<=curve_mask;held_curve_values<=curve_values;
@@ -125,6 +151,13 @@ module ui_debug_trace #(
         record_data[231:224]={6'b0,held_action};record_data[239:232]=held_delta;
         record_data[247:240]=held_cc_id;record_data[255:248]={1'b0,held_cc_value};
         record_data[263:256]=held_spi_id;record_data[271:264]={1'b0,held_spi_value};
+        // Reserved bytes 59..60 carry physical switch edges; frame v1 remains.
+        record_data[479:472]=held_panel_id;
+        record_data[487:480]={6'b0,held_panel_action};
+        record_data[495:488]={7'b0,held_spi_cw};
+        // Byte 62: marker 1, chip bit, link state. Frame class bit 7 only
+        // asserts on a first observation or an actual connection transition.
+        record_data[503:496]=held_spi_link_code;
         record_data[279:272]={5'b0,held_curve_filter,held_curve_tab};
         record_data[287:280]={3'b0,held_curve_mask};
         for(k=0;k<5;k=k+1) record_data[(36+k)*8+:8]={1'b0,held_curve_values[k*7+:7]};

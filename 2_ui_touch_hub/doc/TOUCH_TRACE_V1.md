@@ -7,21 +7,19 @@
 旧文档笼统称 FT2232 不可当作此板已核实事实。2026-10-18 工程机枚举为
 COM5（0403:6010，序号 2025030317A）与 COM6（0403:6010，2025030317B）。
 USB 呈现的 VID/PID 不能单独证明桥接物理芯片为 FT2232；Sipeed 调试固件可模拟此接口。
-当前工程以 `constraints/ui_touch_hub.cst` 为准：UART TX U15，RX V14。
-因此不需要假定一个尚未接线的新 GPIO；COM 编号必须现场枚举。
+当前工程以 `constraints/ui_touch_hub.cst` 为准：U15 是板载监视 UART，V14 是触控 UART 输入；诊断构建的 C14 则是外接 3.3V USB-TTL 可读 ASCII 的实体旋钮/SPI 链路事件口。
 
 两种固件用途明确分开：
 
-| 工程 | U15 输出 | 用途 |
-|---|---|---|
-| `2_ui_touch_hub.gprj` / `build.tcl` | 原 MIDI，31250 8N1 | 保留当前音频输出行为 |
-| `2_ui_touch_hub_debug.gprj` / `build_debug.tcl` | 点击日志，115200 8N1 | 本轮自测诊断；同一引脚暂停对外发送 MIDI |
+| 工程 | U15 输出 | C14 输出 | 用途 |
+|---|---|---|---|
+| `2_ui_touch_hub.gprj` / `build.tcl` | 原 MIDI，31250 8N1 | 镜像 MIDI | 保留当前音频输出行为 |
+| `2_ui_touch_hub_debug.gprj` / `build_debug.tcl` | 64字节二进制 UI trace，115200 8N1 | ASCII 旋钮事件与 SPI 链路变化，115200 8N1 | 诊断输出；U15 暂停对外发送 MIDI |
 
-诊断顶层仅以参数 `DEBUG_TOUCH_LOG=1` 包装原顶层。内部原 MIDI/FIFO/busy 继续运行，
-只选择不同的外部 TX 驱动；日志没有反馈线、阻塞线或 UI 控制写入。
+诊断顶层仅以参数 `DEBUG_TOUCH_LOG=1` 包装原顶层。内部 MIDI/FIFO/busy 继续运行；U15 输出 UI 观察帧，C14 单独输出实体旋钮和 SPI link 事件。C14 不发周期心跳；U1/U2 状态只在首次检测和连接变化时报告。
 **诊断固件不能接到下游 MIDI 接收器当作有效音频控制。后续三人联调前切回普通固件或落实独立日志口。**
 
-工程机操作：
+U15 的 UI trace 通过 `touch_trace_monitor.py` 解码；C14 直接显示实体旋钮和 SPI 连接变化，不需要解码脚本。工程机操作：
 
 ```powershell
 python -m pip install pyserial
@@ -29,8 +27,7 @@ python tools/touch_trace_monitor.py --list
 python tools/touch_trace_monitor.py --port COM6 --seconds 60
 ```
 
-COM6 已收到真实有效状态帧，确认是本次 UART；不要打开可能用于 JTAG 的 COM5。
-日志工具不向 FPGA 发字节，关闭 RTS/DTR，默认保持 115200。
+板载 COM 号必须现场枚举，不要打开可能用于 JTAG 的 COM 口。日志工具不向 FPGA 发字节，关闭 RTS/DTR，默认保持 115200。
 终端打印可读记录，同时新建 `impl/touch_logs/touch_时间.jsonl` 和同名 `.bin`，不覆盖已有抓取。
 指定其他输出：`--output D:\gaoyun_deploy\touch_本次.jsonl`；只要路径尚不存在即可。
 离线复查：`python tools/touch_trace_monitor.py --decode 完整路径.bin`，无需 pyserial。
@@ -56,7 +53,8 @@ python tools/capture_remote_trace.py --port COM6 --seconds 30 --label first_clic
 - `delta`：旋钮相对拖动的有符号增量。
 - `parameter_request`：参数中枢发出的 ID/7 位值，**只是内部发送请求，不能当成音频已收到、已接受或已生效**。
 - `curve`：FILTER/ENV、目标页签、字段掩码和五个字段值；仅 mask 对应字段有效。FILTER 前两字段为 Cutoff/Res；ENV 为 A/H/D/S/R。
-- `spi`：接收草案解码出的 ID 和值，不代表已和物理队友联调。
+- `spi`：实体旋钮 detent 事件的参数 ID/值，方向位区分 CW/CCW；通过 `touch_trace_monitor.py` 显示物理旋钮编号。
+- `status`：仅在 TXE8148 首次检测或 SPI 连接状态变化时置位；byte 62 带芯片号和连接状态，不再每秒产生 heartbeat。
 - `context`：保留的选中控件与当前值、ENV 页签、按钮状态位。**focus 是上次选中的控件，不等于本次点击命中**；空白区点击仍记录坐标。
 - `lfo_snapshot`：本地页签、速率档、模式、预设、七点值；不记录自动走动的相位，避免日志被预览动画淹没。
 - `sequence / board_ms / dropped_records`：从复位起的序号、毫秒、硬件缓冲丢弃总数；PC 另加接收时间。
@@ -83,7 +81,9 @@ HUD 的 +/- 可能产生 delta 而非 button，LFO 控件由独立状态机编�
 | 41..44 | ENV tab / LFO tab / rate_index / preset(bit3..2)+stepped(bit1)+once(bit0) |
 | 45..51 | 七点 LFO，各1字节 |
 | 52 / 53 / 54..57 / 58 | focus_known / focus_value / 32位button_state / value_valid |
-| 59..62 | 保留为0 |
+| 59..60 | 实体按键事件：参数ID / 动作（1=PRESS、2=RELEASE）；动作非1/2时无按键事件 |
+| 61 | SPI 参数事件方向：bit0=1 CW、0 CCW；仅 bit5 SPI 事件且参数ID对应32旋钮时有效 |
+| 62 | SPI 链路事件：marker bit4=1，chip bit3（0=U1,1=U2），link-up bit1（1=连接,0=断开）；仅 status bit7 置位时有效 |
 | 63 | 前63字节逐字节 XOR；这是轻量误码检测，**不是 CRC** |
 
 tab在线路上从0开始，PC显示从1开始。button_state bit0/1/2=A/B/Filter开关，
@@ -91,8 +91,11 @@ bit3..4 A波形、5..6 B波形、7..8滤波类型、9..12路由A/B/N/S、13 keyt
 
 同一输入在路由和中枢经过数拍传播，16 个像素时钟窗口内合并成一帧，各事件类别独立保留。
 窗口内同类事件重复则保留最后一个字段值；时间为首事件，状态快照为入队时，不是逐周期逻辑分析仪。
-32 帧 FIFO，不对 UI 施加背压。满时丢弃新日志并计数，下一帧和每秒 status 可见；序号空洞也提示丢失。
+32 帧 FIFO，不对 UI 施加背压。满时丢弃新日志并计数，下一帧显示丢弃总数；序号空洞也提示丢失。
 115200 8N1 理论约 180 帧/秒；不能保证任何事件洪峰下日志无损。普通点击应无丢失，实机仍须验证。
+实体旋钮按连续GPIO映射解码；四个有效正交沿形成一个 detent。参数更新以当前共享 UI 参数为基准增减 1，参数ID反查物理旋钮编号。C14 输出可读 ASCII：`KNOBnn CW/CCW/PRESS/RELEASE` 与 `U1/U2 SPI CONNECTED/DISCONNECTED`。
+开关主动低边沿分别输出 `KNOBnn PRESS` 与 `KNOBnn RELEASE`。无边沿、无旋转时不生成
+实体旋钮事件；电脑端工具直接打印 `KNOBnn CW/CCW/PRESS/RELEASE`。帧仍为64字节、版本1和原有XOR校验。
 XOR 无法检测所有错误，必要时可在后续版本扩展 CRC 和设备/固件身份字段。
 
 ## 4. 已完成验证与尚未完成事项

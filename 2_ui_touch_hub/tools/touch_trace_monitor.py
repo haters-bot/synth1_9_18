@@ -21,6 +21,14 @@ PARAMS = {
         (ROOT / 'rtl/ui_vector_engine/params.vh').read_text(encoding='utf-8'))
 }
 FLAGS = ('touch', 'button', 'delta', 'parameter_request', 'curve', 'spi', 'lfo', 'status')
+KNOB_PARAMS = (
+    'OSCA_WT_POS','OSCA_WARP','OSCA_PAN','OSCA_VOL','OSCA_UNISON','OSCA_DETUNE','OSCA_BLEND','OSCA_PHASE',
+    'ENV1_ATTACK','ENV1_HOLD','ENV1_DECAY','ENV1_SUSTAIN','ENV1_RELEASE','MASTER_VOL','MACRO1','MACRO2',
+    'OSCB_WT_POS','OSCB_WARP','OSCB_PAN','OSCB_VOL','OSCB_UNISON','OSCB_DETUNE','OSCB_BLEND','OSCB_PHASE',
+    'FLT_CUTOFF','FLT_RES','FLT_PAN','FLT_DRIVE','FLT_FAT','FLT_MIX','FX_REVERB','FX_DELAY')
+KNOB_BY_ID = {int(value, 16): i+1 for i, name in enumerate(KNOB_PARAMS)
+              for value in re.findall(r"`define\s+PARAM_ID_"+re.escape(name)+r"\s+8'h([0-9A-Fa-f]+)",
+                                      (ROOT / 'rtl/ui_vector_engine/params.vh').read_text(encoding='utf-8'))}
 
 
 class TraceDecoder:
@@ -65,9 +73,17 @@ class TraceDecoder:
         self.last_sequence = seq
         r = dict(version=f[2], sequence=seq, board_ms=u32(8), dropped_records=u32(12),
                  sequence_gap=gap, events=[v for b, v in enumerate(FLAGS) if f[3] & (1 << b)])
+        if (f[3] & 0x80) and (f[62] & 0x10):
+            r['spi_link'] = dict(chip=2 if f[62] & 0x08 else 1,
+                                 connected=bool(f[62] & 0x02))
         r['context'] = dict(focus_id=f[26], focus=name(f[26]), focus_known=bool(f[52]),
                             value=f[53] if f[58] else None, env_tab=f[41]+1,
                             button_state_hex=f'{u32(54):08X}')
+        panel_action = {1: 'PRESS', 2: 'RELEASE'}.get(f[60])
+        if f[3] & 0x20 and panel_action:
+            knob = KNOB_BY_ID.get(f[59])
+            if knob:
+                r['panel_event'] = dict(knob=knob, action=panel_action)
         if f[3] & 1:
             down = bool(f[16])
             phase = ('MOVE' if self.down else 'DOWN') if down else ('UP' if self.down else 'RELEASE_IDLE')
@@ -84,7 +100,14 @@ class TraceDecoder:
             r['curve'] = dict(panel='FILTER' if f[34] & 4 else 'ENV', tab=(f[34] & 3)+1,
                               mask=f[35], values=list(f[36:41]))
         if f[3] & 32:
-            r['spi'] = dict(id=f[32], name=name(f[32]), value=f[33])
+            # Byte 60 is nonzero for a physical switch edge. This prevents a
+            # switch-only frame from replaying the previous rotation payload.
+            if not panel_action:
+                knob = KNOB_BY_ID.get(f[32])
+                if knob:
+                    r['panel_event'] = dict(knob=knob, action='CW' if f[61] & 1 else 'CCW')
+                else:
+                    r['spi'] = dict(id=f[32], name=name(f[32]), value=f[33])
         # All frames carry the local LFO snapshot, even if this event is a touch
         # on an unchanged preset/restart control. These are local UI values.
         r['lfo_snapshot'] = dict(tab=f[42]+1, rate_index=f[43], once=bool(f[44] & 1),
@@ -110,10 +133,15 @@ def format_record(r):
     if 'curve' in r:
         v = r['curve']; parts.append(f"{v['panel']}{v['tab']} mask=0x{v['mask']:02X} values={v['values']}")
     if 'spi' in r:
-        p = r['spi']; parts.append(f"SPI {p['name']}={p['value']}")
+        if 'panel_event' not in r:
+            p = r['spi']; parts.append(f"SPI {p['name']}={p['value']}")
+    if 'panel_event' in r:
+        p = r['panel_event']; parts.append(f"KNOB{p['knob']:02d} {p['action']}")
     if 'lfo' in r['events']:
         v = r['lfo_snapshot']; parts.append(f"LFO{v['tab']} rate_index={v['rate_index']} nodes={v['nodes']}")
-    if 'status' in r['events']:
+    if 'spi_link' in r:
+        v=r['spi_link']; parts.append(f"SPI U{v['chip']} {'CONNECTED' if v['connected'] else 'DISCONNECTED'}")
+    elif 'status' in r['events']:
         parts.append('STATUS')
     if r['dropped_records'] or r['sequence_gap']:
         parts.append(f"LOSS board_total={r['dropped_records']} gap={r['sequence_gap']}")

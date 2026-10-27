@@ -1,5 +1,52 @@
 # UI Touch Hub 当前交接入口
 
+## 2026-10-27 当前入口：I2S 波形与电平
+
+> 本轮最终验收通过（用户现场确认）：音频板补烧后第二窗真实波形正常；用户进一步确认第六窗 LEVELS 前两条电平“都正常响应”，即随发声上升、停音后回零。本轮“真实波形与电平”任务完成。第一、三、四、五窗仍为 `EXAMPLE / NOT LIVE`，不能写成六窗全部实时；第三条削波保持仅有 RTL 仿真验证，未做现场削波测试。当前 UI SRAM 为部署 `20261027_150557_I2S_LIVE_WAVEFORM_LEVELS`，SHA256 `68DEE3B30642D10632F6D383856BB45661FA0EFFDF94DA3EF16D5FDCB38082CE`。音频板由用户在另一电脑烧录，音频位流 hash 未提供；本会话没有再次构建或烧录。以下条目为历史排查记录，其中的待答问题已由本条验收结论取代。
+
+> 最新现场进展：用户确认此前音频板未烧录带 VIS 回传的版本，随后已在另一台电脑完成音频板烧录，反馈“2 窗口和 4 窗口正常”。第二窗可作为波形反馈；第四窗仍是 `EXAMPLE / NOT LIVE` 频谱示例，不能计为真实频谱验收。新抓拍 `D:/github/synth1_9_18/2_ui_touch_hub/impl/i2s_after_audio_program_20261027_153131/preview.jpg` 显示第二窗已由琥珀色等待线变为青色有效采样中线，抓拍瞬间电平为空。当前唯一待答问题：第六窗 LEVELS 前两条是否随发声上升、停音回零。音频固件具体 hash 未提供，烧录由用户在另一电脑完成；本会话未重新烧录 UI、未构建或烧录音频板。整轮现场验收仍待第六窗确认。
+
+> 音源确认更新：用户回复测试时音频板“没有声音”。当前唯一待答问题改为“刚才通过实体 MIDI 键盘、仅旋钮/UI，还是板载测试音触发”。已烧录 UI 的 `note_on_req/note_off_req` 都固定为 0，仅调参数不能产生音符；队友 `origin/main` 音频代码的实体键盘入口为 E19，而本地整合音频副本仍是旧 AB21 MIDI 入口，不能混用接线或视为同一已烧录版本。当前音频源码走外接 MAX98357A，关闭板载 NS4263；I2S 时钟独立于音符持续运行，因此无声仍不能单独解释 UI 等待基线。未修改 RTL、未重复烧录。
+
+> 现场反馈更新：用户回复“波形和电平两项都没有响应”，**现场音频验收未通过**。新抓拍 `impl/i2s_no_response_20261027_150948/preview.jpg` 显示 VISUALIZATION 第二窗为琥珀色等待基线、第六窗为空，表明未进入完整有效采样显示状态；不能仅凭该图区分缺 BCLK、缺 WS、接线或音频板固件。已问唯一待答问题：音频板耳机/扬声器是否确实有声音。已核对音频 `origin/main` 与本地源码都有 `VIS_BCLK=R19/VIS_LRC=U21/VIS_DIN=R17` 镜像，但未找到音频板实际加载该版本的部署证据；本会话仅确认 UI 板 SRAM 部署。未重复烧录，未修改 RTL。
+
+> 最新结果 15:07：`impl/R16A_build_20261027_145452` 已完成并通过完整审计，`timing_closed=true`；五类时序余量为 `+0.601/+0.196/+0.319/+0.497/+0.453 ns`，像素 Fmax 56.823/50 MHz，61 个源码与快照哈希一致。新位流已且仅烧录一次 UI 板 SRAM：`impl/deploy_runs/20261027_150557_I2S_LIVE_WAVEFORM_LEVELS/`，`PROGRAMMER_EXIT=0`、Status `0x00026230`、User Code `0x0000FE58`，双机 SHA256 `68DEE3B30642D10632F6D383856BB45661FA0EFFDF94DA3EF16D5FDCB38082CE`。摄像头确认合成器页正常显示；已询问用户切到 VISUALIZATION，验证第二窗波形与第六窗前两条电平的发声/停音响应。**现场音频验收仍待回复**，不能仅据静态抓屏宣称通过。其余四窗为示意。Flash 未操作，无运行中的本轮 Gowin 构建。
+
+> 最新状态 14:55：`143844` 剩 1 个 setup 违例（字符译码，-0.371 ns），未部署。已改为同步字符 ROM，8192 项与原译码逐项一致，65536 字形格点及音频/导航/视频回归通过。当前唯一 Gowin 构建是 `impl/R16A_build_20261027_145452`，PID 59032；先看实际进程/日志再恢复。`145330` 因旧版 HDL 循环上限前端退出，已改显式常量表，不改时钟、不添加时序例外。Flash 暂停。
+
+> 最新状态 14:39：第三候选因旧字符寄存器布局锚点不再存在而在约束检查退出，正常/诊断 CST 已将这一条旧导航锚点保留为注释，外部引脚及九个串行器复位锚点不变。当前构建是 `impl/R16A_build_20261027_143844`（第四候选），尚未部署。65536 字形格点回归通过，字体流水调整前后 921600 像素整帧逐字节完全一致。
+
+- 实际接续工作副本为本目录 `D:/github/synth1_9_18/2_ui_touch_hub`；`D:/github/gaoyun/2_ui_touch_hub` 的 RTL 尚未同步 I2S，不要用旧副本反向覆盖。
+- 用户本轮明确只先完成第二窗真实波形和第六窗真实电平，已确认 I2S 三线与公共地接好。其余四窗暂留标注示意。
+- 已修正 I2S 16 位槽末位/WS 切换错误：旧生产环回得到 0 个样本，新版 141 个样本逐值匹配，流中复位与断线恢复通过。128 点/10.7 ms 波形、峰值/平均绝对幅度/削波显示、导航、6136 项视频对齐和串口回归通过。
+- 首候选 `140338` 因 4 个 setup 违例/最差 -0.695 ns 拒绝部署；按实际跨区布线与 154 扇出路径做本地文字页状态隔离、译码扇出限制，并补齐波形相邻样本连线。回归再次通过。第二候选 `impl/R16A_build_20261027_141808` 正在 P&R；**时序审计与新 SRAM 部署待完成**。此前 13:18 版本虽成功烧录但有上述接收缺陷，不代表现场真实音频验收。
+- 详情与原始文件备份见 `doc/I2S_LIVE_WAVEFORM_LEVELS_2026-10-27.md`。Flash 暂停，不删除文件。
+
+- 14:34 更新：第二候选 `141808` 仍有 2 个 setup 违例（最差 -0.687 ns），未部署。字形行/列查表重新分拍、混色移入原输出级，保持字体和视频总延迟；关闭被导航完全覆盖的旧 HUD 无效绘制入口但保留源码/控制接口。导航/视频/音频专项通过，第三候选 `impl/R16A_build_20261027_143358` 正在构建。恢复时先看该构建进程与日志，不并行重启 Gowin。
+
+## 2026-10-27 01:05：实体旋钮动作诊断版已通过时序门禁并部署 SRAM
+
+- 诊断串口 C14 使用 115200 8N1；收到实体旋转事件时打印 `KNOBnn CW/CCW`，按压与释放分别打印 `PRESS/RELEASE`，空闲不打印旋钮事件。旋钮编号按 UI 四区映射，物理/参数表见 `doc/TXE8148_EC11_SPI_INTEGRATION.md`。
+- 修正追踪帧共用事件标志导致的旧按键动作重放；旋转事件清空旧按键动作，PC 解码按动作字节区分旋转和开关边沿。方向状态使用单个寄存器，诊断假设一次操作一个旋钮；多旋钮同一扫描批次的并发方向尚未作为验收目标。
+- `python tools/test_touch_trace.py` 通过，包括串口波形、完整帧解码、方向、错帧恢复和主/诊断 RTL 编译。
+- 隔离构建 `impl/DEBUG_R16A_build_20261027_005555/` 审计通过，源码和快照一致，setup/hold/recovery/removal/pulse width 全部无违例；最差余量依次 `+0.633/+0.156/+0.608/+0.334/+0.448 ns`，`clk_pixel` 实测 Fmax `52.855 MHz`（要求 50 MHz）。位流 SHA256 `DA3A01208EB321513418C8495C7BD0E15C3E4CA6C9DBFDA17E09611F4D2FEEDF`。
+- 已以 `--target sram` 烧录，目录 `impl/deploy_runs/20261027_010415_KNOB_ACTIVE_EVENTS/`；工程机识别 `GW5AST-138B`，`PROGRAMMER_EXIT=0`，Status `0x00026230`，User Code `0x0000881D`，远端 SHA256 匹配。摄像头抓屏显示正常六窗 UI；此证据不代替现场 32 个旋钮方向/按压逐项验收。Flash 未操作。
+- 后续做布局收敛时优先先定位单一关键路径并做一次有证据的最小调整；减少无目标的连续 P&R 试跑。安全边界不变：负 setup/hold/recovery/removal/pulse slack 或低于约束时钟要求都不能部署。
+
+## 2026-10-26 22:25：外接 PCB/UI 调试 UART 已分配并部署 SRAM
+
+- 用户指定 UI 板 `C14` 为 UART TX、`E13` 为 UART RX；约束为 3.3 V LVCMOS。C14 镜像 U15 监视流，诊断构建下输出 115200 baud trace；E13 暂时仅作输入脚保留，没有命令协议。
+- 接线：C14→USB-TTL RXD，E13←USB-TTL TXD，GND 共地；USB-TTL 适配器必须是 3.3 V TTL，禁止 5 V/RS-232。C14/E13 不复用音频链路 AB21，也不改变旋钮 SPI。
+- 修正诊断工程漏登记的导航/LFO 源文件，并为诊断顶层建立独立 CST；`build_isolated.py --debug` 支持诊断构建，`audit_build.py` 可审计普通及诊断位流。
+- 诊断构建 `impl/DEBUG_R16A_build_20261026_221313/` 审计通过：源码快照一致，Setup/Hold 违例 0，Recovery/Removal/Pulse Width 通过，worst setup `+0.074 ns`；SHA256 `D5A8492AC467CDD4C2C0183FCBB37FE593DAE93E84756B640D70B525981F5080`。
+- 该诊断位流已部署至 UI 板 SRAM：`impl/deploy_runs/20261026_222436_UI_PCB_DEBUG_UART_C14_E13/`，`PROGRAMMER_EXIT=0`，Status `0x00026230`，User Code `0x0000233D`。现场串口解码和旋钮输入日志仍待用户验证。
+
+## 2026-10-26 20:55：PCB bank 映射修正版已烧录 UI 板 SRAM
+
+- 使用提交 `0699cac` 对应位流执行 `tools/deploy_verified.py --target sram`，部署目录为 `impl/deploy_runs/20261026_205443_TXE8148_PCB_BANK_MAPPING_3V3/`。
+- 工程机 `10.136.125.157` 识别 `GW5AST-138B (0x0001081B)`；SRAM 编程完成，`PROGRAMMER_EXIT=0`，Status `0x00026230`，User Code `0x00008733`，用时 23.14 s。远端 SHA256 与本地一致：`37FB1A5409AF62F51B32BBC04146C125D09F7FB55320527128E22FC76D25E541`。
+- `preview.jpg` 已抓到正常 UI 画面。当前待用户现场确认旋钮旋转是否改变对应参数；按压持久选中态仍未接入全局 UI。
+
 ## 2026-10-26 20:47：根据 32 旋钮 PCB 原理图修正 GPIO bank 映射（待 SRAM 部署）
 
 - 用户提供的 `32旋钮PCB.zip` 原理图确认：每颗 TXE8148 的 48 路 GPIO 按三组 16 路 bank 接线，`P0/P1 -> A`、`P2/P3 -> B`、`P4/P5 -> SW`。此前按 `A/B/SW` 三个连续 GPIO 读取是错误根因，导致实体输入没有反应。
@@ -375,3 +422,17 @@ R15H 归档比特流 SHA256：`911054F05264B88D565FBF4FC6A600751E93848057080B9A1
 - 按用户要求，`20261018_023049_R15I_screen_preserve` 已通过远程 operation 2 写入 FPGA SRAM，`PROGRAMMER_EXIT=0`，跨机 SHA256 与上述 R15I 归档一致。摄像头照片确认合成器画面恢复：`impl/deploy_runs/20261018_023049_R15I_screen_preserve/preview.jpg`；底栏裁图为 `telemetry.png`。这是易失 SRAM 状态，不是 Flash 启动证明，断电后不会保留。
 
 - 拨码判断更正：重新对齐 Sipeed 官方 `dip-key_defualt.jpg` 与板卡照片后，官方用于 Flash 的位置是 DIP1、DIP6 为 ON，DIP2–5 为 OFF，即 `100001`。此前把官方图误读为仅 DIP6 为 ON，并建议改成 `000001`，判断错误；用户调回 `100001` 后只读操作 51 能读到 `0x0B4018`。保留这条更正，后续不要再让用户改拨码。Flash 写入失败原因尚未查明，当前 Flash 内容状态未验证。
+# 2026-10-26 23:26 — PCB knob event serial trace (Codex, timing gate failed)
+
+- Added diagnostic-only `knob_spi_rx` event outputs for each decoded quadrature step and both active-low switch edges. The normal parameter update and press-to-select paths remain unchanged.
+- Kept the 64-byte trace frame/version/checksum. Reserved bytes 59/60 carry action `1=CW, 2=CCW, 3=PRESS, 4=RELEASE` and zero-based physical knob index. Host decoder renders only `KNOBnn CW/CCW/PRESS/RELEASE`; idle scans generate no panel log.
+- `python tools/test_touch_trace.py` passed; direct host decoder checks printed all four expected forms. The full debug Gowin build completed and produced `impl/DEBUG_R16A_build_20261026_231122/impl/pnr/2_ui_touch_hub_debug.fs`, but audit `audit_20261026_232620_303411.json` failed: 23 setup endpoints, worst setup `-0.962 ns`, pulse-width worst `-0.352 ns`. No deployment was attempted; the new bitstream must not be programmed until timing is closed.
+- One earlier build failed because the diagnostic CST lacked the navigation anchor documented in its comments; adding the hierarchical anchor allowed P&R to complete but did not close timing. This was a failed repair attempt, not a passing result.
+
+## 2026-10-27 14:08 接续原会话：I2S 波形与电平候选
+
+- 原会话“检查串口旋钮数据刷新逻辑”（01a17933-4ae0-7f02-b5ef-194131117c1b）实际继续工作位于 `D:/github/synth1_9_18/2_ui_touch_hub`。本目录旧工程尚未同步 I2S，不能据本目录文件判断已部署源码，不能用旧副本覆盖新结果。
+- 用户确认三根 I2S 与公共地已接好，本轮明确只先完成真实波形与电平；其余四窗后续接入。
+- 原 13:18 UI SRAM 烧录成功，但接收功能仿真此前未跑完。已复现旧接收器解出 0 个左声道样本；修正 16 位 I2S 槽末位与 WS 边界，生产发送器 141 样本逐值环回、复位和断线恢复通过。
+- 第二窗改 128 点/约 10.7 ms 的同步 RAM 历史；第六窗改真实峰值、平均绝对幅度和削波保持。显示专项、导航状态保持、6136 项视频对齐与串口回归通过。
+- 候选 `D:/github/synth1_9_18/2_ui_touch_hub/impl/R16A_build_20261027_140338` 正在构建，尚未通过时序审计或部署。完整说明在同副本 `doc/I2S_LIVE_WAVEFORM_LEVELS_2026-10-27.md`。Flash 暂停，不删除或覆盖旧产物。

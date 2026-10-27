@@ -9,7 +9,7 @@ def main():
  ports=(ROOT/'rtl/ui_vector_engine/ui_top_renderer.v').read_text().split('module ui_top_renderer',1)[1].split(');',1)[0]
  live={'clk','rst_n','in_hsync','in_vsync','in_den','in_pixel_x','in_pixel_y','ui_touch_valid','ui_touch_down','ui_touch_x','ui_touch_y'}
  connect=[]
- for m in re.finditer(r'input\s+wire\s*(\[\d+:\d+\])?\s*([^\n]+)',ports):
+ for m in re.finditer(r'input\s+wire\s*(?:signed\s*)?(\[\d+:\d+\])?\s*([^\n]+)',ports):
   width,names=m.groups();bits=1 if not width else int(width[1:].split(':')[0])+1
   for name in names.split('//')[0].rstrip(' ,\r').split(','):
    name=name.strip()

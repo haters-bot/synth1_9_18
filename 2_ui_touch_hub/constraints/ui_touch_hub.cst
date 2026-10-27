@@ -20,10 +20,10 @@ INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R63C164[0][B]
 INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R61C164[0][A];
 INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R60C166[0][A];
 
-// Keep the navigation timing pair at the audited high-resolution build sites.
-// The LFO SysEx transmitter changes placement pressure but is not on this
-// path; these anchors preserve the previously closed navigation route.
-INS_LOC "u_render/u_navigation_render/ch1_0_s0" R35C151[0][A];
+// Historical navigation anchor, retired after the glyph-row/column pipeline
+// split changed the synthesized character register object. Keep the record;
+// the new font pipeline is placed normally and must pass the complete audit.
+// INS_LOC "u_render/u_navigation_render/ch1_0_s0" R35C151[0][A];
 
 IO_LOC  "clk"             V22;
 IO_PORT "clk"             IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=OFF BANK_VCCIO=3.3;
@@ -94,9 +94,26 @@ IO_PORT "knob_reset_n" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC  "audio_link_tx"   AB21;
 IO_PORT "audio_link_tx"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 
+// Audio-board I2S visualization return.  The audio board mirrors its
+// MAX98357A stream to these three 3.3 V outputs.
+IO_LOC  "audio_vis_bclk"   R19;
+IO_PORT "audio_vis_bclk"   IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+IO_LOC  "audio_vis_lrc"    U21;
+IO_PORT "audio_vis_lrc"    IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+IO_LOC  "audio_vis_din"    R17;
+IO_PORT "audio_vis_din"    IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
 // Board USB-UART monitor output (normal build mirrors MIDI; debug build logs).
 IO_LOC  "midi_uart_tx"    U15;
 IO_PORT "midi_uart_tx"    IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+// External debug UART header: C14 (TX) -> adapter RX, E13 (RX) <- adapter TX.
+// 3.3V TTL only; share GND and do not apply 5V or RS-232 levels.
+IO_LOC  "debug_uart_tx"   C14;
+IO_PORT "debug_uart_tx"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "debug_uart_rx"   E13;
+IO_PORT "debug_uart_rx"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 
 // Board CH569 USB Host HSPI Interface (Direct Portable Screen USB Touch Intake)
 IO_LOC  "ch569_htclk"     L20;
