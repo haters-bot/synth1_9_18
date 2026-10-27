@@ -22,6 +22,18 @@ module ui_navigation_renderer(
  reg [1:0] text_view /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
  always @(posedge clk or negedge rst_n)
   if(!rst_n)text_view<=0;else text_view<=view;
+ // USB host state originates at clk_usb. Synchronize its two status bits
+ // before they enter the pixel-domain text rectangle and character logic.
+ reg text_usb_connected_meta,text_usb_error_meta /* synthesis syn_preserve=1 syn_keep=1 */;
+ reg text_usb_connected,text_usb_error /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin
+   text_usb_connected_meta<=0;text_usb_connected<=0;text_usb_error_meta<=0;text_usb_error<=0;
+  end else begin
+   text_usb_connected_meta<=usb_connected;text_usb_connected<=text_usb_connected_meta;
+   text_usb_error_meta<=usb_error;text_usb_error<=text_usb_error_meta;
+  end
+ end
  `include "navigation_font_hd.vh"
  reg hit;reg [23:0] bg;
  reg [1:0] macro_row;
@@ -277,38 +289,38 @@ module ui_navigation_renderer(
  endfunction
  always @* begin
   audio_number=0;audio_number_char=`CH_SPACE;
-  case(text_id)
+  case(id0)
    NAV_OV_RMS,NAV_OV_PEAK:begin
-    if(text_col==5 || text_col==6 || text_col==8)begin
-     audio_number=1;audio_number_char=audio_digit(audio_digits[text_id==NAV_OV_RMS ? 0 : 1],
-      text_col==5 ? 3'd2 : text_col==6 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
+    if(col0==5 || col0==6 || col0==8)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[id0==NAV_OV_RMS ? 0 : 1],
+      col0==5 ? 3'd2 : col0==6 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
     end
    end
    NAV_LEVEL_PEAK,NAV_LEVEL_RMS,NAV_LEVEL_CREST:begin
-    if(text_col==3 || text_col==4 || text_col==6)begin
-     audio_number=1;audio_number_char=audio_digit(audio_digits[text_id==NAV_LEVEL_PEAK ? 1 : text_id==NAV_LEVEL_RMS ? 0 : 2],
-      text_col==3 ? 3'd2 : text_col==4 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
+    if(col0==3 || col0==4 || col0==6)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[id0==NAV_LEVEL_PEAK ? 1 : id0==NAV_LEVEL_RMS ? 0 : 2],
+      col0==3 ? 3'd2 : col0==4 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
     end
    end
-   NAV_OV_HZ:if(text_col<5)begin
-    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd4-text_col[2:0],audio_link_up&&spectrum_peak_valid);
+   NAV_OV_HZ:if(col0<5)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd4-col0[2:0],audio_link_up&&spectrum_peak_valid);
    end
-   NAV_PEAK_HZ:if(text_col>=5 && text_col<=9)begin
-    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd1-text_col[2:0],audio_link_up&&spectrum_peak_valid);
+   NAV_PEAK_HZ:if(col0>=5 && col0<=9)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd1-col0[2:0],audio_link_up&&spectrum_peak_valid);
    end
-   NAV_CENTROID:if(text_col>=7 && text_col<=11)begin
-    audio_number=1;audio_number_char=audio_digit(audio_digits[4],3'd3-text_col[2:0],audio_link_up&&spectrum_peak_valid);
+   NAV_CENTROID:if(col0>=7 && col0<=11)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[4],3'd3-col0[2:0],audio_link_up&&spectrum_peak_valid);
    end
    NAV_STEREO:begin
-    if(text_col==5 || text_col==16)begin
+    if(col0==5 || col0==16)begin
      audio_number=1;
-     audio_number_char=!(audio_link_up&&metrics_ready) || (text_col==5&&!metrics_corr_valid) ? `CH_MINUS :
-      (text_col==5 ? corr_negative : bal_negative) ? `CH_MINUS : `CH_PLUS;
-    end else if(text_col>=6&&text_col<=8)begin
-     audio_number=1;audio_number_char=audio_digit(audio_digits[5],3'd0-(text_col[2:0]),
+     audio_number_char=!(audio_link_up&&metrics_ready) || (col0==5&&!metrics_corr_valid) ? `CH_MINUS :
+      (col0==5 ? corr_negative : bal_negative) ? `CH_MINUS : `CH_PLUS;
+    end else if(col0>=6&&col0<=8)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[5],3'd0-(col0[2:0]),
        audio_link_up&&metrics_corr_valid);
-    end else if(text_col>=17&&text_col<=19)begin
-     audio_number=1;audio_number_char=audio_digit(audio_digits[6],3'd3-text_col[2:0],
+    end else if(col0>=17&&col0<=19)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[6],3'd3-col0[2:0],
        audio_link_up&&metrics_ready);
     end
    end
@@ -465,13 +477,12 @@ module ui_navigation_renderer(
   end
   else begin
    h0<=hit;b0<=bg;fg0<=text_color;id0<=text_id;col0<=text_col;
-   tv0<=text_valid||macro_number;number0<=macro_number||audio_number;
-   digit0<=macro_number ? number_char : audio_number_char;
+   tv0<=text_valid||macro_number;number0<=macro_number;digit0<=number_char;
    rx0<=macro_number ? in_x[3:0] : text_rx;ry0<=macro_number ? ((in_y-248)&63) : text_ry;
    large0<=!macro_number && text_large;
    h1<=h0;b1<=b0;fg1<=fg0;
    tv1<=tv0 && (large0 ? (rx0<14 && ry0<20) : (rx0<12 && ry0<16));
-   number1<=number0;digit1<=digit0;
+   number1<=number0||audio_number;digit1<=number0 ? digit0 : audio_number_char;
    glyph_x1<=glyph_x(large0,rx0);glyph_y1<=glyph_y(large0,ry0);
    h2<=h1;b2<=b1;fg2<=fg1;
    glyph_row2<=get_font_7x10_row(ch1,glyph_y1);glyph_x2<=glyph_x1;glyph_valid2<=tv1;

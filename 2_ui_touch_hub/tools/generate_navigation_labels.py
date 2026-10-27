@@ -9,7 +9,8 @@ def main():
     named={}
     def add(condition,x,y,text,large=False,color='DDE7F4',name=None):
         if name:named[name]=len(lines)
-        lines.append((condition.replace('view','text_view'),x,y,text.replace('/',':'),large,color))
+        condition=condition.replace('view','text_view').replace('usb_connected','text_usb_connected').replace('usb_error','text_usb_error')
+        lines.append((condition,x,y,text.replace('/',':'),large,color))
     add('1',44,16,'MENU')
     add('1',136,14,'SYNTHESIZER')
     add('1',344,14,'VISUALIZATION')

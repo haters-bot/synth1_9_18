@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 module tb_audio_visual_windows;
  reg clk=0,rst_n=0,audio_sample_valid=0,audio_link_up=0;
+ reg usb_connected=0,usb_error=0;
  reg signed [15:0] audio_sample=0;
  reg [13:0] x=0,y=0;
  wire hit;wire [23:0] rgb;
@@ -8,12 +9,15 @@ module tb_audio_visual_windows;
  integer glyph,heading,px,py,cell_checks=0;
  reg [1:0] expected_coverage,actual_coverage;
  integer stream_checks=0,j;
+ integer char_x,char_y,char_id,char_alpha;
+ reg [23:0] char_background;
+ reg [1:0] char_coverage;
  reg stream_check=0;
  reg [23:0] expected_pixel;
  reg [23:0] pixel_history[0:4];
  ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),
   .view(2'd1),.settings_section_id(8'd1),.show_diagnostics(1'b0),
-  .usb_connected(1'b0),.usb_error(1'b0),.macro_values(28'd0),
+  .usb_connected(usb_connected),.usb_error(usb_error),.macro_values(28'd0),
   .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),
   .audio_right_sample(audio_sample),.audio_stereo_valid(audio_sample_valid),
   .audio_link_up(audio_link_up),.out_hit(hit),.out_rgb(rgb));
@@ -76,6 +80,13 @@ module tb_audio_visual_windows;
     $fatal(1,"Character ROM differs from reference at address %0d",i);
   $display("PASS: all 8192 synchronous character ROM entries match the original decoder");
   repeat(5)@(negedge clk);rst_n=1;audio_link_up=1;
+  #3;usb_connected=1;
+  @(negedge clk);if(dut.text_usb_connected)$fatal(1,"USB status bypassed first synchronizer stage");
+  @(negedge clk);if(!dut.text_usb_connected)$fatal(1,"USB status did not reach pixel domain");
+  #3;usb_error=1;
+  @(negedge clk);if(dut.text_usb_error)$fatal(1,"USB error bypassed synchronizer");
+  @(negedge clk);if(!dut.text_usb_error)$fatal(1,"USB error did not synchronize");
+  usb_error=0;
   send_samples(16'sd4096,1023);
   if(dut.waveform_ready || dut.metrics_ready) $fatal(1,"History/meter became ready too early");
   send_samples(16'sd4096,1);
@@ -93,6 +104,27 @@ module tb_audio_visual_windows;
   if(dut.correlation_x!=1184)$fatal(1,"Positive stereo cursor overflowed");
   pixel(140,248,24'h61DED1);pixel(140,200,24'h0B131D);
   digit_cell(318,198,6'd28);digit_cell(334,198,6'd35);digit_cell(366,198,6'd28);
+  // Change digit, x and y on every clock. Settled cell checks alone would
+  // miss mixing registered glyph coordinates with the adjacent character.
+  @(negedge clk);stream_checks=0;stream_check=1;
+  for(i=0;i<576;i=i+1)begin
+   char_x=(i*37)%12;char_y=(i*13)%16;
+   case(i%3)
+    0:begin x=318+char_x;char_id=28;end
+    1:begin x=334+char_x;char_id=35;end
+    2:begin x=366+char_x;char_id=28;end
+   endcase
+   y=198+char_y;
+   char_background=(x%64==0 || y%64==0) ? 24'h152331 : 24'h0B131D;
+   char_coverage=dut.navigation_font(char_id,1'b0,char_x,char_y);
+   char_alpha=char_coverage==3 ? 4 : char_coverage==2 ? 3 : char_coverage;
+   expected_pixel[23:16]=(97*char_alpha+char_background[23:16]*(4-char_alpha))/4;
+   expected_pixel[15:8]=(222*char_alpha+char_background[15:8]*(4-char_alpha))/4;
+   expected_pixel[7:0]=(209*char_alpha+char_background[7:0]*(4-char_alpha))/4;
+   @(negedge clk);
+  end
+  stream_check=0;
+  $display("PASS: two-stage USB status crossing and 576 per-clock measured numeric glyph pixels");
   pixel(1064,500,24'h65CDA4);pixel(1220,500,24'h26394B);
   pixel(1064,536,24'h61DED1);pixel(1064,572,24'h26394B);
   @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
@@ -111,7 +143,7 @@ module tb_audio_visual_windows;
   pixel(496,248,24'h61DED1);pixel(750,185,24'h61DED1);
   // Vary addresses and expected colors on every pixel clock: a misplaced
   // RAM-read stage must fail even when the output later settles correctly.
-  @(negedge clk);stream_check=1;
+  @(negedge clk);stream_checks=0;stream_check=1;
   for(i=0;i<80;i=i+1)begin
    case(i%4)
     0:begin x=496;y=248;expected_pixel=24'h61DED1;end
