@@ -14,12 +14,15 @@ module audio_fft_analyzer #(
  output reg [5:0] history_value,
  output reg ready,
  output reg frame_valid,
- output reg [4:0] peak_band
+ output reg [4:0] peak_band,
+ output reg peak_valid,
+ output reg [9:0] peak_bin,
+ output reg [15:0] peak_hz,centroid_hz
 );
  localparam CAPTURE=0,WINDOW=1,STORE=2,SETUP=3,READ_A=4,READ_B=5,MULT=6,
             ROTATE=7,SUM=8,WRITE_A=9,WRITE_B=10,SCAN_SET=11,SCAN_READ=12,
             SCAN_ACC=13,PUBLISH=14,SCAN_MAG=15,SCAN_LOG=16,
-            SCAN_SCALE=17,SCAN_LEVEL=18;
+            SCAN_SCALE=17,SCAN_LEVEL=18,CENTROID_START=19,CENTROID_DIV=20;
  reg [4:0] state;
  // Single-write, synchronous-read ping-pong banks fit Gowin's block RAM
  // inference. A simultaneous two-write coding style expanded into flip-flops.
@@ -135,6 +138,16 @@ module audio_fft_analyzer #(
  reg [6:0] history_count;
  reg [7:0] history_frames;
  reg [4:0] frame_peak_band;
+ reg [9:0] frame_peak_bin;
+ reg [16:0] frame_max;
+ reg [26:0] magnitude_sum,weighted_registered;
+ reg [35:0] weighted_sum;
+ reg [47:0] centroid_dividend,centroid_quotient;
+ reg [27:0] centroid_remainder;
+ reg [5:0] centroid_step;
+ wire [27:0] centroid_shift={centroid_remainder[26:0],centroid_dividend[47]};
+ wire centroid_take=centroid_shift>={1'b0,magnitude_sum};
+ wire [47:0] centroid_next={centroid_quotient[46:0],centroid_take};
  wire write_history=history_frames==HISTORY_HOP-1;
  wire [5:0] history_read_column=history_write+history_column;
  always @(posedge clk)begin
@@ -156,11 +169,15 @@ module audio_fft_analyzer #(
    ready<=0;frame_valid<=0;spectrum_bank<=0;history_write<=0;history_count<=0;
    history_frames<=0;publish_band<=0;scan_bin<=1;scan_band<=0;band_peak<=0;
    peak_band<=0;frame_peak_band<=0;
+   peak_valid<=0;peak_bin<=0;peak_hz<=0;centroid_hz<=0;
+   frame_max<=0;frame_peak_bin<=0;magnitude_sum<=0;weighted_sum<=0;
   end else if(!link_up)begin
    state<=CAPTURE;capture_index<=0;ready<=0;frame_valid<=0;
    source_bank<=0;
    spectrum_bank<=0;history_write<=0;history_count<=0;history_frames<=0;
    peak_band<=0;frame_peak_band<=0;
+   peak_valid<=0;peak_bin<=0;peak_hz<=0;centroid_hz<=0;
+   frame_max<=0;frame_peak_bin<=0;magnitude_sum<=0;weighted_sum<=0;
   end else begin
    frame_valid<=0;
    case(state)
@@ -198,13 +215,21 @@ module audio_fft_analyzer #(
        stage<=stage+1'b1;half_size<=half_size<<1;group_base<=0;source_bank<=!source_bank;
       end else begin
        source_bank<=!source_bank;scan_bin<=1;scan_band<=0;band_peak<=0;state<=SCAN_SET;
+       frame_max<=0;frame_peak_band<=0;frame_peak_bin<=0;magnitude_sum<=0;weighted_sum<=0;
       end
      end
     end
     SCAN_SET:begin read_address<=scan_bin;state<=SCAN_READ;end
     SCAN_READ:state<=SCAN_MAG;
-    SCAN_MAG:begin magnitude_registered<=magnitude;state<=SCAN_ACC;end
+    SCAN_MAG:begin
+     magnitude_registered<=magnitude;weighted_registered<=scan_bin*magnitude;state<=SCAN_ACC;
+    end
     SCAN_ACC:begin
+     magnitude_sum<=magnitude_sum+{10'd0,magnitude_registered};
+     weighted_sum<=weighted_sum+{9'd0,weighted_registered};
+     if(magnitude_registered>frame_max)begin
+      frame_max<=magnitude_registered;frame_peak_bin<=scan_bin;frame_peak_band<=scan_band;
+     end
      if(scan_bin+10'd1==band_end(scan_band))begin
       display_peak<=next_peak;band_peak<=0;state<=SCAN_LOG;
      end else begin
@@ -224,16 +249,30 @@ module audio_fft_analyzer #(
      bands[scan_band]<=display_floor ? 6'd0 :
                        display_scaled>63 ? 6'd63 : display_scaled[5:0];
      scan_band<=scan_band+1'b1;
-     if(scan_bin==511)begin publish_band<=0;state<=PUBLISH;end
+     if(scan_bin==511)begin publish_band<=0;state<=CENTROID_START;end
      else begin scan_bin<=scan_bin+1'b1;state<=SCAN_SET;end
     end
+    CENTROID_START:begin
+     // Magnitude-weighted centroid (L1 bin magnitude), not power centroid.
+     // Native 96 kHz / 1024 = 375/4 Hz per FFT bin. Preserve fractional bins
+     // through the weighted sum before the final integer-Hz division.
+     centroid_dividend<=({12'd0,weighted_sum}*48'd375)>>2;
+     centroid_quotient<=0;centroid_remainder<=0;centroid_step<=0;state<=CENTROID_DIV;
+    end
+    CENTROID_DIV:begin
+     centroid_dividend<=centroid_dividend<<1;centroid_quotient<=centroid_next;
+     centroid_remainder<=centroid_take ? centroid_shift-{1'b0,magnitude_sum} : centroid_shift;
+     centroid_step<=centroid_step+1'b1;
+     if(centroid_step==47)begin
+      centroid_hz<=frame_max<16 || magnitude_sum==0 ? 16'd0 : centroid_next[15:0];
+      state<=PUBLISH;
+     end
+    end
     PUBLISH:begin
-     if(publish_band==0)frame_peak_band<=0;
-     else if(bands[publish_band]>bands[frame_peak_band])
-      frame_peak_band<=publish_band[4:0];
      publish_band<=publish_band+1'b1;
      if(publish_band==31)begin
-      peak_band<=bands[31]>bands[frame_peak_band] ? 5'd31 : frame_peak_band;
+      peak_band<=frame_peak_band;peak_bin<=frame_peak_bin;peak_valid<=frame_max>=16;
+      peak_hz<=frame_max<16 ? 16'd0 : ({22'd0,frame_peak_bin}*32'd375)>>2;
       spectrum_bank<=!spectrum_bank;ready<=1;frame_valid<=1;
       if(write_history)begin
        history_frames<=0;history_write<=history_write+1'b1;

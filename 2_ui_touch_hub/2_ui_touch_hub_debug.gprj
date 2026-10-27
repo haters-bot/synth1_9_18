@@ -48,6 +48,8 @@
         <File path="rtl/audio/audio_fft_tables.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_fft_analyzer.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_phase_plot.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_pcm_metrics.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_waveform_capture.v" type="file.verilog" enable="1"/>
         <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
         <File path="rtl/midi_uart_tx/midi_uart_tx.v" type="file.verilog" enable="1"/>
         <File path="rtl/debug/ui_debug_trace.v" type="file.verilog" enable="1"/>

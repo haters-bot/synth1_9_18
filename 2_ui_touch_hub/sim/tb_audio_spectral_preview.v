@@ -35,16 +35,24 @@ module tb_audio_spectral_preview;
   input integer sx,sy;
   integer tile,tx,ty,col,row,level,addr;reg active;reg [23:0] color;
   begin
-   tile=sx>=860 ? 2 : sx>=442 ? 4 : 3;
+   tile=sx<420 ? (sy<376 ? 0 : 3) : sx>=860 ? 2 : 4;
    tx=24+(tile%3)*418;ty=96+(tile/3)*296;
    color=(sx==tx+198 || sy==ty+140) ? 24'h26394B :
           (sx%64==0 || sy%64==0) ? 24'h152331 : 24'h0B131D;
-   if(tile==2)begin
+   if(tile==0)begin
+    addr=(sx-140)*(sx-140)+(sy-248)*(sy-248);
+    level=8+((dut.metrics_rms_l>dut.metrics_rms_r ? dut.metrics_rms_l : dut.metrics_rms_r)>>10);
+    if(addr>=2809&&addr<=3600)
+     color=dut.metrics_clip!=0 ? 24'hE87565 : dut.metrics_transient!=0 ? 24'hF5D36A : 24'h368DAC;
+    if((dut.metrics_rms_l>=8||dut.metrics_rms_r>=8)&&addr<=level*level)color=24'h61DED1;
+   end else if(tile==2)begin
     addr=((sy-184)/2)*128+(sx-930)/2;
     if(dut.u_phase.memory[dut.u_phase.display_bank*8192+addr])color=24'h67CDE0;
    end else if(tile==3)begin
     col=(sx-94)/8;level=dut.u_spectrum.spectrum_memory[dut.u_spectrum.spectrum_bank*32+col];
-    if((sx-94)%8<6 && level!=0 && sy>616-2*level)color=24'h65CDA4;
+    if((sx-94)%8<6 && level!=0 && sy>616-2*level &&
+       col==dut.u_spectrum.peak_band)color=24'hF5D36A;
+    else if((sx-94)%8<6 && level!=0 && sy>616-2*level)color=24'h65CDA4;
    end else begin
     col=(sx-512)/4;row=31-(sy-480)/4;
     addr=((dut.u_spectrum.history_write+col)%64)*32+row;
@@ -76,15 +84,20 @@ module tb_audio_spectral_preview;
    $fatal(1,"Preview did not fill real PCM data structures");
   checking=1;
   for(k=0;k<4096;k=k+1)begin
-   case(k%3)
+   case(k%4)
     0:begin x=930+(k*37)%256;y=184+(k*13)%128;end
     1:begin x=94+(k*29)%256;y=480+(k*17)%137;end
     2:begin x=512+(k*19)%256;y=480+(k*23)%128;end
+    3:begin x=64+(k*11)%152;y=184+(k*7)%128;end
    endcase
    expected=reference(x,y);@(negedge clk);
   end
   checking=0;
-  $display("PASS: 4096 per-clock phase/spectrum/history raster alignment checks");
+  $display("PASS: 4096 per-clock energy/phase/spectrum/history raster alignment checks");
+  x=94+dut.spectrum_peak_band*8+2;
+  y=80;repeat(7)@(negedge clk);if(rgb!==24'h101318)$fatal(1,"Peak marker leaked above tiles");
+  y=384;repeat(7)@(negedge clk);if(rgb!==24'h101318)$fatal(1,"Peak marker leaked across tile gap");
+  y=680;repeat(7)@(negedge clk);if(rgb!==24'h101318)$fatal(1,"Peak marker leaked below tiles");
   fd=$fopen("frame.ppm","wb");$fwrite(fd,"P6\n1280 720\n255\n");
   for(py=0;py<720;py=py+1)for(px=0;px<1280;px=px+1)begin
    @(negedge clk);x=px;y=py;rendering=1;

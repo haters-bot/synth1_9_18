@@ -15,6 +15,7 @@ module tb_audio_visual_windows;
   .view(2'd1),.settings_section_id(8'd1),.show_diagnostics(1'b0),
   .usb_connected(1'b0),.usb_error(1'b0),.macro_values(28'd0),
   .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),
+  .audio_right_sample(audio_sample),.audio_stereo_valid(audio_sample_valid),
   .audio_link_up(audio_link_up),.out_hit(hit),.out_rgb(rgb));
  always #10 clk=~clk;
  always @(posedge clk)if(stream_check)begin
@@ -61,35 +62,44 @@ module tb_audio_visual_windows;
   $display("PASS: all 8192 synchronous character ROM entries match the original decoder");
   repeat(5)@(negedge clk);rst_n=1;audio_link_up=1;
   send_samples(16'sd4096,1023);
-  if(dut.waveform_ready || dut.meter_peak!=0) $fatal(1,"History/meter became ready too early");
+  if(dut.waveform_ready || dut.metrics_ready) $fatal(1,"History/meter became ready too early");
   send_samples(16'sd4096,1);
-  if(!dut.waveform_ready || dut.waveform_write!=0) $fatal(1,"History did not become ready after 1024 source samples");
-  if(dut.meter_peak!=32 || dut.meter_avg!=32 || dut.clip_hold!=0) $fatal(1,"Constant PCM level calculation failed");
-  for(i=0;i<128;i=i+1)if(dut.waveform_memory[i]!==8'h10) $fatal(1,"History location %0d invalid",i);
+  if(!dut.waveform_ready) $fatal(1,"History did not become ready after 1024 source samples");
+  for(i=0;i<128;i=i+1)if(dut.u_waveform.memory[{dut.u_waveform.display_bank,7'd0}+i]!==8'h10)
+   $fatal(1,"Snapshot location %0d invalid",i);
   pixel(496,240,24'h61DED1);pixel(750,240,24'h61DED1);
   pixel(496,260,24'h0B131D);
-  pixel(913,500,24'h65CDA4);pixel(976,500,24'h26394B);
-  pixel(913,536,24'h65CDA4);pixel(913,572,24'h26394B);
+  repeat(200)@(negedge clk);
+  if(!dut.metrics_ready || dut.metrics_rms_l!=4096 || dut.metrics_rms_r!=4096)
+   $fatal(1,"Real stereo metrics not integrated");
+  if(dut.audio_digits[0]!==20'h00181 || dut.audio_digits[1]!==20'h00181 ||
+     dut.audio_digits[5]!==20'h00100 || dut.audio_digits[6]!==20'h00000)
+   $fatal(1,"Cached displayed numbers are incorrect");
+  if(dut.correlation_x!=1184)$fatal(1,"Positive stereo cursor overflowed");
+  pixel(140,248,24'h61DED1);pixel(140,200,24'h0B131D);
+  pixel(1064,500,24'h65CDA4);pixel(1220,500,24'h26394B);
+  pixel(1064,536,24'h61DED1);pixel(1064,572,24'h26394B);
+  @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
   send_samples(-16'sd32768,1024);
-  if(dut.meter_peak!=255 || dut.meter_avg!=255 || dut.clip_hold!=48) $fatal(1,"Negative full scale overflow or clip detection failed");
-  pixel(496,312,24'h61DED1);pixel(913,572,24'hE87565);
-  send_samples(16'sd0,1024);
-  if(dut.meter_peak!=224 || dut.meter_avg!=0 || dut.clip_hold!=47) $fatal(1,"Peak release/average silence/clip hold failed");
-  pixel(496,248,24'h61DED1);pixel(913,536,24'h26394B);
-  // A nonuniform ring verifies read addressing and both plotted edges.
+  repeat(200)@(negedge clk);
+  pixel(496,312,24'h61DED1);pixel(1220,500,24'h65CDA4);
+  if(dut.metrics_clip!=48)$fatal(1,"New clipping indicator missing");
+  send_samples(16'sd0,2048); // auto-trigger then a complete silent capture
+  repeat(200)@(negedge clk);
+  pixel(496,248,24'h61DED1);pixel(1064,536,24'h26394B);
+  // A nonuniform snapshot verifies read addressing and both plotted edges.
+  @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
   for(i=0;i<128;i=i+1) send_samples(i*256,8);
   pixel(496,248,24'h61DED1);pixel(750,185,24'h61DED1);
   send_samples(-16'sd16384,8);
-  if(dut.waveform_write!=1 || dut.waveform_memory[0]!==8'hC0) $fatal(1,"History wrap failed");
-  pixel(496,248,24'h61DED1);pixel(750,280,24'h61DED1);
-  pixel(750,240,24'h61DED1); // segment between adjacent real samples
+  pixel(496,248,24'h61DED1);pixel(750,185,24'h61DED1);
   // Vary addresses and expected colors on every pixel clock: a misplaced
   // RAM-read stage must fail even when the output later settles correctly.
   @(negedge clk);stream_check=1;
   for(i=0;i<80;i=i+1)begin
    case(i%4)
     0:begin x=496;y=248;expected_pixel=24'h61DED1;end
-    1:begin x=750;y=280;expected_pixel=24'h61DED1;end
+    1:begin x=750;y=185;expected_pixel=24'h61DED1;end
     2:begin x=496;y=260;expected_pixel=24'h0B131D;end
     3:begin x=750;y=320;expected_pixel=24'h152331;end // y=320 is a grid line
    endcase
@@ -97,9 +107,11 @@ module tb_audio_visual_windows;
   end
   stream_check=0;
   @(negedge clk);audio_link_up=0;repeat(8)@(negedge clk);
-  if(dut.waveform_ready || dut.meter_peak || dut.meter_avg || dut.clip_hold) $fatal(1,"Stale audio remained after disconnect");
-  pixel(496,248,24'hD5AD78);pixel(913,500,24'h26394B);
-  $display("PASS: live PCM waveform history, synchronous read alignment, peak/average/clip meters and disconnect clearing");
+  if(dut.waveform_ready || dut.metrics_ready || dut.metrics_clip) $fatal(1,"Stale audio remained after disconnect");
+  pixel(496,248,24'hD5AD78);pixel(1064,500,24'h26394B);
+  pixel(140,248,24'h0B131D); // no fabricated notes/energy on disconnect
+  pixel(169,400,24'h1B2B3C); // peak marker must not cross tile headings
+  $display("PASS: immutable triggered PCM snapshots, energy ring, RMS/dBFS digits, stereo cursor, meters and disconnect clearing");
   $finish;
  end
  initial begin #2000000;$fatal(1,"Visual windows watchdog");end

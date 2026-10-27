@@ -23,28 +23,12 @@ module ui_navigation_renderer(
  always @(posedge clk or negedge rst_n)
   if(!rst_n)text_view<=0;else text_view<=view;
  `include "navigation_font_hd.vh"
- `include "navigation_labels.vh"
  reg hit;reg [23:0] bg;
  reg [1:0] macro_row;
  reg macro_number;
  reg [6:0] number;
  reg [5:0] number_char;
- reg [7:0] waveform_memory[0:127];
- reg [7:0] waveform_previous[0:127];
- reg [7:0] waveform_last;
- reg [6:0] waveform_write,waveform_count;
- reg [2:0] waveform_decimate;
- reg waveform_ready;
- reg [9:0] meter_count;
- reg [7:0] peak_acc,meter_peak,meter_avg;
- reg [17:0] abs_acc;
- reg clip_acc;
- reg [5:0] clip_hold;
- wire [15:0] sample_abs=audio_sample[15] ? (~audio_sample+16'd1) : audio_sample;
- wire [7:0] sample_level=sample_abs[15] ? 8'd255 : sample_abs[14:7];
- wire [7:0] peak_next=sample_level>peak_acc ? sample_level : peak_acc;
- wire [17:0] abs_next=abs_acc+{10'd0,sample_level};
- wire clip_next=clip_acc || sample_abs>=16'h7FF0;
+ wire waveform_ready;
 
  reg [4:0] spectrum_address0,history_band0;
  reg [5:0] history_column0;
@@ -52,62 +36,98 @@ module ui_navigation_renderer(
  wire [5:0] spectrum_value,history_value;
  wire spectrum_ready,phase_ready,phase_pixel;
  wire [4:0] spectrum_peak_band;
+ wire spectrum_peak_valid,spectrum_frame_valid;
+ wire [9:0] spectrum_peak_bin;
+ wire [15:0] spectrum_peak_hz,spectrum_centroid_hz;
+ wire metrics_ready,metrics_frame_valid,metrics_corr_valid;
+ wire [15:0] metrics_rms_l,metrics_rms_r,metrics_peak_l,metrics_peak_r,metrics_peak_hold;
+ wire signed [11:0] metrics_rms_db,metrics_peak_db,metrics_hold_db;
+ wire [11:0] metrics_crest;
+ wire signed [7:0] metrics_corr,metrics_balance;
+ wire [5:0] metrics_clip;
+ wire [3:0] metrics_transient;
+ `include "navigation_labels.vh"
+ audio_pcm_metrics u_metrics(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
+  .ready(metrics_ready),.frame_valid(metrics_frame_valid),.rms_left(metrics_rms_l),.rms_right(metrics_rms_r),
+  .peak_left(metrics_peak_l),.peak_right(metrics_peak_r),.peak_hold(metrics_peak_hold),
+  .rms_db10(metrics_rms_db),.peak_db10(metrics_peak_db),.hold_db10(metrics_hold_db),.crest_db10(metrics_crest),
+  .correlation(metrics_corr),.balance(metrics_balance),.correlation_valid(metrics_corr_valid),
+  .clip_hold(metrics_clip),.transient_hold(metrics_transient));
  audio_fft_analyzer u_spectrum(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
   .sample_valid(audio_sample_valid),.sample(audio_sample),
   .spectrum_address(spectrum_address0),.spectrum_value(spectrum_value),
   .history_column(history_column0),.history_band(history_band0),
-  .history_value(history_value),.ready(spectrum_ready),.frame_valid(),
-  .peak_band(spectrum_peak_band));
+  .history_value(history_value),.ready(spectrum_ready),.frame_valid(spectrum_frame_valid),
+  .peak_band(spectrum_peak_band),.peak_valid(spectrum_peak_valid),.peak_bin(spectrum_peak_bin),
+  .peak_hz(spectrum_peak_hz),.centroid_hz(spectrum_centroid_hz));
  audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
   .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
   .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready));
 
- // 128 samples, every eighth PCM word: 10.67 ms at the source's 96 kHz.
- // Address, synchronous RAM read and pixel test occupy separate existing
- // navigation stages. RAM contents need no reset: ready gates all reads
- // until a complete history has been written.
- always @(posedge clk) begin
-  if(rst_n && audio_link_up && audio_sample_valid && waveform_decimate==3'd7) begin
-   waveform_memory[waveform_write]<=audio_sample[15:8];
-   waveform_previous[waveform_write]<=waveform_last;
+ // Convert seven changing values in parallel, one binary bit per clock.
+ // The raster only selects precomputed digit nibbles; no / or log in pixels.
+ function [19:0] decimal_step;
+  input [19:0] digits;input bit_value;
+  integer d;reg [19:0] adjusted;
+  begin
+   adjusted=digits;
+   for(d=0;d<5;d=d+1)if(digits[d*4+:4]>=5)adjusted[d*4+:4]=digits[d*4+:4]+4'd3;
+   decimal_step={adjusted[18:0],bit_value};
   end
- end
- always @(posedge clk or negedge rst_n) begin
-  if(!rst_n) begin
-   waveform_write<=0;waveform_decimate<=0;waveform_last<=0;
-   waveform_count<=0; waveform_ready<=0;
-   meter_count<=0;peak_acc<=0;abs_acc<=0;clip_acc<=0;
-   meter_peak<=0;meter_avg<=0;clip_hold<=0;
-  end else if(!audio_link_up) begin
-   waveform_write<=0;waveform_decimate<=0;waveform_last<=0;
-   waveform_count<=0;waveform_ready<=0;
-   meter_count<=0;peak_acc<=0;abs_acc<=0;clip_acc<=0;
-   meter_peak<=0;meter_avg<=0;clip_hold<=0;
-  end else if(audio_sample_valid) begin
-   waveform_decimate<=waveform_decimate+1'b1;
-   if(waveform_decimate==3'd7) begin
-    waveform_last<=audio_sample[15:8];
-    waveform_write<=waveform_write+1'b1;
-    if(!waveform_ready) begin
-     if(waveform_count==7'd127) waveform_ready<=1'b1;
-     else waveform_count<=waveform_count+1'b1;
+ endfunction
+ reg [16:0] decimal_binary[0:6];
+ reg [19:0] decimal_work[0:6],audio_digits[0:6];
+ reg decimal_busy;
+ reg [4:0] decimal_bit;
+ reg corr_negative,bal_negative,corr_pending_sign,bal_pending_sign;
+ reg [7:0] peak_width,rms_width,hold_width,crest_width;
+ reg [13:0] correlation_x;
+ reg [12:0] energy_radius2;
+ integer decimal_index;
+ wire [15:0] energy_rms=metrics_rms_l>metrics_rms_r ? metrics_rms_l : metrics_rms_r;
+ wire [6:0] energy_radius=7'd8+{1'b0,energy_rms[15:10]};
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin
+   decimal_busy<=0;decimal_bit<=0;corr_negative<=0;bal_negative<=0;
+   peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;correlation_x<=1058;energy_radius2<=64;
+   for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
+  end else if(!audio_link_up)begin
+   decimal_busy<=0;peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;
+   correlation_x<=1058;energy_radius2<=64;corr_negative<=0;bal_negative<=0;
+   for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
+  end else begin
+   if(metrics_frame_valid)begin
+    peak_width<=(12'sd960+metrics_peak_db)/12'd6;
+    rms_width<=(12'sd960+metrics_rms_db)/12'd6;
+    hold_width<=metrics_hold_db>=0 ? 8'd159 : (12'sd960+metrics_hold_db)/12'd6;
+    crest_width<=metrics_crest>=240 ? 8'd160 : (metrics_crest*12'd2)/12'd3;
+    correlation_x<=32'sd1058+($signed(metrics_corr)*32'sd126)/32'sd100;
+    energy_radius2<=energy_radius*energy_radius;
+   end
+   if(!decimal_busy && (metrics_frame_valid || spectrum_frame_valid))begin
+    decimal_busy<=1;decimal_bit<=0;
+    decimal_binary[0]<=-metrics_rms_db;decimal_binary[1]<=-metrics_peak_db;
+    decimal_binary[2]<=metrics_crest;
+    decimal_binary[3]<=spectrum_peak_hz;decimal_binary[4]<=spectrum_centroid_hz;
+    decimal_binary[5]<=metrics_corr[7] ? -metrics_corr : metrics_corr;
+    decimal_binary[6]<=metrics_balance[7] ? -metrics_balance : metrics_balance;
+    corr_pending_sign<=metrics_corr[7];bal_pending_sign<=metrics_balance[7];
+    for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)decimal_work[decimal_index]<=0;
+   end else if(decimal_busy)begin
+    decimal_bit<=decimal_bit+1'b1;
+    for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)begin
+     decimal_work[decimal_index]<=decimal_step(decimal_work[decimal_index],decimal_binary[decimal_index][16]);
+     decimal_binary[decimal_index]<=decimal_binary[decimal_index]<<1;
+     if(decimal_bit==16)audio_digits[decimal_index]<=decimal_step(decimal_work[decimal_index],decimal_binary[decimal_index][16]);
+    end
+    if(decimal_bit==16)begin
+     decimal_busy<=0;corr_negative<=corr_pending_sign;bal_negative<=bal_pending_sign;
     end
    end
-   meter_count<=meter_count+1'b1;
-   if(meter_count==10'd1023) begin
-    peak_acc<=0;abs_acc<=0;clip_acc<=0;
-    // Peak has an immediate attack and a gradual release per PCM window.
-    if(peak_next>=meter_peak) meter_peak<=peak_next;
-    else if(meter_peak<8'd8) meter_peak<=meter_peak-1'b1;
-    else meter_peak<=meter_peak-(meter_peak>>3);
-    meter_avg<=abs_next[17:10];
-    if(clip_next) clip_hold<=6'd48;
-    else if(clip_hold!=0) clip_hold<=clip_hold-1'b1;
-   end else begin
-    peak_acc<=peak_next;abs_acc<=abs_next;clip_acc<=clip_next;
-   end
   end
  end
+
  wire master_hole=view==0 && in_x>=1140 && in_x<=1230 && in_y<44;
  wire [23:0] tile_color[0:5];
  wire [23:0] tile_demo_color[0:5];
@@ -125,58 +145,44 @@ module ui_navigation_renderer(
   wire [7:0] gy=in_y-(Y+80);
   wire graph_area=plot && in_y>=Y+80 && in_y<Y+232;
   if(tile==0)begin: live_overview
-   wire bars=(in_x>=X+48 && in_x<=X+176 && in_y>=Y+106 && in_y<=Y+114) ||
-             (in_x>=X+96 && in_x<=X+232 && in_y>=Y+130 && in_y<=Y+138) ||
-             (in_x>=X+144 && in_x<=X+320 && in_y>=Y+154 && in_y<=Y+162);
-   wire keys=in_y>=Y+176 && in_y<=Y+220 && in_x>=X+24 && in_x<=X+372;
-   wire black_key=keys && in_y<Y+205 &&
-      ((in_x>=X+42&&in_x<=X+53)||(in_x>=X+72&&in_x<=X+83)||
-       (in_x>=X+132&&in_x<=X+143)||(in_x>=X+162&&in_x<=X+173)||
-       (in_x>=X+192&&in_x<=X+203)||(in_x>=X+252&&in_x<=X+263)||
-       (in_x>=X+282&&in_x<=X+293)||(in_x>=X+312&&in_x<=X+323));
-   wire overview_ready=audio_link_up&&waveform_ready;
-   wire overview_wait=audio_link_up&&!waveform_ready;
-   wire [8:0] overview_x=in_x-(X+48);
-   wire overview_peak=overview_ready && in_y>=Y+106 && in_y<=Y+116 &&
-                       overview_x<{1'b0,meter_peak};
-   wire overview_avg=overview_ready && in_y>=Y+132 && in_y<=Y+142 &&
-                      overview_x<{1'b0,meter_avg};
-   wire overview_clip=overview_ready && in_y>=Y+180 && in_y<=Y+194 &&
-                       overview_x<({1'b0,clip_hold}<<2);
-   wire overview_wait_line=overview_wait && in_y>=Y+140 && in_y<=Y+144 &&
-                            in_x>=X+48 && in_x<=X+304;
-   assign tile_demo_hit[tile]=overview_ready ? graph_area &&
-       (overview_peak||overview_avg||overview_clip) :
-       overview_wait_line ? 1'b1 : graph_area&&(bars||keys);
-   assign tile_demo_color[tile]=overview_ready ?
-       (overview_clip ? 24'hE87565 : overview_peak ? 24'h65CDA4 :
-        overview_avg ? 24'h61DED1 : 24'h26394B) :
-       overview_wait_line ? 24'hD5AD78 :
-       (bars?24'h57C9C0:black_key?24'h35536A:24'hB8CADB);
+   // The measured energy ring is pipelined below with the other RAM plots.
+   wire channel_l=audio_link_up&&metrics_ready&&metrics_rms_l>=8;
+   wire channel_r=audio_link_up&&metrics_ready&&metrics_rms_r>=8;
+   wire lamp_l=in_x>=262&&in_x<278&&in_y>=296&&in_y<308;
+   wire lamp_r=in_x>=342&&in_x<358&&in_y>=296&&in_y<308;
+   assign tile_demo_hit[tile]=lamp_l||lamp_r;
+   assign tile_demo_color[tile]=(lamp_l&&channel_l)||(lamp_r&&channel_r) ? 24'h61DED1 : 24'h26394B;
   end else if(tile==1)begin: live_waveform
    wire live_wave=audio_link_up&&waveform_ready;
+   wire [6:0] held_amplitude=metrics_peak_hold[15:9];
+   wire hold_line=live_wave&&metrics_ready&&metrics_peak_hold!=0&&in_x>=496&&in_x<752&&
+       in_x[3:0]<4&&(in_y==14'd248-held_amplitude||in_y==14'd248+held_amplitude);
    // The live trace is composed after the registered RAM read below.
-   assign tile_demo_hit[tile]=graph_area && !live_wave && gy>=8'd70 && gy<=8'd74;
-   assign tile_demo_color[tile]=24'hD5AD78;
+   assign tile_demo_hit[tile]=hold_line||(graph_area && !live_wave && gy>=8'd70 && gy<=8'd74);
+   assign tile_demo_color[tile]=hold_line ? 24'hF5D36A : 24'hD5AD78;
   end else if(tile==2)begin: live_phase
-   assign tile_demo_hit[tile]=1'b0;
-   assign tile_demo_color[tile]=24'h67CDE0;
+   wire strip=in_x>=932&&in_x<1186&&in_y>=322&&in_y<330;
+   wire cursor=metrics_corr_valid&&audio_link_up&&in_x>=correlation_x&&in_x<correlation_x+4;
+   assign tile_demo_hit[tile]=strip;
+   assign tile_demo_color[tile]=cursor ? (metrics_corr<0 ? 24'hE87565 : 24'h65CDA4) : 24'h26394B;
   end else if(tile==3)begin: live_spectrum
    assign tile_demo_hit[tile]=1'b0;
    assign tile_demo_color[tile]=24'h65CDA4;
   end else if(tile==4)begin: live_spectrogram
-   assign tile_demo_hit[tile]=1'b0;
-   assign tile_demo_color[tile]=24'h368DAC;
+   wire legend=in_x>=512&&in_x<768&&in_y>=618&&in_y<626;
+   assign tile_demo_hit[tile]=legend;
+   assign tile_demo_color[tile]=heat_color((in_x-14'd512)>>2);
   end else begin: live_levels
-   wire bar1=in_y>=Y+108&&in_y<=Y+125&&in_x>=X+52&&in_x<X+308;
-   wire bar2=in_y>=Y+144&&in_y<=Y+161&&in_x>=X+52&&in_x<X+308;
-   wire bar3=in_y>=Y+180&&in_y<=Y+197&&in_x>=X+52&&in_x<X+308;
-   wire [8:0] level_x=in_x-(X+52);
-   wire fill1=bar1&&audio_link_up&&level_x<{1'b0,meter_peak};
-   wire fill2=bar2&&audio_link_up&&level_x<{1'b0,meter_avg};
-   wire fill3=bar3&&audio_link_up&&clip_hold!=0;
+   wire bar1=in_y>=490&&in_y<506&&in_x>=1064&&in_x<1224;
+   wire bar2=in_y>=530&&in_y<546&&in_x>=1064&&in_x<1224;
+   wire bar3=in_y>=570&&in_y<586&&in_x>=1064&&in_x<1224;
+   wire [8:0] level_x=in_x-1064;
+   wire fill1=bar1&&audio_link_up&&metrics_ready&&level_x<{1'b0,peak_width};
+   wire fill2=bar2&&audio_link_up&&metrics_ready&&level_x<{1'b0,rms_width};
+   wire fill3=bar3&&audio_link_up&&metrics_ready&&level_x<{1'b0,crest_width};
+   wire hold_marker=bar1&&audio_link_up&&metrics_ready&&level_x=={1'b0,hold_width};
    assign tile_demo_hit[tile]=graph_area&&(bar1||bar2||bar3);
-   assign tile_demo_color[tile]=fill3 ? 24'hE87565 : (fill1||fill2)?24'h65CDA4:24'h26394B;
+   assign tile_demo_color[tile]=hold_marker ? 24'hFFFFFF : fill3 ? 24'hF5D36A : fill2 ? 24'h61DED1 : fill1 ? 24'h65CDA4 : 24'h26394B;
   end
   assign tile_hit[tile]=inside_tile;
   assign tile_color[tile]=!inside_tile ? 24'd0 : border ? 24'h35495F :
@@ -262,6 +268,52 @@ module ui_navigation_renderer(
  reg large0;
  reg tv0,tv1;reg [5:0] digit0;
  reg number0;
+ reg audio_number;
+ reg [5:0] audio_number_char;
+ function [5:0] audio_digit;
+  input [19:0] digits;input [2:0] place;input valid;
+  reg [19:0] shifted;
+  begin shifted=digits>>(place*4);audio_digit=valid ? `CH_0+shifted[3:0] : `CH_MINUS;end
+ endfunction
+ always @* begin
+  audio_number=0;audio_number_char=`CH_SPACE;
+  case(text_id)
+   NAV_OV_RMS,NAV_OV_PEAK:begin
+    if(text_col==5 || text_col==6 || text_col==8)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[text_id==NAV_OV_RMS ? 0 : 1],
+      text_col==5 ? 3'd2 : text_col==6 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
+    end
+   end
+   NAV_LEVEL_PEAK,NAV_LEVEL_RMS,NAV_LEVEL_CREST:begin
+    if(text_col==3 || text_col==4 || text_col==6)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[text_id==NAV_LEVEL_PEAK ? 1 : text_id==NAV_LEVEL_RMS ? 0 : 2],
+      text_col==3 ? 3'd2 : text_col==4 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
+    end
+   end
+   NAV_OV_HZ:if(text_col<5)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd4-text_col[2:0],audio_link_up&&spectrum_peak_valid);
+   end
+   NAV_PEAK_HZ:if(text_col>=5 && text_col<=9)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd1-text_col[2:0],audio_link_up&&spectrum_peak_valid);
+   end
+   NAV_CENTROID:if(text_col>=7 && text_col<=11)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[4],3'd3-text_col[2:0],audio_link_up&&spectrum_peak_valid);
+   end
+   NAV_STEREO:begin
+    if(text_col==5 || text_col==16)begin
+     audio_number=1;
+     audio_number_char=!(audio_link_up&&metrics_ready) || (text_col==5&&!metrics_corr_valid) ? `CH_MINUS :
+      (text_col==5 ? corr_negative : bal_negative) ? `CH_MINUS : `CH_PLUS;
+    end else if(text_col>=6&&text_col<=8)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[5],3'd0-(text_col[2:0]),
+       audio_link_up&&metrics_corr_valid);
+    end else if(text_col>=17&&text_col<=19)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[6],3'd3-text_col[2:0],
+       audio_link_up&&metrics_ready);
+    end
+   end
+  endcase
+ end
  reg [2:0] glyph_x1,glyph_x2;
  reg [3:0] glyph_y1;
  reg [13:0] glyph_row2;
@@ -301,7 +353,13 @@ module ui_navigation_renderer(
   endcase end
  endfunction
  reg [6:0] wave_addr0;
- reg [7:0] wave_sample1,wave_previous1,wave_gy0,wave_gy1;
+ wire [7:0] wave_sample1,wave_previous1;
+ reg [7:0] wave_gy0,wave_gy1;
+ wire triggered_wave;
+ audio_waveform_capture u_waveform(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .sample_valid(audio_sample_valid),.sample(audio_sample),.read_address(wave_addr0),
+  .plot_sample(wave_sample1),.plot_previous(wave_previous1),.ready(waveform_ready),
+  .frame_valid(),.triggered(triggered_wave));
  reg wave_area0,wave_area1,wave_hit2;
  wire [7:0] wave_y1=8'd72-{wave_sample1[7],wave_sample1[7:1]};
  wire [7:0] wave_previous_y1=8'd72-{wave_previous1[7],wave_previous1[7:1]};
@@ -318,10 +376,8 @@ module ui_navigation_renderer(
   end
  end
  always @(posedge clk) begin
-  // x=496 is column zero; a 7-bit address wraps the ring naturally.
-  wave_addr0<=waveform_write+(in_x[7:1]-7'd120);
-  wave_sample1<=waveform_memory[wave_addr0];
-  wave_previous1<=waveform_previous[wave_addr0];
+  // x=496 is column zero in the immutable displayed capture bank.
+  wave_addr0<=in_x[7:1]-7'd120;
   wave_gy0<=in_y[7:0]-8'd176;wave_gy1<=wave_gy0;
  end
 
@@ -333,10 +389,16 @@ module ui_navigation_renderer(
  wire [13:0] history_dx=in_x-14'd512,history_dy=in_y-14'd480;
  reg phase_area0,phase_area1,phase_hit2;
  reg spectrum_area0,spectrum_area1,spectrum_hit2;
- reg spectrum_peak0,spectrum_peak1;
+ reg spectrum_peak0,spectrum_peak1,spectrum_peak2;
  reg history_area0,history_area1,history_hit2;
  reg [7:0] spectrum_y0,spectrum_y1;
  reg [23:0] history_rgb2;
+ wire signed [8:0] energy_dx=$signed({1'b0,in_x[7:0]})-9'sd140;
+ wire signed [9:0] energy_dy=$signed({1'b0,in_y[8:0]})-10'sd248;
+ reg [17:0] energy_x2_0,energy_y2_0;
+ reg [18:0] energy_distance1;
+ reg energy_area0,energy_area1,energy_hit2;
+ reg [23:0] energy_rgb2;
  function [23:0] heat_color;
   input [5:0] level;
   begin case(level[5:3])
@@ -347,6 +409,10 @@ module ui_navigation_renderer(
   endcase end
  endfunction
  always @(posedge clk)begin
+  energy_x2_0<=energy_dx*energy_dx;energy_y2_0<=energy_dy*energy_dy;
+  energy_distance1<={1'b0,energy_x2_0}+{1'b0,energy_y2_0};
+  energy_rgb2<=energy_distance1<=energy_radius2 ? 24'h61DED1 :
+    metrics_clip!=0 ? 24'hE87565 : metrics_transient!=0 ? 24'hF5D36A : 24'h368DAC;
   phase_address0<={phase_dy[6:1],phase_dx[7:1]};
   spectrum_address0<=spectrum_dx[7:3];
   history_column0<=history_dx[7:2];history_band0<=5'd31-history_dy[6:2];
@@ -355,11 +421,16 @@ module ui_navigation_renderer(
  end
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
+   energy_area0<=0;energy_area1<=0;energy_hit2<=0;
    phase_area0<=0;phase_area1<=0;phase_hit2<=0;
    spectrum_area0<=0;spectrum_area1<=0;spectrum_hit2<=0;
-   spectrum_peak0<=0;spectrum_peak1<=0;
+   spectrum_peak0<=0;spectrum_peak1<=0;spectrum_peak2<=0;
    history_area0<=0;history_area1<=0;history_hit2<=0;
   end else begin
+   energy_area0<=view==1&&audio_link_up&&metrics_ready&&in_x>=64&&in_x<216&&in_y>=184&&in_y<312;
+   energy_area1<=energy_area0;
+   energy_hit2<=energy_area1 && ((energy_distance1>=2809&&energy_distance1<=3600)||
+     (energy_rms>=8&&energy_distance1<=energy_radius2));
    phase_area0<=view==1 && audio_link_up && phase_ready &&
      in_x>=930 && in_x<1186 && in_y>=184 && in_y<312;
    phase_area1<=phase_area0;phase_hit2<=phase_area1 && phase_pixel;
@@ -368,10 +439,14 @@ module ui_navigation_renderer(
    spectrum_area1<=spectrum_area0;
    spectrum_hit2<=spectrum_area1 && spectrum_value!=0 &&
      {1'b0,spectrum_y1}<{2'b00,spectrum_value,1'b0};
-   spectrum_peak0<=view==1 && audio_link_up && spectrum_ready &&
+   spectrum_peak0<=view==1 && audio_link_up && spectrum_ready && spectrum_peak_valid &&
      in_x>=94 && in_x<350 && spectrum_dx[2:0]<6 &&
+     in_y>=480 && in_y<=616 &&
      spectrum_dx[7:3]==spectrum_peak_band;
    spectrum_peak1<=spectrum_peak0;
+   // Highlight only the measured bar. Silent frames have no winner marker.
+   spectrum_peak2<=spectrum_peak1 && spectrum_value!=0 &&
+     {1'b0,spectrum_y1}<{2'b00,spectrum_value,1'b0};
    history_area0<=view==1 && audio_link_up && spectrum_ready &&
      in_x>=512 && in_x<768 && in_y>=480 && in_y<608;
    history_area1<=history_area0;history_hit2<=history_area1 && history_value!=0;
@@ -390,7 +465,8 @@ module ui_navigation_renderer(
   end
   else begin
    h0<=hit;b0<=bg;fg0<=text_color;id0<=text_id;col0<=text_col;
-   tv0<=text_valid||macro_number;number0<=macro_number;digit0<=number_char;
+   tv0<=text_valid||macro_number;number0<=macro_number||audio_number;
+   digit0<=macro_number ? number_char : audio_number_char;
    rx0<=macro_number ? in_x[3:0] : text_rx;ry0<=macro_number ? ((in_y-248)&63) : text_ry;
    large0<=!macro_number && text_large;
    h1<=h0;b1<=b0;fg1<=fg0;
@@ -399,8 +475,8 @@ module ui_navigation_renderer(
    glyph_x1<=glyph_x(large0,rx0);glyph_y1<=glyph_y(large0,ry0);
    h2<=h1;b2<=b1;fg2<=fg1;
    glyph_row2<=get_font_7x10_row(ch1,glyph_y1);glyph_x2<=glyph_x1;glyph_valid2<=tv1;
-   h3<=h2;b3<=wave_hit2 ? 24'h61DED1 : phase_hit2 ? 24'h67CDE0 :
-       spectrum_peak1 ? 24'hF5D36A : spectrum_hit2 ? 24'h65CDA4 :
+   h3<=h2;b3<=energy_hit2 ? energy_rgb2 : wave_hit2 ? 24'h61DED1 : phase_hit2 ? 24'h67CDE0 :
+       spectrum_peak2 ? 24'hF5D36A : spectrum_hit2 ? 24'h65CDA4 :
        history_hit2 ? history_rgb2 : b2;fg3<=fg2;
    coverage3<=glyph_valid2 ? glyph_column(glyph_row2,glyph_x2) : 0;
    out_hit<=h3;out_rgb<=blend_rgb_q4(fg3,b3,font_alpha_q4(coverage3));
