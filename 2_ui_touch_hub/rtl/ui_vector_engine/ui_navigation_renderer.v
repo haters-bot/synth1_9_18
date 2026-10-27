@@ -51,11 +51,13 @@ module ui_navigation_renderer(
  reg [12:0] phase_address0;
  wire [5:0] spectrum_value,history_value;
  wire spectrum_ready,phase_ready,phase_pixel;
+ wire [4:0] spectrum_peak_band;
  audio_fft_analyzer u_spectrum(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
   .sample_valid(audio_sample_valid),.sample(audio_sample),
   .spectrum_address(spectrum_address0),.spectrum_value(spectrum_value),
   .history_column(history_column0),.history_band(history_band0),
-  .history_value(history_value),.ready(spectrum_ready),.frame_valid());
+  .history_value(history_value),.ready(spectrum_ready),.frame_valid(),
+  .peak_band(spectrum_peak_band));
  audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
   .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
   .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready));
@@ -122,7 +124,7 @@ module ui_navigation_renderer(
   wire [8:0] gx=in_x-(X+16);
   wire [7:0] gy=in_y-(Y+80);
   wire graph_area=plot && in_y>=Y+80 && in_y<Y+232;
-  if(tile==0)begin: demo_notes
+  if(tile==0)begin: live_overview
    wire bars=(in_x>=X+48 && in_x<=X+176 && in_y>=Y+106 && in_y<=Y+114) ||
              (in_x>=X+96 && in_x<=X+232 && in_y>=Y+130 && in_y<=Y+138) ||
              (in_x>=X+144 && in_x<=X+320 && in_y>=Y+154 && in_y<=Y+162);
@@ -132,8 +134,25 @@ module ui_navigation_renderer(
        (in_x>=X+132&&in_x<=X+143)||(in_x>=X+162&&in_x<=X+173)||
        (in_x>=X+192&&in_x<=X+203)||(in_x>=X+252&&in_x<=X+263)||
        (in_x>=X+282&&in_x<=X+293)||(in_x>=X+312&&in_x<=X+323));
-   assign tile_demo_hit[tile]=graph_area&&(bars||keys);
-   assign tile_demo_color[tile]=bars?24'h57C9C0:black_key?24'h35536A:24'hB8CADB;
+   wire overview_ready=audio_link_up&&waveform_ready;
+   wire overview_wait=audio_link_up&&!waveform_ready;
+   wire [8:0] overview_x=in_x-(X+48);
+   wire overview_peak=overview_ready && in_y>=Y+106 && in_y<=Y+116 &&
+                       overview_x<{1'b0,meter_peak};
+   wire overview_avg=overview_ready && in_y>=Y+132 && in_y<=Y+142 &&
+                      overview_x<{1'b0,meter_avg};
+   wire overview_clip=overview_ready && in_y>=Y+180 && in_y<=Y+194 &&
+                       overview_x<({1'b0,clip_hold}<<2);
+   wire overview_wait_line=overview_wait && in_y>=Y+140 && in_y<=Y+144 &&
+                            in_x>=X+48 && in_x<=X+304;
+   assign tile_demo_hit[tile]=overview_ready ? graph_area &&
+       (overview_peak||overview_avg||overview_clip) :
+       overview_wait_line ? 1'b1 : graph_area&&(bars||keys);
+   assign tile_demo_color[tile]=overview_ready ?
+       (overview_clip ? 24'hE87565 : overview_peak ? 24'h65CDA4 :
+        overview_avg ? 24'h61DED1 : 24'h26394B) :
+       overview_wait_line ? 24'hD5AD78 :
+       (bars?24'h57C9C0:black_key?24'h35536A:24'hB8CADB);
   end else if(tile==1)begin: live_waveform
    wire live_wave=audio_link_up&&waveform_ready;
    // The live trace is composed after the registered RAM read below.
@@ -182,7 +201,8 @@ module ui_navigation_renderer(
       (view==1 && in_x>=336 && in_x<576) ||
       (view==2 && in_x>=592 && in_x<800))bg=24'h204152;
   end else if(view==1)begin
-   // All PCM views are live; only the Note/Velocity tile remains an example.
+   // All six PCM views are live. The first tile is an audio overview derived
+   // from the same measured stream as the waveform and level meters.
    bg=visual_bg;
   end else if(view==2 && settings_section_id==8'd1)begin
    if(in_x>=32 && in_x<=680 && in_y>=120 && in_y<=616)bg=24'h142030;
@@ -313,6 +333,7 @@ module ui_navigation_renderer(
  wire [13:0] history_dx=in_x-14'd512,history_dy=in_y-14'd480;
  reg phase_area0,phase_area1,phase_hit2;
  reg spectrum_area0,spectrum_area1,spectrum_hit2;
+ reg spectrum_peak0,spectrum_peak1;
  reg history_area0,history_area1,history_hit2;
  reg [7:0] spectrum_y0,spectrum_y1;
  reg [23:0] history_rgb2;
@@ -336,6 +357,7 @@ module ui_navigation_renderer(
   if(!rst_n)begin
    phase_area0<=0;phase_area1<=0;phase_hit2<=0;
    spectrum_area0<=0;spectrum_area1<=0;spectrum_hit2<=0;
+   spectrum_peak0<=0;spectrum_peak1<=0;
    history_area0<=0;history_area1<=0;history_hit2<=0;
   end else begin
    phase_area0<=view==1 && audio_link_up && phase_ready &&
@@ -346,6 +368,10 @@ module ui_navigation_renderer(
    spectrum_area1<=spectrum_area0;
    spectrum_hit2<=spectrum_area1 && spectrum_value!=0 &&
      {1'b0,spectrum_y1}<{2'b00,spectrum_value,1'b0};
+   spectrum_peak0<=view==1 && audio_link_up && spectrum_ready &&
+     in_x>=94 && in_x<350 && spectrum_dx[2:0]<6 &&
+     spectrum_dx[7:3]==spectrum_peak_band;
+   spectrum_peak1<=spectrum_peak0;
    history_area0<=view==1 && audio_link_up && spectrum_ready &&
      in_x>=512 && in_x<768 && in_y>=480 && in_y<608;
    history_area1<=history_area0;history_hit2<=history_area1 && history_value!=0;
@@ -374,7 +400,8 @@ module ui_navigation_renderer(
    h2<=h1;b2<=b1;fg2<=fg1;
    glyph_row2<=get_font_7x10_row(ch1,glyph_y1);glyph_x2<=glyph_x1;glyph_valid2<=tv1;
    h3<=h2;b3<=wave_hit2 ? 24'h61DED1 : phase_hit2 ? 24'h67CDE0 :
-       spectrum_hit2 ? 24'h65CDA4 : history_hit2 ? history_rgb2 : b2;fg3<=fg2;
+       spectrum_peak1 ? 24'hF5D36A : spectrum_hit2 ? 24'h65CDA4 :
+       history_hit2 ? history_rgb2 : b2;fg3<=fg2;
    coverage3<=glyph_valid2 ? glyph_column(glyph_row2,glyph_x2) : 0;
    out_hit<=h3;out_rgb<=blend_rgb_q4(fg3,b3,font_alpha_q4(coverage3));
   end

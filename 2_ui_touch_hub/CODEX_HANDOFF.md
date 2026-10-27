@@ -469,3 +469,10 @@ R15H 归档比特流 SHA256：`911054F05264B88D565FBF4FC6A600751E93848057080B9A1
 - 仅执行一次 UI SRAM operation 2：`impl/deploy_runs/20261027_190826_KNOB_SPI_BURST_C14_ASCII/`。远程 `PROGRAMMER_EXIT=0`，User Code `0x00001766`，Status `0x00026230`；本地/远程位流 SHA256 `76E2B27474035033C464B72036230395BB29A1BDF15B95C928480BD9406C4DA5`。现场预览 `preview.jpg` 已抓取，屏幕画面正常。Flash 未操作。
 - 当前待用户实测：打开 C14 串口（C14→USB-TTL RX、GND 共地、115200 8N1）后复位 UI 板，期望首次看到 `U1 SPI CONNECTED`、`U2 SPI CONNECTED`；随后旋转/按压应输出 `Kxx CW/CCW/PRESS/RELEASE U1/U2`。空闲不应每秒打印。SPI 连接状态只在首次检测或状态变化打印。
 - 硬件状态仍需用户现场验证，不能用预览图替代旋钮事件验收。若要验证断线状态，先断电再改变接线并重新上电，避免带电插拔。
+
+## 2026-10-27 20:06–20:12：I2S 音频总览与频谱主频标记升级（源码/仿真，未部署）
+
+- 用户批准开始升级，按比赛演示优先改动实际副本 `D:/github/synth1_9_18/2_ui_touch_hub`。第一窗从静态 NOTES/KEYS 示意改为 `AUDIO OVERVIEW`，使用真实 I2S PCM 的峰值、平均绝对幅度和削波保持；窗口标题说明同步更新。
+- 第四窗新增 `peak_band[4:0]`，由 32 个真实 FFT 频带发布结果比较得到，黄色竖线标出当前能量最高频带。未增加 dBFS/RMS/LUFS 等未经校准的标签。
+- 验证：I2S 可视化回归、FFT 3078 点浮点 DFT（最大误差7.854 LSB）、192频带、8/64/3号测试频点主频带、全顶层编译、旋钮/C14回归均通过。
+- 本轮没有运行 Gowin P&R，没有生成或烧录新 UI 位流。当前稳定 UI 仍为上一轮已验收 SRAM；升级源码与测试证据见 `doc/I2S_AUDIO_OVERVIEW_UPGRADE_2026-10-27.md`。

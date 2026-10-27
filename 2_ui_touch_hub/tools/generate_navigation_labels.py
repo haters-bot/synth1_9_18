@@ -18,13 +18,15 @@ def main():
     add('view!=0',1056,16,'UI TOUCH HUB')
     add('view==1',24,56,'PERFORMANCE MONITOR',True)
     add('view==1',800,64,'SIX VIEWS / I2S RETURN',False,'B3C5D8')
-    titles=['01 NOTES','02 WAVEFORM','03 STEREO PHASE','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
-    details=['KEYS / VELOCITY','LEFT PCM / 10.7 MS','L X / R Y / PCM',
+    titles=['01 AUDIO OVERVIEW','02 WAVEFORM','03 STEREO PHASE','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
+    details=['PEAK / AVG ABS / CLIP','LEFT PCM / 10.7 MS','L X / R Y / PCM',
              '94 HZ TO 48 KHZ','TIME / 32 BANDS','PEAK / AVG ABS / CLIP']
     for i in range(6):
         x=24+(i%3)*418;y=96+(i//3)*296
         add('view==1',x+20,y+12,titles[i],True)
-        if i==3:
+        if i==0:
+            add('view==1',x+22,y+56,'I2S PCM / OVERVIEW',False,'B3C5D8')
+        elif i==3:
             add('view==1',x+22,y+56,'I2S / LOG MAG',False,'B3C5D8')
         elif i in (1,2,4,5):
             add('view==1',x+22,y+56,'I2S PCM INPUT',False,'B3C5D8')

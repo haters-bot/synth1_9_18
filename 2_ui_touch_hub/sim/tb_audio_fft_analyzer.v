@@ -6,6 +6,7 @@ module tb_audio_fft_analyzer;
  reg [5:0] history_column=63;
  wire [5:0] spectrum_value,history_value;
  wire ready,frame_valid;
+ wire [4:0] peak_band;
  reg [15:0] stimuli[0:6143];
  integer frame,n,bin,fd,fd_levels,band,column,cycles=0,last_sample,latency,max_latency=0;
  audio_fft_analyzer #(.HISTORY_HOP(1)) dut(.*);
@@ -31,6 +32,9 @@ module tb_audio_fft_analyzer;
    if(latency>max_latency)max_latency=latency;
    if(latency>50000)$fatal(1,"FFT exceeded 1 ms processing budget: %0d",latency);
    if(!ready)$fatal(1,"Missing frame ready");
+   if(frame==0 && peak_band!==5'd7)$fatal(1,"8-bin tone peak band mismatch: %0d",peak_band);
+   if(frame==1 && peak_band!==5'd20)$fatal(1,"64-bin tone peak band mismatch: %0d",peak_band);
+   if(frame==5 && peak_band!==5'd2)$fatal(1,"3-bin tone peak band mismatch: %0d",peak_band);
    if(frame<6)for(bin=0;bin<1024;bin=bin+1)
     $fdisplay(fd,"%0d %0d %0d %0d",frame,bin,
        $signed(dut.source_bank ? dut.real_memory1[bin] : dut.real_memory0[bin]),

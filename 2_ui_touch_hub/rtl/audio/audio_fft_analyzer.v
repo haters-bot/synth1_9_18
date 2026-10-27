@@ -13,7 +13,8 @@ module audio_fft_analyzer #(
  input wire [4:0] history_band,
  output reg [5:0] history_value,
  output reg ready,
- output reg frame_valid
+ output reg frame_valid,
+ output reg [4:0] peak_band
 );
  localparam CAPTURE=0,WINDOW=1,STORE=2,SETUP=3,READ_A=4,READ_B=5,MULT=6,
             ROTATE=7,SUM=8,WRITE_A=9,WRITE_B=10,SCAN_SET=11,SCAN_READ=12,
@@ -133,6 +134,7 @@ module audio_fft_analyzer #(
  reg [5:0] history_write;
  reg [6:0] history_count;
  reg [7:0] history_frames;
+ reg [4:0] frame_peak_band;
  wire write_history=history_frames==HISTORY_HOP-1;
  wire [5:0] history_read_column=history_write+history_column;
  always @(posedge clk)begin
@@ -153,10 +155,12 @@ module audio_fft_analyzer #(
    twiddle_address<=0;stage<=0;group_base<=0;offset<=0;half_size<=1;
    ready<=0;frame_valid<=0;spectrum_bank<=0;history_write<=0;history_count<=0;
    history_frames<=0;publish_band<=0;scan_bin<=1;scan_band<=0;band_peak<=0;
+   peak_band<=0;frame_peak_band<=0;
   end else if(!link_up)begin
    state<=CAPTURE;capture_index<=0;ready<=0;frame_valid<=0;
    source_bank<=0;
    spectrum_bank<=0;history_write<=0;history_count<=0;history_frames<=0;
+   peak_band<=0;frame_peak_band<=0;
   end else begin
    frame_valid<=0;
    case(state)
@@ -224,8 +228,12 @@ module audio_fft_analyzer #(
      else begin scan_bin<=scan_bin+1'b1;state<=SCAN_SET;end
     end
     PUBLISH:begin
+     if(publish_band==0)frame_peak_band<=0;
+     else if(bands[publish_band]>bands[frame_peak_band])
+      frame_peak_band<=publish_band[4:0];
      publish_band<=publish_band+1'b1;
      if(publish_band==31)begin
+      peak_band<=bands[31]>bands[frame_peak_band] ? 5'd31 : frame_peak_band;
       spectrum_bank<=!spectrum_bank;ready<=1;frame_valid<=1;
       if(write_history)begin
        history_frames<=0;history_write<=history_write+1'b1;
