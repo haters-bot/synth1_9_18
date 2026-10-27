@@ -19,6 +19,7 @@ module tb_audio_visual_windows;
   .view(2'd1),.settings_section_id(8'd1),.show_diagnostics(1'b0),
   .usb_connected(usb_connected),.usb_error(usb_error),.knob_steps(64'd0),.knob_page(2'd0),.apply_step(2'd0),.plot_scales(24'd0),.macro_values(28'd0),
   .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),
+  .audio_xy_a(audio_sample),.audio_xy_b(audio_sample),.audio_xy_valid(audio_sample_valid),.audio_xy_available(audio_link_up),
   .audio_right_sample(audio_sample),.audio_stereo_valid(audio_sample_valid),
   .audio_link_up(audio_link_up),.out_hit(hit),.out_rgb(rgb));
  always #10 clk=~clk;

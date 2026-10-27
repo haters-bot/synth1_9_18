@@ -78,10 +78,11 @@ module tb_user_controls;
   packet(520,590,1);for(k=0;k<12;k=k+1)packet(520,590,1);
   if(knob_page!=0)$fatal(1,"Held NEXT contact repeated");packet(0,0,0);
   click(64,590);if(knob_page!=3)$fatal(1,"Previous page wrap failed");
-  // Router focus is persistent; a released touch must not steal focus back.
-  touch_focus_valid=1;touch_focus_id='h31;touch_down=0;motion(0,1,8);
+  // Focus-valid is now an event, independent of retained touch ownership.
+  touch_focus_valid=0;touch_focus_id='h31;touch_down=0;motion(0,1,8);
   repeat(4)@(negedge clk);if(focus_id!='h17)$fatal(1,"Stale touch selection stole physical focus");
-  touch_down=1;@(negedge clk);if(focus_id!='h31)$fatal(1,"Live touch did not take focus");
+  touch_down=1;touch_focus_valid=1;@(negedge clk);touch_focus_valid=0;
+  if(focus_id!='h31)$fatal(1,"Live touch did not take focus");
   touch_down=0;button_valid=1;button_id='h50;button_action=1;@(negedge clk);
   if(focus_id!='h66)$fatal(1,"FX press did not highlight visible target");
   button_action=2;button_id='h27;@(negedge clk);button_valid=0;

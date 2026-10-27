@@ -26,6 +26,7 @@ module touch_event_router (
     // Selected Control Feedback
     output reg  [7:0]  selected_param_id,
     output reg         selected_valid,
+    output reg         focus_event_valid,
 
     // Parameter Delta Adjustment (to param_merger)
     output reg         param_delta_valid,
@@ -528,6 +529,7 @@ module touch_event_router (
         if (!rst_n) begin
             selected_param_id <= `PARAM_ID_FLT_CUTOFF; // Default to Filter Cutoff on boot
             selected_valid    <= 1'b1;
+            focus_event_valid <= 1'b0;
             param_delta_valid <= 1'b0;
             param_delta_val   <= 8'sd0;
             btn_tap_valid     <= 1'b0;
@@ -545,6 +547,7 @@ module touch_event_router (
             btn_repeat_timer  <= 26'd0;
             silence_watchdog  <= 24'd0;
         end else begin
+            focus_event_valid <= 1'b0;
             param_delta_valid <= 1'b0;
             param_delta_val   <= 8'sd0;
             btn_tap_valid     <= 1'b0;
@@ -605,6 +608,7 @@ module touch_event_router (
                                 latched_btn_id    <= s1_btn_id;
                                 latched_btn_act   <= s1_btn_act;
                                 selected_param_id <= s1_btn_id;
+                                focus_event_valid <= 1'b1;
                                 selected_valid    <= 1'b1;
                                 knob_is_dragging  <= 1'b0;
                                 active_knob_id    <= `PARAM_ID_NONE;
@@ -618,6 +622,7 @@ module touch_event_router (
                             end else begin
                                 active_knob_id    <= s1_knob_id;
                                 selected_param_id <= s1_knob_id;
+                                focus_event_valid <= 1'b1;
                                 selected_valid    <= 1'b1;
                                 knob_is_dragging  <= 1'b1;
                             end
@@ -649,6 +654,7 @@ module touch_event_router (
                                     btn_tap_id        <= s1_btn_id;
                                     btn_tap_action    <= s1_btn_act;
                                     selected_param_id <= s1_btn_id;
+                                    focus_event_valid <= 1'b1;
                                     selected_valid    <= 1'b1;
                                 end
                                 btn_latched       <= 1'b1;
@@ -724,6 +730,7 @@ module touch_event_router (
             end
             if(curve_focus_valid) begin
                 selected_param_id<=curve_focus_id;selected_valid<=1;
+                focus_event_valid<=1;
             end
         end
     end

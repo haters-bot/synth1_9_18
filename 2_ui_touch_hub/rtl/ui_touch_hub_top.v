@@ -280,6 +280,7 @@ module ui_touch_hub_top #(
     wire [47:0] sysex_msgs;
     wire        sysex_accept;
     wire ui_touch_valid, ui_touch_down;
+    wire touch_focus_event;
     wire [13:0] ui_touch_x, ui_touch_y;
     wire curve_capture,curve_focus_valid;
     wire [7:0] curve_focus_id;
@@ -293,6 +294,7 @@ module ui_touch_hub_top #(
     wire signed [7:0] navigation_delta_value;
     wire midi_tx_busy;
     touch_event_router u_touch_router (
+        .focus_event_valid(touch_focus_event),
         .curve_capture_active(curve_capture | binding_capture | navigation_capture),.curve_focus_valid(curve_focus_valid),.curve_focus_id(curve_focus_id),
         .ui_touch_valid(ui_touch_valid), .ui_touch_down(ui_touch_down),
         .ui_touch_x(ui_touch_x), .ui_touch_y(ui_touch_y),
@@ -366,7 +368,7 @@ module ui_touch_hub_top #(
         .motion_valid(spi_param_valid),.motion_cw(spi_param_cw),.motion_id(spi_param_id),
         .button_valid(knob_select_valid),.button_id(knob_select_id),.button_action(knob_select_action),
         .fx_touch_focus_valid(fx_touch_focus_valid),.fx_touch_focus_id(fx_touch_focus_id),
-        .touch_focus_valid(selected_valid && !navigation_capture && !binding_capture),.touch_focus_id(selected_param_id),.touch_down(ui_touch_down),
+        .touch_focus_valid(touch_focus_event && !navigation_capture && !binding_capture),.touch_focus_id(selected_param_id),.touch_down(ui_touch_down),
         .steps(user_knob_steps),.delta(physical_delta),.focus_id(display_focus_id));
 
     // --------------------------------------------------------------------------
@@ -516,6 +518,8 @@ module ui_touch_hub_top #(
     wire signed [15:0] audio_vis_right_sample;
     wire audio_vis_stereo_valid;
     wire audio_vis_link_up;
+    wire signed [15:0] audio_xy_a,audio_xy_b;
+    wire audio_xy_valid,audio_xy_available;
 
     i2s_visual_rx #(
         .LINK_TIMEOUT_CYCLES(12_500_000) // 250 ms without BCLK = disconnected
@@ -529,6 +533,8 @@ module ui_touch_hub_top #(
         .sample_valid(audio_vis_sample_valid),
         .sample_right(audio_vis_right_sample),
         .stereo_valid(audio_vis_stereo_valid),
+        .osc_a_sample(audio_xy_a),.osc_b_sample(audio_xy_b),
+        .xy_valid(audio_xy_valid),.xy_available(audio_xy_available),
         .link_up   (audio_vis_link_up)
     );
 
@@ -629,6 +635,8 @@ module ui_touch_hub_top #(
         .usb_dbg_regs      (usb_dbg_regs),
         .usb_dbg_pkt_cnt   (usb_dbg_pkt_cnt),
         .audio_sample_valid(audio_vis_sample_valid),
+        .audio_xy_a(audio_xy_a),.audio_xy_b(audio_xy_b),
+        .audio_xy_valid(audio_xy_valid),.audio_xy_available(audio_xy_available),
         .audio_sample     (audio_vis_sample),
         .audio_right_sample(audio_vis_right_sample),
         .audio_stereo_valid(audio_vis_stereo_valid),

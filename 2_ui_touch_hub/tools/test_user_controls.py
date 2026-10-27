@@ -14,7 +14,7 @@ def main():
     out = ROOT / 'impl' / ('user_controls_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
     out.mkdir()
     print(out, flush=True)
-    benches = ['tb_user_controls', 'tb_modulation_values', 'tb_audio_stereo_meter']
+    benches = ['tb_user_controls', 'tb_focus_handoff', 'tb_modulation_values', 'tb_audio_stereo_meter']
     sources = [ROOT / f.attrib['path'] for f in ET.parse(ROOT / '2_ui_touch_hub.gprj').findall('.//File')
                if f.attrib['path'].endswith('.v')]
     sources += [ROOT / 'sim' / (name + '.v') for name in benches]

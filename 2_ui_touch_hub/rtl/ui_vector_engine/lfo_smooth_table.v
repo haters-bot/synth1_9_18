@@ -41,7 +41,7 @@ module lfo_smooth_table(
     reg signed [23:0] h2;
     reg signed [14:0] h3;
     wire signed [31:0] final_sum=h2*$signed({1'b0,t2})+($signed({1'b0,a2})<<<18);
-    always @(posedge clk) begin
+    always @(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
             build_index<=0;va<=0;vb<=0;vc<=0;valid0<=0;valid1<=0;valid2<=0;valid3<=0;
             pa<=0;aa<=0;ba<=0;na<=0;ta<=0;ab<=0;tb<=0;ac<=0;tc<=0;
@@ -78,9 +78,12 @@ module lfo_smooth_table(
             h1<=c3_0*$signed({1'b0,t0})+($signed(c2_0)<<<6);
             h2<=h1*$signed({1'b0,t1})+($signed(c1_1)<<<12);
             h3<=step2 ? $signed({1'b0,a2,6'd0}) : final_sum>>>12;
-            if(valid3) table_mem[index3]<=h3<0 ? 0 : h3>8128 ? 13'd8128 : h3[12:0];
         end
     end
+    // RAM has no reset. Reset only the producer's valid pipeline above, so
+    // global reset does not become a combinational RAM write-enable path.
+    always @(posedge clk)
+        if(valid3) table_mem[index3]<=h3<0 ? 0 : h3>8128 ? 13'd8128 : h3[12:0];
     assign raster_q6=table_mem[raster_index<=384 ? raster_index : 0];
     assign preview_value=table_mem[preview_index<=384 ? preview_index : 0]>>6;
 endmodule

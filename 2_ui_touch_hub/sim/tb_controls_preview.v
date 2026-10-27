@@ -15,6 +15,7 @@ module tb_controls_preview;
   .settings_section_id(section),.knob_steps(steps),.knob_page(page),.apply_step(2'd3),.plot_scales(scales),
   .show_diagnostics(1'b0),.usb_connected(1'b1),.usb_error(1'b0),.macro_values(28'd0),
   .audio_sample_valid(1'b0),.audio_sample(16'd0),.audio_right_sample(16'd0),
+  .audio_xy_a(16'd0),.audio_xy_b(16'd0),.audio_xy_valid(1'b0),.audio_xy_available(1'b0),
   .audio_stereo_valid(1'b0),.audio_link_up(1'b0),.out_hit(hit),.out_rgb(rgb));
  always #10 clk=~clk;
  always @(posedge clk)begin

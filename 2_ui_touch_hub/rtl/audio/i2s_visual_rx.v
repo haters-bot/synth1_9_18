@@ -1,13 +1,14 @@
 // I2S monitor for the audio-board visualization return link.
 //
-// The audio board drives a standard 16-bit I2S stream:
+// Accept legacy 16-bit slots or VIS V2 32-bit slots at 96 kframes/s.
+// In V2, upper 16 bits are final-output PCM; lower 16 bits are OSC A/B.
 //   VIS_BCLK  = bit clock
 //   VIS_LRC   = left/right clock (low = left)
 //   VIS_DIN   = MSB-first serial data
 //
 // The UI pixel clock is used as the processing clock.  The three external
-// signals are synchronised before edge detection; at 3.072 MHz BCLK and a
-// 50 MHz pixel clock there are enough samples per bit for this monitor.
+// signals are synchronised before edge detection. Legacy BCLK is 3.072 MHz;
+// V2 BCLK is 6.144 MHz (over eight UI clocks per bit at 50 MHz).
 // Left words retain the original sample_valid timing. stereo_valid marks a
 // completed right word paired with the preceding complete left word.
 module i2s_visual_rx #(
@@ -22,7 +23,9 @@ module i2s_visual_rx #(
     output reg              sample_valid,
     output reg              link_up,
     output reg signed [15:0] sample_right,
-    output reg              stereo_valid
+    output reg              stereo_valid,
+    output reg signed [15:0] osc_a_sample,osc_b_sample,
+    output reg              xy_valid,xy_available
 );
     reg bclk_meta, bclk_sync, bclk_prev;
     reg lrc_meta, lrc_sync;
@@ -31,6 +34,8 @@ module i2s_visual_rx #(
     reg lrc_seen;
     reg channel_aligned;
     reg left_pending;
+    reg xy_left_pending;
+    reg signed [15:0] xy_left_word;
     reg [5:0] bit_count;
     reg [15:0] shift_reg;
     reg [31:0] link_age;
@@ -53,6 +58,8 @@ module i2s_visual_rx #(
             shift_reg   <= 16'd0;
             sample      <= 16'sd0;
             sample_right<= 16'sd0;stereo_valid<=0;left_pending<=0;
+            osc_a_sample<=0;osc_b_sample<=0;xy_valid<=0;xy_available<=0;
+            xy_left_pending<=0;xy_left_word<=0;
             sample_valid<= 1'b0;
             link_up     <= 1'b0;
             link_age    <= 32'd0;
@@ -66,6 +73,7 @@ module i2s_visual_rx #(
             din_sync  <= din_meta;
             sample_valid <= 1'b0;
             stereo_valid <= 1'b0;
+            xy_valid <= 1'b0;
 
             if (link_age < LINK_TIMEOUT_CYCLES)
                 link_age <= link_age + 32'd1;
@@ -73,6 +81,7 @@ module i2s_visual_rx #(
                 link_up <= 1'b0;
                 lrc_initialized <= 1'b0;
                 channel_aligned <= 1'b0;left_pending<=0;
+                xy_available<=0;xy_left_pending<=0;
             end
 
             if (bclk_rise) begin
@@ -90,6 +99,21 @@ module i2s_visual_rx #(
                     bit_count <= 6'd0;
                     channel_aligned <= 1'b0;
                 end else if (lrc_sync != lrc_seen) begin
+                    // Only an exact pair of full 32-bit slots exports A/B.
+                    // A legacy or malformed frame clears the format status.
+                    if(channel_aligned && bit_count==6'd31)begin
+                        if(!lrc_seen)begin
+                            xy_left_word<={shift_reg[14:0],din_sync};
+                            xy_left_pending<=1;
+                        end else begin
+                            if(xy_left_pending)begin
+                                osc_a_sample<=xy_left_word;
+                                osc_b_sample<={shift_reg[14:0],din_sync};
+                                xy_valid<=1;xy_available<=1;
+                            end else xy_available<=0;
+                            xy_left_pending<=0;
+                        end
+                    end else begin xy_left_pending<=0;xy_available<=0;end
                     if (channel_aligned && bit_count == 6'd15) begin
                         if(!lrc_seen)begin
                             sample <= {shift_reg[14:0], din_sync};
@@ -106,7 +130,7 @@ module i2s_visual_rx #(
                     bit_count <= 6'd0;
                     shift_reg <= 16'd0;
                     channel_aligned <= 1'b1;
-                end else if (channel_aligned && bit_count < 6'd16) begin
+                end else if (channel_aligned && bit_count < 6'd32) begin
                     shift_reg <= {shift_reg[14:0], din_sync};
                     bit_count <= bit_count + 6'd1;
                     if (bit_count == 6'd15) begin

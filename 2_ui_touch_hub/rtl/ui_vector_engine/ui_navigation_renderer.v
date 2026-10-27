@@ -17,6 +17,8 @@ module ui_navigation_renderer(
  input wire signed [15:0] audio_right_sample,
  input wire audio_stereo_valid,
  input wire audio_link_up,
+ input wire signed [15:0] audio_xy_a,audio_xy_b,
+ input wire audio_xy_valid,audio_xy_available,
  output reg out_hit,
  output reg [23:0] out_rgb
 );
@@ -88,8 +90,8 @@ module ui_navigation_renderer(
   .history_value(history_value),.ready(spectrum_ready),.frame_valid(spectrum_frame_valid),
   .peak_band(spectrum_peak_band),.peak_valid(spectrum_peak_valid),.peak_bin(spectrum_peak_bin),
   .peak_hz(spectrum_peak_hz),.centroid_hz(spectrum_centroid_hz));
- audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
-  .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
+ audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up && audio_xy_available),
+  .pair_valid(audio_xy_valid),.left_sample(audio_xy_a),.right_sample(audio_xy_b),
   .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready),
   .gain_x(plot_scales[11:10]),.gain_y(plot_scales[9:8]));
 
@@ -194,10 +196,8 @@ module ui_navigation_renderer(
    assign tile_demo_hit[tile]=hold_line||(graph_area && !live_wave && gy>=8'd70 && gy<=8'd74);
    assign tile_demo_color[tile]=hold_line ? 24'hF5D36A : 24'hD5AD78;
   end else if(tile==2)begin: live_phase
-   wire strip=in_x>=932&&in_x<1186&&in_y>=322&&in_y<330;
-   wire cursor=metrics_corr_valid&&audio_link_up&&in_x>=correlation_x&&in_x<correlation_x+4;
-   assign tile_demo_hit[tile]=strip;
-   assign tile_demo_color[tile]=cursor ? (metrics_corr<0 ? 24'hE87565 : 24'h65CDA4) : 24'h26394B;
+   assign tile_demo_hit[tile]=1'b0;
+   assign tile_demo_color[tile]=24'h26394B;
   end else if(tile==3)begin: live_spectrum
    assign tile_demo_hit[tile]=1'b0;
    assign tile_demo_color[tile]=24'h65CDA4;
@@ -393,19 +393,6 @@ module ui_navigation_renderer(
    end
    NAV_CENTROID:if(col0>=7 && col0<=11)begin
     audio_number=1;audio_number_char=audio_digit(audio_digits[4],3'd3-col0[2:0],audio_link_up&&spectrum_peak_valid);
-   end
-   NAV_STEREO:begin
-    if(col0==5 || col0==16)begin
-     audio_number=1;
-     audio_number_char=!(audio_link_up&&metrics_ready) || (col0==5&&!metrics_corr_valid) ? `CH_MINUS :
-      (col0==5 ? corr_negative : bal_negative) ? `CH_MINUS : `CH_PLUS;
-    end else if(col0>=6&&col0<=8)begin
-     audio_number=1;audio_number_char=audio_digit(audio_digits[5],3'd0-(col0[2:0]),
-       audio_link_up&&metrics_corr_valid);
-    end else if(col0>=17&&col0<=19)begin
-     audio_number=1;audio_number_char=audio_digit(audio_digits[6],3'd3-col0[2:0],
-       audio_link_up&&metrics_ready);
-    end
    end
   endcase
  end

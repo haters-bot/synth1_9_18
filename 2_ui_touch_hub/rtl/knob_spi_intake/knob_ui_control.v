@@ -17,7 +17,6 @@ module knob_ui_control(
   input [7:0] id;
   begin screen_id=id==`PARAM_ID_FX_REVERB ? 8'h66 : id==`PARAM_ID_FX_DELAY ? 8'h60 : id;end
  endfunction
- reg touch_latched;
  reg [1:0] step_code;
  integer i;
  always @*begin
@@ -27,14 +26,13 @@ module knob_ui_control(
  wire signed [7:0] amount=8'sd1<<step_code;
  assign delta=motion_cw ? amount : -amount;
  always @(posedge clk or negedge rst_n)begin
-  if(!rst_n)begin focus_id<=`PARAM_ID_NONE;touch_latched<=0;end
+  if(!rst_n)begin focus_id<=`PARAM_ID_NONE;end
   else begin
-   if(!touch_down)touch_latched<=0;
-   if(fx_touch_focus_valid)focus_id<=fx_touch_focus_id;
-   else if(motion_valid)focus_id<=screen_id(motion_id);
+   if(motion_valid)focus_id<=screen_id(motion_id);
    else if(button_valid && button_action==1)focus_id<=screen_id(button_id);
-   else if(touch_focus_valid && touch_down && !touch_latched && touch_focus_id!=`PARAM_ID_NONE)begin
-    focus_id<=touch_focus_id;touch_latched<=1;
+   else if(fx_touch_focus_valid)focus_id<=fx_touch_focus_id;
+   else if(touch_focus_valid && touch_focus_id!=`PARAM_ID_NONE)begin
+    focus_id<=touch_focus_id;
    end
   end
  end

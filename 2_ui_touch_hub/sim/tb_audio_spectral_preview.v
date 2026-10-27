@@ -12,6 +12,7 @@ module tb_audio_spectral_preview;
  ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),.view(2'd1),
   .settings_section_id(8'd1),.show_diagnostics(1'b0),.usb_connected(1'b1),.usb_error(1'b0),
   .knob_steps(64'd0),.knob_page(2'd0),.apply_step(2'd0),.plot_scales(24'd0),.macro_values(28'd0),.audio_sample_valid(valid),.audio_sample(sample),.audio_link_up(1'b1),
+  .audio_xy_a(sample),.audio_xy_b(right_sample),.audio_xy_valid(valid),.audio_xy_available(1'b1),
   .audio_right_sample(right_sample),.audio_stereo_valid(valid),.out_hit(hit),.out_rgb(rgb));
  // Fill history quickly for an inspectable synthetic preview, while leaving
  // production HISTORY_HOP=8 unchanged in the actual build.

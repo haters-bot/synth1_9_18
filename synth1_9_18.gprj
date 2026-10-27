@@ -39,6 +39,7 @@
         <File path="src/gowin_pll/sys_pll_50m_ip_mod.v" type="file.verilog" enable="1"/>
         <File path="src/highres_parameter_parser.v" type="file.verilog" enable="1"/>
         <File path="src/i2s_tx.v" type="file.verilog" enable="1"/>
+        <File path="src/i2s_visual_tx.v" type="file.verilog" enable="1"/>
         <File path="src/key_debounce.v" type="file.verilog" enable="1"/>
         <File path="src/midi_note_parser.v" type="file.verilog" enable="1"/>
         <File path="src/oscillator_task_scheduler.v" type="file.verilog" enable="1"/>

@@ -32,19 +32,19 @@ def main():
     add('view!=0',1056,16,'UI TOUCH HUB')
     add('view==1',24,56,'PERFORMANCE MONITOR',True)
     add('view==1',800,64,'SIX VIEWS / I2S RETURN',False,'B3C5D8')
-    titles=['01 AUDIO OVERVIEW','02 WAVEFORM','03 STEREO PHASE','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
-    details=['LEVEL DBFS / 96 KHZ','AUTO TRIGGER','CORR +000 / BAL +000',
+    titles=['01 AUDIO OVERVIEW','02 WAVEFORM','03 OSC A:B XY','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
+    details=['LEVEL DBFS / 96 KHZ','AUTO TRIGGER','PRE FX / SAME TIME',
              'PEAK 00000','BLUE LOW / RED HIGH','DBFS / PEAK / CREST']
     ready=['metrics_ready','waveform_ready','phase_ready','spectrum_ready','spectrum_ready','metrics_ready']
     for i in range(6):
         x=24+(i%3)*418;y=96+(i//3)*296
         add('view==1',x+20,y+12,titles[i],True)
         live=f'view==1 && audio_link_up && {ready[i]}'
-        subtitle=['I2S PCM / LIVE ENERGY','LEFT PCM : 10.67 MS','L X / R Y / PCM',
+        subtitle=['I2S PCM / LIVE ENERGY','LEFT PCM : 10.67 MS','X OSC A / Y OSC B',
                   'CENTER 00000 HZ','LOG FREQ / TIME RIGHT','STEREO RMS / PEAK HOLD'][i]
         add(live,x+22,y+56,subtitle,False,'B3C5D8',name='CENTROID' if i==3 else 'WAVE_SPAN' if i==1 else None)
         add('view==1 && !audio_link_up',x+22,y+56,'I2S DISCONNECTED',False,'D5AD78')
-        add(f'view==1 && audio_link_up && !{ready[i]}',x+22,y+56,'WAITING FOR PCM',False,'D5AD78')
+        add(f'view==1 && audio_link_up && !{ready[i]}',x+22,y+56,'WAITING FOR OSC A:B' if i==2 else 'WAITING FOR PCM',False,'D5AD78')
         add('view==1',x+20,y+238,details[i],False,'C0D0E0',name={2:'STEREO',3:'PEAK_HZ'}.get(i))
     add('view==1',222,630,'TO 00000HZ',False,'C0D0E0',name='SPECTRUM_RANGE')
     live='view==1 && audio_link_up && metrics_ready'

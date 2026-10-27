@@ -76,6 +76,8 @@ module ui_top_renderer (
 
     // Audio-board I2S monitor samples in the UI pixel clock domain.
     input  wire        audio_sample_valid,
+    input wire signed [15:0] audio_xy_a,audio_xy_b,
+    input wire audio_xy_valid,audio_xy_available,
     input  wire signed [15:0] audio_sample,
     input  wire signed [15:0] audio_right_sample,
     input  wire        audio_stereo_valid,
@@ -168,6 +170,8 @@ module ui_top_renderer (
         .knob_steps(user_knob_steps),.knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales),
         .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),.audio_link_up(audio_link_up),
         .audio_right_sample(audio_right_sample),.audio_stereo_valid(audio_stereo_valid),
+        .audio_xy_a(audio_xy_a),.audio_xy_b(audio_xy_b),
+        .audio_xy_valid(audio_xy_valid),.audio_xy_available(audio_xy_available),
         .out_hit(navigation_hit),.out_rgb(navigation_rgb));
     always @(posedge clk) begin
         raster_hsync<=in_hsync;raster_vsync<=in_vsync;raster_den<=in_den;
@@ -220,7 +224,11 @@ module ui_top_renderer (
     assign lfo_once_snapshot=lfo_all_once;
     assign route_source_snapshot=mod_sources;
     assign route_depth_snapshot=mod_depths;
-    assign display_env_snapshot=mod_preview[203+:35];
+    // Separate the bank/preview mux from both geometry scalers. These values
+    // change at control rate; one extra clock does not alter raster latency.
+    reg [34:0] env_geometry_values /* synthesis syn_preserve=1 syn_keep=1 */;
+    always @(posedge clk) env_geometry_values<=mod_preview[203+:35];
+    assign display_env_snapshot=env_geometry_values;
     assign mod_base[0+:7]=val_macro1;
     assign mod_base[7+:7]=val_macro2;
     assign mod_base[14+:7]=val_macro3;
@@ -413,11 +421,11 @@ module ui_top_renderer (
         .in_x        (raster_x[7]),
         .in_y        (raster_y[7]),
         .val_env_tab (val_env_tab),
-        .env_attack  (mod_preview[203+:7]),
-        .env_hold    (mod_preview[210+:7]),
-        .env_decay   (mod_preview[217+:7]),
-        .env_sustain (mod_preview[224+:7]),
-        .env_release (mod_preview[231+:7]),
+        .env_attack  (env_geometry_values[0+:7]),
+        .env_hold    (env_geometry_values[7+:7]),
+        .env_decay   (env_geometry_values[14+:7]),
+        .env_sustain (env_geometry_values[21+:7]),
+        .env_release (env_geometry_values[28+:7]),
         .out_hit_env (hit_env),
         .out_env_rgb (env_rgb)
     );
