@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import sys
 import subprocess
 import threading
 from datetime import datetime
@@ -111,7 +112,12 @@ def main():
                         help="Deploy a preserved bitstream directly (default: current impl/pnr output)")
     parser.add_argument("--target", choices=("sram", "external-flash"), default="sram",
                         help="sram is volatile (default); external-flash erases, programs and verifies persistent flash")
+    parser.add_argument("--board", choices=("ui", "audio"), default="ui",
+                        help="Select the matching source/STA auditor and bitstream name")
+    parser.add_argument("--check-only", action="store_true", help="Validate local sources, STA and hash without programming")
     args = parser.parse_args()
+    if args.board=="audio" and (not args.fs or args.target!="sram"):
+        parser.error("Audio deployment requires --fs and SRAM operation 2")
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.label):
         parser.error("Use an ASCII label containing letters, digits, _ or -")
     run = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + args.label
@@ -123,16 +129,24 @@ def main():
     build = fs.parents[2]
     audit = None
     if (build / 'source_manifest.json').is_file():
-        from audit_build import inspect_build
+        if args.board=="audio":
+            sys.path.insert(0,str(ROOT.parent/'tools'))
+            from audit_audio_build import inspect_build
+        else:
+            from audit_build import inspect_build
         audit = inspect_build(build)
         if not audit['timing_closed'] or audit['fs_sha256'] != digest:
             raise RuntimeError('Build rejected before remote programming: '+
                                json.dumps(audit,ensure_ascii=True))
-    elif args.label.upper().startswith('R16'):
-        raise RuntimeError('R16 deployment requires an isolated build with source_manifest.json')
+    else:
+        raise RuntimeError('Deployment requires an isolated build with source_manifest.json')
+    if args.check_only:
+        print(json.dumps(dict(board=args.board,source=str(fs),sha256=digest,audit=audit),indent=2))
+        return
+    fs_name='synth1_9_18.fs' if args.board=='audio' else '2_ui_touch_hub.fs'
     output.mkdir(parents=True, exist_ok=False)
     operation = 2 if args.target == "sram" else 69
-    manifest = {"run": run, "target": args.target, "programmer_operation": operation,
+    manifest = {"run": run, "board": args.board, "target": args.target, "programmer_operation": operation,
                 "source": str(fs), "sha256": digest,
                 "bytes": fs.stat().st_size, "remote": REMOTE_IP,
                 "programming_status": "not_confirmed"}
@@ -140,7 +154,7 @@ def main():
         manifest['build_audit'] = audit
     with (output / "firmware.zip").open("xb") as stream:
         with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as z:
-            z.write(fs, "2_ui_touch_hub.fs")
+            z.write(fs, fs_name)
     remote_dir = f"D:/gaoyun_deploy/{run}"
     manifest["remote_dir"] = remote_dir
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -158,10 +172,10 @@ if (Test-Path -LiteralPath '{remote_dir}') {{ throw 'Deployment directory alread
 New-Item -ItemType Directory -Path '{remote_dir}' | Out-Null
 Invoke-WebRequest -Uri 'http://{ssh_host(LOCAL_IP)}:8899/firmware.zip' -OutFile '{remote_dir}/firmware.zip' -UseBasicParsing -TimeoutSec 90
 Expand-Archive -LiteralPath '{remote_dir}/firmware.zip' -DestinationPath '{remote_dir}'
-$actual=(Get-FileHash -LiteralPath '{remote_dir}/2_ui_touch_hub.fs' -Algorithm SHA256).Hash
+$actual=(Get-FileHash -LiteralPath '{remote_dir}/{fs_name}' -Algorithm SHA256).Hash
 if ($actual -ne '{digest}') {{ throw "Bitstream hash mismatch: $actual" }}
 Write-Output "VERIFIED_SHA256=$actual"
-& 'D:/Gowin/Gowin_V1.9.11.03_Education_x64/Programmer/bin/programmer_cli.exe' --device GW5AST-138B --run {operation} --fsFile '{remote_dir}/2_ui_touch_hub.fs' 2>&1 | Tee-Object -FilePath '{remote_dir}/programmer.log'
+& 'D:/Gowin/Gowin_V1.9.11.03_Education_x64/Programmer/bin/programmer_cli.exe' --device GW5AST-138B --run {operation} --fsFile '{remote_dir}/{fs_name}' 2>&1 | Tee-Object -FilePath '{remote_dir}/programmer.log'
 $programExit=$LASTEXITCODE
 $programExit | Set-Content -LiteralPath '{remote_dir}/programmer_exit.txt'
 Write-Output "PROGRAMMER_EXIT=$programExit"
@@ -197,6 +211,9 @@ Write-Output 'CODEX_PROGRAM_COMPLETE'
     if args.target == "external-flash":
         print(f"[DEPLOY] External flash erase/program/verify passed: {output}", flush=True)
         print("[DEPLOY] Power-cycle the board, then inspect the display to verify boot from flash.", flush=True)
+        return
+    if args.board=="audio":
+        print(f"[DEPLOY] Audio SRAM programming verified: {output}",flush=True)
         return
     print(f"[DEPLOY] SRAM programming verified; capturing to {output}", flush=True)
     capture(remote_dir, output)
