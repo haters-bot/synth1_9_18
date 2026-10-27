@@ -77,6 +77,8 @@ module ui_top_renderer (
     // Audio-board I2S monitor samples in the UI pixel clock domain.
     input  wire        audio_sample_valid,
     input  wire signed [15:0] audio_sample,
+    input  wire signed [15:0] audio_right_sample,
+    input  wire        audio_stereo_valid,
     input  wire        audio_link_up,
 
     // Reserved logical adapter; same clock, one-cycle normalized parameter events.
@@ -155,6 +157,7 @@ module ui_top_renderer (
         .show_diagnostics(show_diagnostics),.usb_connected(usb_connected),.usb_error(usb_conn_err),
         .macro_values({val_macro4,val_macro3,val_macro2,val_macro1}),
         .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),.audio_link_up(audio_link_up),
+        .audio_right_sample(audio_right_sample),.audio_stereo_valid(audio_stereo_valid),
         .out_hit(navigation_hit),.out_rgb(navigation_rgb));
     always @(posedge clk) begin
         raster_hsync<=in_hsync;raster_vsync<=in_vsync;raster_den<=in_den;

@@ -1,7 +1,7 @@
 `include "params.vh"
 `include "font_3x5.vh"
 `include "pixel_coverage.vh"
-// Five stages after raster entry; native navigation font and visual examples.
+// Five stages after raster entry; native font and PCM-driven visualizations.
 module ui_navigation_renderer(
  input wire clk,rst_n,
  input wire [13:0] in_x,in_y,
@@ -11,6 +11,8 @@ module ui_navigation_renderer(
  input wire [27:0] macro_values,
  input wire audio_sample_valid,
  input wire signed [15:0] audio_sample,
+ input wire signed [15:0] audio_right_sample,
+ input wire audio_stereo_valid,
  input wire audio_link_up,
  output reg out_hit,
  output reg [23:0] out_rgb
@@ -43,6 +45,20 @@ module ui_navigation_renderer(
  wire [7:0] peak_next=sample_level>peak_acc ? sample_level : peak_acc;
  wire [17:0] abs_next=abs_acc+{10'd0,sample_level};
  wire clip_next=clip_acc || sample_abs>=16'h7FF0;
+
+ reg [4:0] spectrum_address0,history_band0;
+ reg [5:0] history_column0;
+ reg [12:0] phase_address0;
+ wire [5:0] spectrum_value,history_value;
+ wire spectrum_ready,phase_ready,phase_pixel;
+ audio_fft_analyzer u_spectrum(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .sample_valid(audio_sample_valid),.sample(audio_sample),
+  .spectrum_address(spectrum_address0),.spectrum_value(spectrum_value),
+  .history_column(history_column0),.history_band(history_band0),
+  .history_value(history_value),.ready(spectrum_ready),.frame_valid());
+ audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
+  .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready));
 
  // 128 samples, every eighth PCM word: 10.67 ms at the source's 96 kHz.
  // Address, synchronous RAM read and pixel test occupy separate existing
@@ -123,32 +139,15 @@ module ui_navigation_renderer(
    // The live trace is composed after the registered RAM read below.
    assign tile_demo_hit[tile]=graph_area && !live_wave && gy>=8'd70 && gy<=8'd74;
    assign tile_demo_color[tile]=24'hD5AD78;
-  end else if(tile==2)begin: demo_phase
-   wire [7:0] ax=gx>182 ? gx-182 : 182-gx;
-   wire [7:0] ay=gy>68 ? gy-68 : 68-gy;
-   reg [7:0] ellipse_x;
-   always @* case(ay[6:2])
-    0:ellipse_x=166;1:ellipse_x=166;2:ellipse_x=165;3:ellipse_x=163;4:ellipse_x=160;
-    5:ellipse_x=157;6:ellipse_x=154;7:ellipse_x=150;8:ellipse_x=146;9:ellipse_x=141;
-    10:ellipse_x=136;11:ellipse_x=130;12:ellipse_x=124;13:ellipse_x=117;14:ellipse_x=109;
-    15:ellipse_x=100;16:ellipse_x=90;17:ellipse_x=79;18:ellipse_x=66;19:ellipse_x=50;
-    20:ellipse_x=28;default:ellipse_x=0;
-   endcase
-   wire [7:0] ellipse_distance=ax>ellipse_x ? ax-ellipse_x : ellipse_x-ax;
-   assign tile_demo_hit[tile]=graph_area&&ay<=8'd72&&ellipse_x!=0&&ellipse_distance<=2;
+  end else if(tile==2)begin: live_phase
+   assign tile_demo_hit[tile]=1'b0;
    assign tile_demo_color[tile]=24'h67CDE0;
-  end else if(tile==3)begin: demo_spectrum
-   reg [6:0] height;
-   always @* case(gx[8:5])
-    0:height=18;1:height=30;2:height=46;3:height=62;4:height=78;5:height=94;
-    6:height=82;7:height=67;8:height=51;9:height=39;10:height=27;default:height=17;
-   endcase
-   assign tile_demo_hit[tile]=graph_area&&gx[4:0]>=6&&gx[4:0]<=24&&in_y>=Y+224-height;
+  end else if(tile==3)begin: live_spectrum
+   assign tile_demo_hit[tile]=1'b0;
    assign tile_demo_color[tile]=24'h65CDA4;
-  end else if(tile==4)begin: demo_spectrogram
-   wire [2:0] tone=(gx[8:5]+gy[7:5]);
-   assign tile_demo_hit[tile]=graph_area&&gx[4:0]>=4&&gx[4:0]<=27&&gy<8'd136&&gy[4:0]>=4&&gy[4:0]<=25;
-   assign tile_demo_color[tile]=tone[1]?(tone[0]?24'hDBA65F:24'hD16E64):(tone[0]?24'h66CBAE:24'h4A819D);
+  end else if(tile==4)begin: live_spectrogram
+   assign tile_demo_hit[tile]=1'b0;
+   assign tile_demo_color[tile]=24'h368DAC;
   end else begin: live_levels
    wire bar1=in_y>=Y+108&&in_y<=Y+125&&in_x>=X+52&&in_x<X+308;
    wire bar2=in_y>=Y+144&&in_y<=Y+161&&in_x>=X+52&&in_x<X+308;
@@ -183,7 +182,7 @@ module ui_navigation_renderer(
       (view==1 && in_x>=336 && in_x<576) ||
       (view==2 && in_x>=592 && in_x<800))bg=24'h204152;
   end else if(view==1)begin
-   // PCM waveform and meters are live; the other four tiles remain labeled examples.
+   // All PCM views are live; only the Note/Velocity tile remains an example.
    bg=visual_bg;
   end else if(view==2 && settings_section_id==8'd1)begin
    if(in_x>=32 && in_x<=680 && in_y>=120 && in_y<=616)bg=24'h142030;
@@ -305,6 +304,53 @@ module ui_navigation_renderer(
   wave_previous1<=waveform_previous[wave_addr0];
   wave_gy0<=in_y[7:0]-8'd176;wave_gy1<=wave_gy0;
  end
+
+ // Stage 0: raster -> RAM addresses; stage 1: synchronous RAM output;
+ // stage 2: coverage/color; merge alongside the waveform at stage 3.
+ // No extra video pipeline clocks and no asynchronous RAM lookup.
+ wire [13:0] phase_dx=in_x-14'd930,phase_dy=in_y-14'd184;
+ wire [13:0] spectrum_dx=in_x-14'd94;
+ wire [13:0] history_dx=in_x-14'd512,history_dy=in_y-14'd480;
+ reg phase_area0,phase_area1,phase_hit2;
+ reg spectrum_area0,spectrum_area1,spectrum_hit2;
+ reg history_area0,history_area1,history_hit2;
+ reg [7:0] spectrum_y0,spectrum_y1;
+ reg [23:0] history_rgb2;
+ function [23:0] heat_color;
+  input [5:0] level;
+  begin case(level[5:3])
+   0:heat_color=24'h17344D;1:heat_color=24'h245C83;
+   2:heat_color=24'h368DAC;3:heat_color=24'h4ABCB9;
+   4:heat_color=24'h70D6A2;5:heat_color=24'hD6CF79;
+   6:heat_color=24'hE7A466;default:heat_color=24'hEF7060;
+  endcase end
+ endfunction
+ always @(posedge clk)begin
+  phase_address0<={phase_dy[6:1],phase_dx[7:1]};
+  spectrum_address0<=spectrum_dx[7:3];
+  history_column0<=history_dx[7:2];history_band0<=5'd31-history_dy[6:2];
+  spectrum_y0<=14'd616-in_y;spectrum_y1<=spectrum_y0;
+  history_rgb2<=heat_color(history_value);
+ end
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin
+   phase_area0<=0;phase_area1<=0;phase_hit2<=0;
+   spectrum_area0<=0;spectrum_area1<=0;spectrum_hit2<=0;
+   history_area0<=0;history_area1<=0;history_hit2<=0;
+  end else begin
+   phase_area0<=view==1 && audio_link_up && phase_ready &&
+     in_x>=930 && in_x<1186 && in_y>=184 && in_y<312;
+   phase_area1<=phase_area0;phase_hit2<=phase_area1 && phase_pixel;
+   spectrum_area0<=view==1 && audio_link_up && spectrum_ready &&
+     in_x>=94 && in_x<350 && spectrum_dx[2:0]<6 && in_y>=480 && in_y<=616;
+   spectrum_area1<=spectrum_area0;
+   spectrum_hit2<=spectrum_area1 && spectrum_value!=0 &&
+     {1'b0,spectrum_y1}<{2'b00,spectrum_value,1'b0};
+   history_area0<=view==1 && audio_link_up && spectrum_ready &&
+     in_x>=512 && in_x<768 && in_y>=480 && in_y<608;
+   history_area1<=history_area0;history_hit2<=history_area1 && history_value!=0;
+  end
+ end
  function [7:0] demo_wave;input [4:0] phase;begin case(phase)
  0:demo_wave=72;1:demo_wave=84;2:demo_wave=96;3:demo_wave=105;4:demo_wave=111;5:demo_wave=117;6:demo_wave=120;7:demo_wave=121;
  8:demo_wave=121;9:demo_wave=120;10:demo_wave=117;11:demo_wave=111;12:demo_wave=105;13:demo_wave=96;14:demo_wave=84;15:demo_wave=72;
@@ -327,7 +373,8 @@ module ui_navigation_renderer(
    glyph_x1<=glyph_x(large0,rx0);glyph_y1<=glyph_y(large0,ry0);
    h2<=h1;b2<=b1;fg2<=fg1;
    glyph_row2<=get_font_7x10_row(ch1,glyph_y1);glyph_x2<=glyph_x1;glyph_valid2<=tv1;
-   h3<=h2;b3<=wave_hit2 ? 24'h61DED1 : b2;fg3<=fg2;
+   h3<=h2;b3<=wave_hit2 ? 24'h61DED1 : phase_hit2 ? 24'h67CDE0 :
+       spectrum_hit2 ? 24'h65CDA4 : history_hit2 ? history_rgb2 : b2;fg3<=fg2;
    coverage3<=glyph_valid2 ? glyph_column(glyph_row2,glyph_x2) : 0;
    out_hit<=h3;out_rgb<=blend_rgb_q4(fg3,b3,font_alpha_q4(coverage3));
   end

@@ -8,9 +8,8 @@
 // The UI pixel clock is used as the processing clock.  The three external
 // signals are synchronised before edge detection; at 3.072 MHz BCLK and a
 // 50 MHz pixel clock there are enough samples per bit for this monitor.
-// Only the left sample is exported because the current audio engine mirrors
-// the mono signal to both channels.  A complete left word produces one
-// sample_valid pulse at the UI clock.
+// Left words retain the original sample_valid timing. stereo_valid marks a
+// completed right word paired with the preceding complete left word.
 module i2s_visual_rx #(
     parameter integer LINK_TIMEOUT_CYCLES = 12_500_000
 )(
@@ -21,7 +20,9 @@ module i2s_visual_rx #(
     input  wire              i2s_din,
     output reg signed [15:0] sample,
     output reg              sample_valid,
-    output reg              link_up
+    output reg              link_up,
+    output reg signed [15:0] sample_right,
+    output reg              stereo_valid
 );
     reg bclk_meta, bclk_sync, bclk_prev;
     reg lrc_meta, lrc_sync;
@@ -29,6 +30,7 @@ module i2s_visual_rx #(
     reg lrc_initialized;
     reg lrc_seen;
     reg channel_aligned;
+    reg left_pending;
     reg [5:0] bit_count;
     reg [15:0] shift_reg;
     reg [31:0] link_age;
@@ -50,6 +52,7 @@ module i2s_visual_rx #(
             bit_count   <= 6'd0;
             shift_reg   <= 16'd0;
             sample      <= 16'sd0;
+            sample_right<= 16'sd0;stereo_valid<=0;left_pending<=0;
             sample_valid<= 1'b0;
             link_up     <= 1'b0;
             link_age    <= 32'd0;
@@ -62,13 +65,14 @@ module i2s_visual_rx #(
             din_meta  <= i2s_din;
             din_sync  <= din_meta;
             sample_valid <= 1'b0;
+            stereo_valid <= 1'b0;
 
             if (link_age < LINK_TIMEOUT_CYCLES)
                 link_age <= link_age + 32'd1;
             else begin
                 link_up <= 1'b0;
                 lrc_initialized <= 1'b0;
-                channel_aligned <= 1'b0;
+                channel_aligned <= 1'b0;left_pending<=0;
             end
 
             if (bclk_rise) begin
@@ -86,10 +90,18 @@ module i2s_visual_rx #(
                     bit_count <= 6'd0;
                     channel_aligned <= 1'b0;
                 end else if (lrc_sync != lrc_seen) begin
-                    if (channel_aligned && bit_count == 6'd15 && !lrc_seen) begin
-                        sample <= {shift_reg[14:0], din_sync};
-                        sample_valid <= 1'b1;
+                    if (channel_aligned && bit_count == 6'd15) begin
+                        if(!lrc_seen)begin
+                            sample <= {shift_reg[14:0], din_sync};
+                            sample_valid <= 1'b1;left_pending<=1;
+                        end else begin
+                            sample_right<={shift_reg[14:0],din_sync};
+                            stereo_valid<=left_pending;left_pending<=0;
+                        end
                     end
+                    // Starting a new left slot also discards an unmatched
+                    // old left word if the intervening right slot was short.
+                    if(!lrc_sync)left_pending<=0;
                     lrc_seen  <= lrc_sync;
                     bit_count <= 6'd0;
                     shift_reg <= 16'd0;
@@ -97,9 +109,14 @@ module i2s_visual_rx #(
                 end else if (channel_aligned && bit_count < 6'd16) begin
                     shift_reg <= {shift_reg[14:0], din_sync};
                     bit_count <= bit_count + 6'd1;
-                    if (bit_count == 6'd15 && !lrc_seen) begin
-                        sample       <= {shift_reg[14:0], din_sync};
-                        sample_valid <= 1'b1;
+                    if (bit_count == 6'd15) begin
+                        if(!lrc_seen)begin
+                            sample <= {shift_reg[14:0], din_sync};
+                            sample_valid <= 1'b1;left_pending<=1;
+                        end else begin
+                            sample_right<={shift_reg[14:0],din_sync};
+                            stereo_valid<=left_pending;left_pending<=0;
+                        end
                     end
                 end
             end

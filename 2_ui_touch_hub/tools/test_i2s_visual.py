@@ -14,6 +14,8 @@ def main():
     out = ROOT / 'impl' / ('i2s_tests_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
     out.mkdir()
     sources = [ROOT / 'rtl/audio/i2s_visual_rx.v', ROOT.parent / 'src/i2s_tx.v',
+               ROOT / 'rtl/audio/audio_fft_tables.v',ROOT / 'rtl/audio/audio_fft_analyzer.v',
+               ROOT / 'rtl/audio/audio_phase_plot.v',
                ROOT / 'sim/tb_i2s_visual_rx.v', ROOT / 'sim/tb_i2s_visual_loopback.v',
                ROOT / 'rtl/ui_vector_engine/ui_navigation_renderer.v',
                ROOT / 'sim/tb_audio_visual_windows.v']

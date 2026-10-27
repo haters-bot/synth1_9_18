@@ -7,6 +7,9 @@ module tb_i2s_visual_loopback;
  wire bclk,lrc,din,tx_tick,oversample_tick;
  wire signed [15:0] sample;
  wire sample_valid,link_up;
+ wire signed [15:0] sample_right;
+ wire stereo_valid;
+ integer pairs=0;
  reg [15:0] expected[0:511];
  integer writes=0,reads=0,checked=0,errors=0,phase_checks;
  i2s_tx tx(.sys_clk(tx_clk),.rst_n(tx_rst_n),.sample_data(input_sample),
@@ -15,7 +18,8 @@ module tb_i2s_visual_loopback;
  i2s_visual_rx #(.LINK_TIMEOUT_CYCLES(2000)) rx(
   .clk(clk),.rst_n(rst_n),.i2s_bclk(connected&&bclk),
   .i2s_lrc(connected&&lrc),.i2s_din(connected&&din),
-  .sample(sample),.sample_valid(sample_valid),.link_up(link_up));
+  .sample(sample),.sample_valid(sample_valid),.link_up(link_up),
+  .sample_right(sample_right),.stereo_valid(stereo_valid));
  always #10 tx_clk=~tx_clk;
  // Same nominal frequency, unrelated phase as on the two real boards.
  initial begin #3;forever #10 clk=~clk;end
@@ -35,6 +39,10 @@ module tb_i2s_visual_loopback;
  end
  always @(posedge clk) begin
   #2;
+  if(stereo_valid)begin
+   if(sample_right!==sample)$fatal(1,"Production mono L/R pair mismatch");
+   pairs=pairs+1;
+  end
   if(sample_valid) begin
    // At startup/reconnect the receiver discards a partial channel. Match
    // the next complete frame, then require exact order with no skips.
@@ -70,6 +78,7 @@ module tb_i2s_visual_loopback;
   if(checked-phase_checks<20) $fatal(1,"No recovery after link restart");
   if(!link_up) $fatal(1,"Link did not recover");
   if(errors) $fatal(1,"Production I2S loopback failed: %0d errors",errors);
+  if(pairs<120)$fatal(1,"Too few complete production stereo pairs");
   $display("PASS: production 96 kHz / 3.072 MHz I2S loopback, %0d exact samples, reset and timeout recovery",checked);
   $finish;
  end

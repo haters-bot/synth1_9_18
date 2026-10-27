@@ -19,12 +19,14 @@ def main():
     add('view==1',24,56,'PERFORMANCE MONITOR',True)
     add('view==1',800,64,'SIX VIEWS / I2S RETURN',False,'B3C5D8')
     titles=['01 NOTES','02 WAVEFORM','03 STEREO PHASE','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
-    details=['KEYS / VELOCITY','LEFT PCM / 10.7 MS','STEREO PHASE VIEW',
-             'FREQUENCY BARS','SPECTRUM HISTORY','PEAK / AVG ABS / CLIP']
+    details=['KEYS / VELOCITY','LEFT PCM / 10.7 MS','L X / R Y / PCM',
+             '94 HZ TO 48 KHZ','TIME / 32 BANDS','PEAK / AVG ABS / CLIP']
     for i in range(6):
         x=24+(i%3)*418;y=96+(i//3)*296
         add('view==1',x+20,y+12,titles[i],True)
-        if i in (1,5):
+        if i==3:
+            add('view==1',x+22,y+56,'I2S / LOG MAG',False,'B3C5D8')
+        elif i in (1,2,4,5):
             add('view==1',x+22,y+56,'I2S PCM INPUT',False,'B3C5D8')
         else:
             add('view==1',x+22,y+56,'EXAMPLE / NOT LIVE',False,'D5AD78')
@@ -70,7 +72,7 @@ def main():
     add('view==2 && settings_section_id==3',64,320,'NOTE EVENTS : NOT CONNECTED',False,'D6B989')
     add('view==2 && settings_section_id==3',64,368,'MIDI UART : PARAMETER CONTROL')
     add('view==2 && settings_section_id==3',760,216,'DATA CONNECTIONS',True)
-    add('view==2 && settings_section_id==3',760,296,'AUDIO PCM : RESERVED PORT')
+    add('view==2 && settings_section_id==3',760,296,'AUDIO PCM : I2S RETURN')
     add('view==2 && settings_section_id==3',760,344,'NOTE EVENTS : RESERVED PORT')
     add('view==2 && settings_section_id==4',64,152,'UI TOUCH HUB',True)
     add('view==2 && settings_section_id==4',64,224,'FIRMWARE : R17 NAV / SIX SLOTS')
@@ -83,7 +85,7 @@ def main():
     add('view==2 && settings_section_id==4',760,392,'NO UNUSED SETTINGS ARE EXPOSED',False,'D6B989')
     add('view==3',48,72,'WORKSPACE MENU',True)
     for i,(title,detail) in enumerate([('SYNTHESIZER','OSC FILTER ENV FX LFO'),
-                                    ('VISUALIZATION','SIX LIVE DATA VIEWS'),
+                                    ('VISUALIZATION','PCM VIEWS / NOTE SLOT'),
                                     ('SYSTEM','CONTROLS AND STATUS')]):
         x=48+i*408
         add('view==3',x+20,208,title,True)

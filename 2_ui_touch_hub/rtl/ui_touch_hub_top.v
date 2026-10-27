@@ -493,6 +493,8 @@ module ui_touch_hub_top #(
     wire [59:0] trace_lfo_state;
     wire signed [15:0] audio_vis_sample;
     wire audio_vis_sample_valid;
+    wire signed [15:0] audio_vis_right_sample;
+    wire audio_vis_stereo_valid;
     wire audio_vis_link_up;
 
     i2s_visual_rx #(
@@ -505,6 +507,8 @@ module ui_touch_hub_top #(
         .i2s_din   (audio_vis_din),
         .sample    (audio_vis_sample),
         .sample_valid(audio_vis_sample_valid),
+        .sample_right(audio_vis_right_sample),
+        .stereo_valid(audio_vis_stereo_valid),
         .link_up   (audio_vis_link_up)
     );
 
@@ -604,6 +608,8 @@ module ui_touch_hub_top #(
         .usb_dbg_pkt_cnt   (usb_dbg_pkt_cnt),
         .audio_sample_valid(audio_vis_sample_valid),
         .audio_sample     (audio_vis_sample),
+        .audio_right_sample(audio_vis_right_sample),
+        .audio_stereo_valid(audio_vis_stereo_valid),
         .audio_link_up     (audio_vis_link_up),
         .out_hsync         (render_hsync),
         .out_vsync         (render_vsync),
