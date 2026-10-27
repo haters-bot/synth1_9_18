@@ -77,18 +77,6 @@ module audio_pcm_metrics(
    28:log_fraction=55;29:log_fraction=56;30:log_fraction=57;default:log_fraction=59;
   endcase end
  endfunction
- function signed [11:0] amplitude_db10;
-  input [15:0] amplitude;
-  integer bit_index,leading,base;reg [15:0] normalized;
-  begin
-   leading=0;
-   for(bit_index=0;bit_index<16;bit_index=bit_index+1)
-    if(amplitude[bit_index])leading=bit_index;
-   normalized=amplitude<<(15-leading);
-   base=-((15-leading)*6021+50)/100;
-   amplitude_db10=amplitude==0 ? -12'sd960 : base+$signed({1'b0,log_fraction(normalized[14:10])});
-  end
- endfunction
  localparam IDLE=0,SQRT_L=1,SQRT_R=2,DENOM=3,CORR_START=4,
             DIVIDE=5,BALANCE_START=6,PUBLISH=7;
  reg [3:0] state;
@@ -116,8 +104,12 @@ module audio_pcm_metrics(
  reg signed [31:0] tmp_lr;
  reg [6:0] hold_count;
  wire [15:0] current_peak=tmp_peak_l>tmp_peak_r ? tmp_peak_l : tmp_peak_r;
- wire signed [11:0] current_peak_db=amplitude_db10(current_peak);
- wire signed [11:0] current_rms_db=amplitude_db10(tmp_l>tmp_r ? tmp_l : tmp_r);
+ wire signed [11:0] current_peak_db,current_rms_db,current_hold_db;
+ // Operands settle >96 cycles before PUBLISH (two sequential divisions).
+ // Three encoder stages therefore finish without adding any capture gap.
+ audio_dbfs_encoder u_peak_db(.clk(clk),.amplitude(current_peak),.db10(current_peak_db));
+ audio_dbfs_encoder u_rms_db(.clk(clk),.amplitude(tmp_l>tmp_r ? tmp_l : tmp_r),.db10(current_rms_db));
+ audio_dbfs_encoder u_hold_db(.clk(clk),.amplitude(current_peak>=peak_hold ? current_peak : peak_hold),.db10(current_hold_db));
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
    state<=IDLE;ready<=0;frame_valid<=0;rms_left<=0;rms_right<=0;
@@ -175,7 +167,7 @@ module audio_pcm_metrics(
      ready<=1;frame_valid<=1;state<=IDLE;
      rms_left<=tmp_l;rms_right<=tmp_r;peak_left<=tmp_peak_l;peak_right<=tmp_peak_r;
      rms_db10<=current_rms_db;peak_db10<=current_peak_db;
-     hold_db10<=amplitude_db10(current_peak>=peak_hold ? current_peak : peak_hold);
+     hold_db10<=current_hold_db;
      crest_db10<=current_peak==0 ? 12'd0 : current_peak_db-current_rms_db;
      correlation<=tmp_correlation;correlation_valid<=tmp_l>=8 && tmp_r>=8;
      if(current_peak>=peak_hold)begin peak_hold<=current_peak;hold_count<=94;end
@@ -189,5 +181,54 @@ module audio_pcm_metrics(
     default:state<=IDLE;
    endcase
   end
+ end
+endmodule
+
+// Leading-bit/mantissa decode -> two small ROMs -> signed sum. Constant
+// exponent bases replace the old 32-bit multiply/divide in one cycle.
+module audio_dbfs_encoder(input wire clk,input wire [15:0] amplitude,
+ output reg signed [11:0] db10);
+ reg [3:0] exponent0;
+ reg [4:0] fraction0;
+ reg zero0,zero1;
+ reg signed [11:0] base1;
+ reg [6:0] mantissa1;
+ always @(posedge clk)begin
+  zero0<=amplitude==0;zero1<=zero0;
+  casez(amplitude)
+   16'b1???????????????:begin exponent0<=15;fraction0<=amplitude[14:10];end
+   16'b01??????????????:begin exponent0<=14;fraction0<=amplitude[13:9];end
+   16'b001?????????????:begin exponent0<=13;fraction0<=amplitude[12:8];end
+   16'b0001????????????:begin exponent0<=12;fraction0<=amplitude[11:7];end
+   16'b00001???????????:begin exponent0<=11;fraction0<=amplitude[10:6];end
+   16'b000001??????????:begin exponent0<=10;fraction0<=amplitude[9:5];end
+   16'b0000001?????????:begin exponent0<=9;fraction0<=amplitude[8:4];end
+   16'b00000001????????:begin exponent0<=8;fraction0<=amplitude[7:3];end
+   16'b000000001???????:begin exponent0<=7;fraction0<=amplitude[6:2];end
+   16'b0000000001??????:begin exponent0<=6;fraction0<=amplitude[5:1];end
+   16'b00000000001?????:begin exponent0<=5;fraction0<=amplitude[4:0];end
+   16'b000000000001????:begin exponent0<=4;fraction0<={amplitude[3:0],1'b0};end
+   16'b0000000000001???:begin exponent0<=3;fraction0<={amplitude[2:0],2'b0};end
+   16'b00000000000001??:begin exponent0<=2;fraction0<={amplitude[1:0],3'b0};end
+   16'b000000000000001?:begin exponent0<=1;fraction0<={amplitude[0],4'b0};end
+   default:begin exponent0<=0;fraction0<=0;end
+  endcase
+  case(exponent0)
+   15:base1<=0;14:base1<=-60;13:base1<=-120;12:base1<=-181;
+   11:base1<=-241;10:base1<=-301;9:base1<=-361;8:base1<=-421;
+   7:base1<=-482;6:base1<=-542;5:base1<=-602;4:base1<=-662;
+   3:base1<=-723;2:base1<=-783;1:base1<=-843;default:base1<=-903;
+  endcase
+  case(fraction0)
+   0:mantissa1<=0;1:mantissa1<=3;2:mantissa1<=5;3:mantissa1<=8;
+   4:mantissa1<=10;5:mantissa1<=13;6:mantissa1<=15;7:mantissa1<=17;
+   8:mantissa1<=19;9:mantissa1<=22;10:mantissa1<=24;11:mantissa1<=26;
+   12:mantissa1<=28;13:mantissa1<=30;14:mantissa1<=32;15:mantissa1<=33;
+   16:mantissa1<=35;17:mantissa1<=37;18:mantissa1<=39;19:mantissa1<=40;
+   20:mantissa1<=42;21:mantissa1<=44;22:mantissa1<=45;23:mantissa1<=47;
+   24:mantissa1<=49;25:mantissa1<=50;26:mantissa1<=52;27:mantissa1<=53;
+   28:mantissa1<=55;29:mantissa1<=56;30:mantissa1<=57;default:mantissa1<=59;
+  endcase
+  db10<=zero1 ? -12'sd960 : base1+$signed({5'd0,mantissa1});
  end
 endmodule

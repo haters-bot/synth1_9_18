@@ -34,9 +34,18 @@ def main():
         assert p.returncode == 0 and not any(v in log for v in ('** Error:', '** Fatal:', '# FAIL:')), (out,log[-2000:])
         return log
     run('library',[MS/'vlib.exe','work'])
-    run('compile',[MS/'vlog.exe','-sv',ROOT/'rtl/audio/audio_pcm_metrics.v',ROOT/'sim/tb_audio_pcm_metrics.v'])
+    run('compile',[MS/'vlog.exe','-sv',ROOT/'rtl/audio/audio_pcm_metrics.v',ROOT/'sim/tb_audio_pcm_metrics.v',ROOT/'sim/tb_audio_dbfs_encoder.v'])
     log = run('simulation',[MS/'vsim.exe','-c','tb_audio_pcm_metrics','-do','run -all; quit -f'])
     assert '# PASS:' in log,out
+    encoder_log=run('encoder',[MS/'vsim.exe','-c','tb_audio_dbfs_encoder','-do','run -all; quit -f'])
+    assert '# PASS:' in encoder_log,out
+    encoder_rows=[tuple(map(int,line.split())) for line in (out/'dbfs_all_amplitudes.txt').read_text().splitlines()]
+    assert len(encoder_rows)==32769,out
+    exhaustive_error=0
+    for amplitude,actual in encoder_rows:
+        expected=200*math.log10(amplitude/32768) if amplitude else -960
+        exhaustive_error=max(exhaustive_error,abs(actual-expected)/10)
+        assert abs(actual-expected)<=3.2,(amplitude,actual,expected,out)
     rows = [list(map(int,line.split())) for line in (out/'metrics_output.txt').read_text().splitlines()]
     assert len(rows)==17,(len(rows),out)
     max_db_error = 0
@@ -63,9 +72,11 @@ def main():
         assert hold==held,(row,held,out)
         if max(epl,epr)>=32752:assert clip==48,(row,out)
     (out/'result.json').write_text(json.dumps(dict(passed=True,frames=16,
-        independent_samples=16384,max_db_error=max_db_error/10),indent=2))
+        independent_samples=16384,max_db_error=max_db_error/10,
+        exhaustive_amplitudes=len(encoder_rows),exhaustive_db_error=exhaustive_error),indent=2))
     print(next(x for x in log.splitlines() if '# PASS:' in x),flush=True)
     print(f'PASS: independent RMS/peaks/correlation/balance/crest; maximum dBFS error {max_db_error/10:.3f} dB',flush=True)
+    print(f'PASS: all 32769 PCM amplitudes; maximum encoder error {exhaustive_error:.3f} dB',flush=True)
     print(out,flush=True)
 
 if __name__=='__main__':main()
