@@ -33,13 +33,13 @@ set_option -timing_driven 1
 set_option -correct_hold_violation 1
 set_option -place_option 3
 set_option -route_option 2
-set_option -inc_place 0
-set_option -inc_pnr 0
+# Each build uses a fresh source-only directory, with no incremental P&R data.
+# Gowin 1.9.11.03 does not expose inc_place/inc_pnr as set_option switches.
 run all
 exit
 '''
     (out/'build_audio.tcl').write_text(tcl,encoding='ascii')
-    manifest['build_audio.tcl']=hashlib.sha256(tcl.encode('ascii')).hexdigest()
+    manifest['build_audio.tcl']=hashlib.sha256((out/'build_audio.tcl').read_bytes()).hexdigest()
     (out/'source_manifest.json').write_text(json.dumps(manifest,indent=2))
     metadata=dict(commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
         profile='Signoff',tool=str(GOWIN),project=project,started=datetime.now().isoformat())
