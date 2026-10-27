@@ -125,16 +125,17 @@ module tb_audio_visual_windows;
   end
   stream_check=0;
   $display("PASS: two-stage USB status crossing and 576 per-clock measured numeric glyph pixels");
-  pixel(1064,500,24'h65CDA4);pixel(1220,500,24'h26394B);
-  pixel(1064,536,24'h61DED1);pixel(1064,572,24'h26394B);
+  pixel(1064,520,24'h65CDA4);pixel(1220,520,24'h26394B);
+  pixel(1064,596,24'h65CDA4);pixel(1220,596,24'h26394B);
   @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
   send_samples(-16'sd32768,1024);
   repeat(200)@(negedge clk);
-  pixel(496,312,24'h61DED1);pixel(1220,500,24'h65CDA4);
+  pixel(496,312,24'h61DED1);pixel(1220,520,24'hE87565);pixel(1223,520,24'hFFFFFF);
   if(dut.metrics_clip!=48)$fatal(1,"New clipping indicator missing");
   send_samples(16'sd0,2048); // auto-trigger then a complete silent capture
   repeat(200)@(negedge clk);
-  pixel(496,248,24'h61DED1);pixel(1064,536,24'h26394B);
+  pixel(496,248,24'h61DED1);
+  if(dut.stereo_width_l>=160 || dut.stereo_width_r>=160)$fatal(1,"Silent meters failed to decay");
   // A nonuniform snapshot verifies read addressing and both plotted edges.
   @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
   for(i=0;i<128;i=i+1) send_samples(i*256,8);
@@ -156,7 +157,7 @@ module tb_audio_visual_windows;
   stream_check=0;
   @(negedge clk);audio_link_up=0;repeat(8)@(negedge clk);
   if(dut.waveform_ready || dut.metrics_ready || dut.metrics_clip) $fatal(1,"Stale audio remained after disconnect");
-  pixel(496,248,24'hD5AD78);pixel(1064,500,24'h26394B);
+  pixel(496,248,24'hD5AD78);pixel(1064,520,24'h26394B);
   pixel(140,248,24'h0B131D); // no fabricated notes/energy on disconnect
   pixel(169,400,24'h1B2B3C); // peak marker must not cross tile headings
   $display("PASS: immutable triggered PCM snapshots, energy ring, RMS/dBFS digits, stereo cursor, meters and disconnect clearing");

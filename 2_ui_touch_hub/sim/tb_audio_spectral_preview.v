@@ -3,7 +3,7 @@
 // frame nor evidence of physical audio-board behavior.
 module tb_audio_spectral_preview;
  reg clk=0,rst_n=0,valid=0;
- reg signed [15:0] sample=0;
+ reg signed [15:0] sample=0,right_sample=0;
  reg [13:0] x=0,y=0;
  wire hit;wire [23:0] rgb;
  integer n,frame,px,py,fd,count=0,k,j,checks=0,tone;
@@ -12,7 +12,7 @@ module tb_audio_spectral_preview;
  ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),.view(2'd1),
   .settings_section_id(8'd1),.show_diagnostics(1'b0),.usb_connected(1'b1),.usb_error(1'b0),
   .macro_values(28'd0),.audio_sample_valid(valid),.audio_sample(sample),.audio_link_up(1'b1),
-  .audio_right_sample(sample),.audio_stereo_valid(valid),.out_hit(hit),.out_rgb(rgb));
+  .audio_right_sample(right_sample),.audio_stereo_valid(valid),.out_hit(hit),.out_rgb(rgb));
  // Fill history quickly for an inspectable synthetic preview, while leaving
  // production HISTORY_HOP=8 unchanged in the actual build.
  defparam dut.u_spectrum.HISTORY_HOP=1;
@@ -75,6 +75,7 @@ module tb_audio_spectral_preview;
     while(dut.u_spectrum.state!=0)@(negedge clk);
     valid=1;sample=$rtoi(21000.0*$sin(6.28318530718*tone*n/1024.0)+
                          4500.0*$sin(6.28318530718*3*tone*n/1024.0));
+    right_sample=$rtoi(10500.0*$cos(6.28318530718*tone*n/1024.0));
     @(negedge clk);valid=0;repeat(6)@(negedge clk);
    end
    while(!dut.u_spectrum.frame_valid)@(negedge clk);
@@ -104,7 +105,7 @@ module tb_audio_spectral_preview;
   end
   @(negedge clk);rendering=0;repeat(8)@(negedge clk);$fclose(fd);
   if(count!=921600)$fatal(1,"Wrong preview pixel count %0d",count);
-  $display("PASS: 921600 real RTL pixels, synthetic mono PCM sweep/history preview (not hardware evidence)");
+  $display("PASS: 921600 real RTL pixels, synthetic stereo PCM sweep/history preview (not hardware evidence)");
   $finish;
  end
  initial begin #200000000;$fatal(1,"Spectral preview watchdog");end

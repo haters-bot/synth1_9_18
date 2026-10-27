@@ -10,6 +10,7 @@ module audio_fft_analyzer #(
  input wire [4:0] spectrum_address,
  output reg [5:0] spectrum_value,
  input wire [5:0] history_column,
+ input tri0 [1:0] history_scale,
  input wire [4:0] history_band,
  output reg [5:0] history_value,
  output reg ready,
@@ -136,7 +137,8 @@ module audio_fft_analyzer #(
  reg spectrum_bank;
  reg [5:0] history_write;
  reg [6:0] history_count;
- reg [7:0] history_frames;
+ reg [31:0] history_frames;
+ reg [1:0] applied_history_scale;
  reg [4:0] frame_peak_band;
  reg [9:0] frame_peak_bin;
  reg [16:0] frame_max;
@@ -148,7 +150,8 @@ module audio_fft_analyzer #(
  wire [27:0] centroid_shift={centroid_remainder[26:0],centroid_dividend[47]};
  wire centroid_take=centroid_shift>={1'b0,magnitude_sum};
  wire [47:0] centroid_next={centroid_quotient[46:0],centroid_take};
- wire write_history=history_frames==HISTORY_HOP-1;
+ wire [31:0] history_hop_scaled=HISTORY_HOP << applied_history_scale;
+ wire write_history=history_frames==history_hop_scaled-1 && history_scale==applied_history_scale;
  wire [5:0] history_read_column=history_write+history_column;
  always @(posedge clk)begin
   spectrum_value<=spectrum_memory[{spectrum_bank,spectrum_address}];
@@ -167,14 +170,14 @@ module audio_fft_analyzer #(
    source_bank<=0;read_address<=0;
    twiddle_address<=0;stage<=0;group_base<=0;offset<=0;half_size<=1;
    ready<=0;frame_valid<=0;spectrum_bank<=0;history_write<=0;history_count<=0;
-   history_frames<=0;publish_band<=0;scan_bin<=1;scan_band<=0;band_peak<=0;
+   applied_history_scale<=0;history_frames<=0;publish_band<=0;scan_bin<=1;scan_band<=0;band_peak<=0;
    peak_band<=0;frame_peak_band<=0;
    peak_valid<=0;peak_bin<=0;peak_hz<=0;centroid_hz<=0;
    frame_max<=0;frame_peak_bin<=0;magnitude_sum<=0;weighted_sum<=0;
   end else if(!link_up)begin
    state<=CAPTURE;capture_index<=0;ready<=0;frame_valid<=0;
    source_bank<=0;
-   spectrum_bank<=0;history_write<=0;history_count<=0;history_frames<=0;
+   spectrum_bank<=0;history_write<=0;history_count<=0;history_frames<=0;applied_history_scale<=history_scale;
    peak_band<=0;frame_peak_band<=0;
    peak_valid<=0;peak_bin<=0;peak_hz<=0;centroid_hz<=0;
    frame_max<=0;frame_peak_bin<=0;magnitude_sum<=0;weighted_sum<=0;
@@ -283,6 +286,9 @@ module audio_fft_analyzer #(
     end
     default:state<=CAPTURE;
    endcase
+   if(history_scale!=applied_history_scale)begin
+    applied_history_scale<=history_scale;history_frames<=0;history_count<=0;history_write<=0;
+   end
   end
  end
 endmodule

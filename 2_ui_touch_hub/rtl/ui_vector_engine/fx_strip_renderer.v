@@ -8,6 +8,7 @@ module fx_strip_renderer(
     input wire [13:0] in_x,in_y,
     input wire [132:0] values,
     input wire [10:0] switches,
+    input tri0 [7:0] selected_id,
     output reg out_hit,
     output reg [23:0] out_rgb
 );
@@ -123,7 +124,7 @@ module fx_strip_renderer(
         wire knob_hit=box_hit && ax<=13 && ay<=13 && radius2<=169;
         wire bar_hit=box_hit && ly==66 && lx>=4 && lx<=6'd4+bar_width;
         wire [23:0] cell_color=(knob_hit || bar_hit) ?
-            ((bar_hit || radius2>=121) ? ACCENT : 24'h101620) : 24'd0;
+            ((bar_hit || radius2>=121) ? (selected_id==8'h60+n ? 24'hFFFFFF : ACCENT) : 24'h101620) : 24'd0;
         wire caption_hit=box_hit && ly>=40 && ly<50 && lx>=4;
         wire number_hit=box_hit && ly>=14 && ly<24 && lx>=12 && lx<36;
         wire [5:0] caption_x=lx-6'd4;

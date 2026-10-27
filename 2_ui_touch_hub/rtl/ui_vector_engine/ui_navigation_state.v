@@ -54,18 +54,7 @@ module ui_navigation_state #(parameter CONTACT_CYCLES=2500000)(
        end
        if(settings_section_id==8'd1 && touch_x>=880 && touch_x<=1216 && touch_y>=520 && touch_y<=584)
         show_diagnostics<=!show_diagnostics;
-       // Explicit +/- pads preserve Macro interfaces without the redundant HUD.
-       if(settings_section_id==8'd1 && touch_y>=232 && touch_y<=488)begin
-        if(touch_y>=232 && touch_y<=288)delta_id<=1;
-        else if(touch_y>=296 && touch_y<=352)delta_id<=2;
-        else if(touch_y>=360 && touch_y<=416)delta_id<=3;
-        else if(touch_y>=424 && touch_y<=480)delta_id<=4;
-        if((touch_y>=232 && touch_y<=288) || (touch_y>=296 && touch_y<=352) ||
-           (touch_y>=360 && touch_y<=416) || (touch_y>=424 && touch_y<=480))begin
-         if(touch_x>=240 && touch_x<=304)begin delta_valid<=1;delta_value<=-1;end
-         else if(touch_x>=576 && touch_x<=640)begin delta_valid<=1;delta_value<=1;end
-        end
-       end
+
       end
      end
     end

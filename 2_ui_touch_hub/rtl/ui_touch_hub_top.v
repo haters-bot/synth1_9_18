@@ -1,3 +1,4 @@
+`include "params.vh"
 // ==============================================================================
 // Module: ui_touch_hub_top.v
 // Description: Master Top-Level for Teammate 2 (UI Touch Hub)
@@ -264,6 +265,9 @@ module ui_touch_hub_top #(
     wire fx_event_valid,route_event_valid;
     wire [7:0] fx_event_id,route_event_target;
     wire [6:0] fx_event_value;
+    wire [132:0] fx_parameter_snapshot;
+    wire fx_touch_focus_valid;
+    wire [7:0] fx_touch_focus_id;
     wire [1:0] route_event_source;
     wire signed [7:0] route_event_depth;
     // LFO Protocol V2 snapshots and SysEx injection (lfo_sysex_tx <-> midi_uart_tx)
@@ -355,6 +359,16 @@ module ui_touch_hub_top #(
         .spi_link_up(spi_link_up)
     );
 
+    wire [63:0] user_knob_steps;
+    wire signed [7:0] physical_delta;
+    wire [7:0] display_focus_id;
+    knob_ui_control u_knob_control(.clk(clk_pixel),.rst_n(sys_rst_n_sync),
+        .motion_valid(spi_param_valid),.motion_cw(spi_param_cw),.motion_id(spi_param_id),
+        .button_valid(knob_select_valid),.button_id(knob_select_id),.button_action(knob_select_action),
+        .fx_touch_focus_valid(fx_touch_focus_valid),.fx_touch_focus_id(fx_touch_focus_id),
+        .touch_focus_valid(selected_valid),.touch_focus_id(selected_param_id),.touch_down(ui_touch_down),
+        .steps(user_knob_steps),.delta(physical_delta),.focus_id(display_focus_id));
+
     // --------------------------------------------------------------------------
     // 5. 参数合并中枢 (Param Merger)
     // --------------------------------------------------------------------------
@@ -383,14 +397,20 @@ module ui_touch_hub_top #(
     wire [7:0]  midi_cc_param_id;
     wire [6:0]  midi_cc_val;
 
-    // A physical detent is a +/-1 step on the same active parameter register
+    // A physical detent applies its configured step to the shared static bank.
+    wire physical_fx = spi_param_id==`PARAM_ID_FX_REVERB || spi_param_id==`PARAM_ID_FX_DELAY;
+    wire [7:0] physical_fx_id = spi_param_id==`PARAM_ID_FX_REVERB ? 8'h66 : 8'h60;
+    wire [6:0] physical_fx_base = spi_param_id==`PARAM_ID_FX_REVERB ? fx_parameter_snapshot[42+:7] : fx_parameter_snapshot[0+:7];
+    wire signed [8:0] physical_fx_sum = $signed({2'b0,physical_fx_base}) + $signed(physical_delta);
+    wire [6:0] physical_fx_value = physical_fx_sum<0 ? 7'd0 : physical_fx_sum>127 ? 7'd127 : physical_fx_sum[6:0];
+    // Other controls use the existing merger
     // used by touch. Preserve existing navigation/touch priority on collisions.
-    wire        merged_delta_valid = navigation_delta_valid | touch_delta_valid | spi_param_valid;
+    wire        merged_delta_valid = navigation_delta_valid | touch_delta_valid | (spi_param_valid && !physical_fx);
     wire [7:0]  merged_delta_id = navigation_delta_valid ? navigation_delta_id :
                                   touch_delta_valid ? selected_param_id : spi_param_id;
     wire signed [7:0] merged_delta_value = navigation_delta_valid ? navigation_delta_value :
                                            touch_delta_valid ? touch_delta_val :
-                                           (spi_param_cw ? 8'sd1 : -8'sd1);
+                                           physical_delta;
 
     curve_touch_editor #(.USE_DISPLAY_GEOMETRY(1)) u_curve_editor (
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),
@@ -516,7 +536,8 @@ module ui_touch_hub_top #(
         .navigation_capture(navigation_capture),.navigation_delta_valid(navigation_delta_valid),
         .navigation_delta_id(navigation_delta_id),.navigation_delta_value(navigation_delta_value),
         .display_env_snapshot(display_env_values),
-        .external_param_valid(1'b0),.external_param_id(spi_param_id),.external_param_value(7'd0),
+        .external_param_valid(spi_param_valid && physical_fx),.external_param_id(physical_fx_id),.external_param_value(physical_fx_value),
+        .fx_parameter_snapshot(fx_parameter_snapshot),.fx_touch_focus_valid(fx_touch_focus_valid),.fx_touch_focus_id(fx_touch_focus_id),
         .binding_capture(binding_capture),
         .fx_event_valid(fx_event_valid),.fx_event_id(fx_event_id),.fx_event_value(fx_event_value),
         .route_event_valid(route_event_valid),.route_event_target(route_event_target),
@@ -596,7 +617,8 @@ module ui_touch_hub_top #(
         .val_slot_bypass   (val_slot_bypass),
         .active_btn_id     (active_btn_id),
         .btn_flash_active  (btn_flash_active),
-        .selected_param_id (selected_param_id),
+        .selected_param_id (display_focus_id),
+        .user_knob_steps(user_knob_steps),
         .usb_connected     (usb_connected),
         .usb_conn_err      (usb_conn_err),
         .usb_dev_type      (usb_dev_type),

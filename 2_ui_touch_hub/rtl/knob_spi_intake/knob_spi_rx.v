@@ -70,52 +70,14 @@ module knob_spi_rx #(
         input integer bit_number;
         begin get_gpio=gpio[bit_number]; end
     endfunction
-    function [7:0] map_knob_to_param_id;
-        input [4:0] knob;
-        begin
-            case(knob)
-                5'd0:map_knob_to_param_id=`PARAM_ID_OSCA_WT_POS;
-                5'd1:map_knob_to_param_id=`PARAM_ID_OSCA_WARP;
-                5'd2:map_knob_to_param_id=`PARAM_ID_OSCA_PAN;
-                5'd3:map_knob_to_param_id=`PARAM_ID_OSCA_VOL;
-                5'd4:map_knob_to_param_id=`PARAM_ID_OSCA_UNISON;
-                5'd5:map_knob_to_param_id=`PARAM_ID_OSCA_DETUNE;
-                5'd6:map_knob_to_param_id=`PARAM_ID_OSCA_BLEND;
-                5'd7:map_knob_to_param_id=`PARAM_ID_OSCA_PHASE;
-                5'd8:map_knob_to_param_id=`PARAM_ID_ENV1_ATTACK;
-                5'd9:map_knob_to_param_id=`PARAM_ID_ENV1_HOLD;
-                5'd10:map_knob_to_param_id=`PARAM_ID_ENV1_DECAY;
-                5'd11:map_knob_to_param_id=`PARAM_ID_ENV1_SUSTAIN;
-                5'd12:map_knob_to_param_id=`PARAM_ID_ENV1_RELEASE;
-                5'd13:map_knob_to_param_id=`PARAM_ID_MASTER_VOL;
-                5'd14:map_knob_to_param_id=`PARAM_ID_MACRO1;
-                5'd15:map_knob_to_param_id=`PARAM_ID_MACRO2;
-                5'd16:map_knob_to_param_id=`PARAM_ID_OSCB_WT_POS;
-                5'd17:map_knob_to_param_id=`PARAM_ID_OSCB_WARP;
-                5'd18:map_knob_to_param_id=`PARAM_ID_OSCB_PAN;
-                5'd19:map_knob_to_param_id=`PARAM_ID_OSCB_VOL;
-                5'd20:map_knob_to_param_id=`PARAM_ID_OSCB_UNISON;
-                5'd21:map_knob_to_param_id=`PARAM_ID_OSCB_DETUNE;
-                5'd22:map_knob_to_param_id=`PARAM_ID_OSCB_BLEND;
-                5'd23:map_knob_to_param_id=`PARAM_ID_OSCB_PHASE;
-                5'd24:map_knob_to_param_id=`PARAM_ID_FLT_CUTOFF;
-                5'd25:map_knob_to_param_id=`PARAM_ID_FLT_RES;
-                5'd26:map_knob_to_param_id=`PARAM_ID_FLT_PAN;
-                5'd27:map_knob_to_param_id=`PARAM_ID_FLT_DRIVE;
-                5'd28:map_knob_to_param_id=`PARAM_ID_FLT_FAT;
-                5'd29:map_knob_to_param_id=`PARAM_ID_FLT_MIX;
-                5'd30:map_knob_to_param_id=`PARAM_ID_FX_REVERB;
-                5'd31:map_knob_to_param_id=`PARAM_ID_FX_DELAY;
-                default:map_knob_to_param_id=`PARAM_ID_NONE;
-            endcase
-        end
-    endfunction
+    `include "knob_param_map.vh"
     function [1:0] quad_step;
         input oa,ob,na,nb;
         begin
             case({oa,ob,na,nb})
-                4'b0001,4'b0111,4'b1110,4'b1000:quad_step=2'd1;
-                4'b0010,4'b1011,4'b1101,4'b0100:quad_step=2'd2;
+                // Physical PCB A/B order: clockwise is 11->01->00->10->11.
+                4'b0001,4'b0111,4'b1110,4'b1000:quad_step=2'd2;
+                4'b0010,4'b1011,4'b1101,4'b0100:quad_step=2'd1;
                 default:quad_step=2'd0;
             endcase
         end
@@ -250,11 +212,11 @@ module knob_spi_rx #(
                     // Select exactly one event per output per cycle. Clearing
                     // every pending bit here used to lose all but the last ID.
                     if(emitted_mask==0 && pending_mask[i]) begin
-                        param_valid<=1;param_id<=map_knob_to_param_id(i[4:0]);
+                        param_valid<=1;param_id<=knob_param_id(i[4:0]);
                         param_val<=knob_value[i];param_cw<=direction_cw[i];emitted_mask[i]=1;
                     end
                     if(emitted_switch==0 && pending_switch[i]) begin
-                        select_valid<=1;select_id<=map_knob_to_param_id(i[4:0]);
+                        select_valid<=1;select_id<=knob_param_id(i[4:0]);
                         select_action<=switch_action[i];emitted_switch[i]=1;
                     end
                 end

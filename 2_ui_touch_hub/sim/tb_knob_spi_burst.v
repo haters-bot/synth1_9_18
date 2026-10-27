@@ -141,9 +141,9 @@ module tb_knob_spi_burst;
     endtask
     task k01_detent(input bit clockwise);
         begin
-            gpio[0][1:0]=clockwise?2'b01:2'b10;wait_ms(3);
-            gpio[0][1:0]=0;wait_ms(3);
             gpio[0][1:0]=clockwise?2'b10:2'b01;wait_ms(3);
+            gpio[0][1:0]=0;wait_ms(3);
+            gpio[0][1:0]=clockwise?2'b01:2'b10;wait_ms(3);
             gpio[0][1:0]=3;wait_ms(3);
         end
     endtask
@@ -171,12 +171,12 @@ module tb_knob_spi_burst;
         connected=3;wait_ms(10);
         // All 32 detents in one scan must survive arbitration/FIFO buffering.
         for(k=0;k<32;k=k+1) expect_line($sformatf("K%02d CW U%0d",k+1,k<16?1:2));
-        all_ab(2'b10);all_ab(2'b00);all_ab(2'b01);all_ab(2'b11);
+        all_ab(2'b01);all_ab(2'b00);all_ab(2'b10);all_ab(2'b11);
         drain_and_quiet();
         if(ui_value!==1) $fatal(1,"Physical K01 did not increment the shared UI parameter");
         for(k=0;k<32;k=k+1) if(motion[k]!=1) $fatal(1,"Missing CW knob %0d",k+1);
         for(k=0;k<32;k=k+1) expect_line($sformatf("K%02d CCW U%0d",k+1,k<16?1:2));
-        all_ab(2'b01);all_ab(2'b00);all_ab(2'b10);all_ab(2'b11);
+        all_ab(2'b10);all_ab(2'b00);all_ab(2'b01);all_ab(2'b11);
         drain_and_quiet();
         if(ui_value!==0) $fatal(1,"Physical K01 did not decrement the same UI parameter");
         for(k=0;k<32;k=k+1) if(motion[k]!=0) $fatal(1,"Missing CCW knob %0d",k+1);

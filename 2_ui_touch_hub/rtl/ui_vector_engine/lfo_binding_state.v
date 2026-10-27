@@ -86,7 +86,7 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
             armed<=0;dragging<=0;finger<=0;control_contact<=0;drag_source<=0;
             selected_target<=63;hover_target<=63;watchdog<=0;
             event_valid<=0;event_target<=0;event_source<=0;event_depth<=0;
-            for(i=0;i<53;i=i+1) begin source[i]<=0;depth[i]<=64;end
+            for(i=0;i<53;i=i+1) begin source[i]<=0;depth[i]<=127;end
         end else begin
             event_valid<=0;
             if(packet_valid) watchdog<=0;
@@ -102,9 +102,9 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
                         // Release coordinates can be zero on some HID reports:
                         // use the last pressed packet's hovered destination.
                         if(hover_target<53) begin
-                            source[hover_target]<=drag_source;depth[hover_target]<=64;
+                            source[hover_target]<=drag_source;depth[hover_target]<=127;
                             selected_target<=hover_target;event_valid<=1;
-                            event_target<=mod_id(hover_target);event_source<=drag_source;event_depth<=64;
+                            event_target<=mod_id(hover_target);event_source<=drag_source;event_depth<=127;
                         end
                         armed<=0;dragging<=0;hover_target<=63;
                     end
@@ -123,9 +123,9 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
                         else if(armed && target<53) begin
                             // Optional tap destination after BIND: commit on
                             // press and capture the contact to protect its base.
-                            source[target]<=packet_tab+1'b1;depth[target]<=64;
+                            source[target]<=packet_tab+1'b1;depth[target]<=127;
                             selected_target<=target;event_valid<=1;
-                            event_target<=mod_id(target);event_source<=packet_tab+1'b1;event_depth<=64;
+                            event_target<=mod_id(target);event_source<=packet_tab+1'b1;event_depth<=127;
                             armed<=0;control_contact<=1;
                         end
                         else if(armed) begin armed<=0;control_contact<=1;end

@@ -4,7 +4,7 @@
 // ==============================================================================
 
 `timescale 1ns / 1ps
-`include "../rtl/ui_vector_engine/params.vh"
+`include "params.vh"
 
 module tb_midi_uart_tx;
 

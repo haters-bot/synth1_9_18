@@ -24,7 +24,7 @@ def main():
     bases={'val_osca_wt_pos':20,'val_oscb_wt_pos':30,'val_flt_cutoff':50,'val_flt_res':20,
            'val_env_attack':10,'val_env_hold':10,'val_env_decay':30,'val_env_sustain':40,'val_env_release':30}
     connections=[]
-    for m in re.finditer(r'input\s+wire\s*(\[\d+:\d+\])?\s*([^\n]+)',ports):
+    for m in re.finditer(r'input\s+wire\s*(?:signed\s*)?(\[\d+:\d+\])?\s*([^\n]+)',ports):
         width,names=m.groups()
         for name in names.split('//')[0].rstrip(' ,\r').split(','):
             name=name.strip()
@@ -76,7 +76,7 @@ endtask
 task expected;
     input integer wave,depth;input bound;
     begin for(j=0;j<9;j=j+1)begin
-        tmp=bases[j]+(bound ? ((depth*wave)>>>7) : 0);
+        tmp=bound ? ((depth<0 ? 127-wave : wave)*(depth<0 ? -depth : depth))/127 : bases[j];
         want[j]=tmp<0 ? 0 : tmp>127 ? 127 : tmp;
     end end
 endtask
@@ -114,16 +114,16 @@ initial begin
         click(1140,385);click(mod_cx(targets[i]),mod_cy(targets[i]));
         if(dut.mod_sources[targets[i]*2+:2]!=1)$fatal(1,"Binding input did not reach target");
     end
-    flat_wave(0);expected(0,64,1);scan(1);
-    flat_wave(127);expected(127,64,1);scan(2);
-    flat_wave(64);expected(64,64,1);scan(3);
-    // Every target receives -64, exercising the real AMOUNT buttons.
+    flat_wave(0);expected(0,127,1);scan(1);
+    flat_wave(127);expected(127,127,1);scan(2);
+    flat_wave(64);expected(64,127,1);scan(3);
+    // Every target receives -127, exercising the real AMOUNT buttons.
     for(i=0;i<9;i=i+1)begin
         click(mod_cx(targets[i]),mod_cy(targets[i]));
-        for(j=0;j<16;j=j+1)click(1030,675);
-        if($signed(dut.mod_depths[targets[i]*8+:8])!=-64)$fatal(1,"Depth input did not reach target");
+        for(j=0;j<32;j=j+1)click(1030,675);
+        if($signed(dut.mod_depths[targets[i]*8+:8])!=-127)$fatal(1,"Depth input did not reach target");
     end
-    flat_wave(127);expected(127,-64,1);scan(4);
+    flat_wave(127);expected(127,-127,1);scan(4);
     click(1030,268);click(1190,675);want[3]=20;scan(5);
     if(dut.mod_sources[48+:2]!=0)$fatal(1,"CLEAR did not restore base RES");
     // Preview must not mutate any base input/state to achieve the animation.

@@ -36,7 +36,7 @@ def main():
         if '# PASS:' in line:print(line,flush=True)
     mismatches=[name for name,digest in hashes.items() if hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest]
     assert not mismatches,('Preview source changed while running',mismatches,out)
-    (out/'result.json').write_text(json.dumps(dict(passed=True,source='RTL simulation; synthetic mono PCM, not hardware',input_files=len(hashes),workspace_mismatches=mismatches),indent=2))
+    (out/'result.json').write_text(json.dumps(dict(passed=True,source='RTL simulation; synthetic stereo PCM, not hardware',input_files=len(hashes),workspace_mismatches=mismatches),indent=2))
     print(out/'preview.png',flush=True)
 
 if __name__=='__main__':main()

@@ -4,6 +4,7 @@ module tb_audio_fft_analyzer;
  reg signed [15:0] sample=0;
  reg [4:0] spectrum_address=0,history_band=0;
  reg [5:0] history_column=63;
+ reg [1:0] history_scale=0;
  wire [5:0] spectrum_value,history_value;
  wire ready,frame_valid;
  wire [4:0] peak_band;
@@ -11,7 +12,7 @@ module tb_audio_fft_analyzer;
  wire [9:0] peak_bin;
  wire [15:0] peak_hz,centroid_hz;
  reg [15:0] stimuli[0:7167];
- integer frame,n,bin,fd,fd_levels,band,column,cycles=0,last_sample,latency,max_latency=0;
+ integer frame,n,bin,fd,fd_levels,band,column,cycles=0,last_sample,latency,max_latency=0,z,hop;
  audio_fft_analyzer #(.HISTORY_HOP(1)) dut(.*);
  always #10 clk=~clk;
  always @(posedge clk)cycles=cycles+1;
@@ -64,11 +65,25 @@ module tb_audio_fft_analyzer;
     history_column=column;history_band=band;repeat(2)@(negedge clk);
     if(history_value!==0)$fatal(1,"Old spectrum survived 64 silent history columns");
    end
+  // Each cadence change discards old timestamps; publish only each 1/2/4/8 frames.
+  for(z=0;z<4;z=z+1)begin
+   link_up=0;history_scale=z;repeat(3)@(negedge clk);link_up=1;repeat(3)@(negedge clk);
+   for(hop=0;hop<(1<<z);hop=hop+1)begin
+    for(n=0;n<1024;n=n+1)begin
+     while(dut.state!=0)@(negedge clk);
+     sample=0;sample_valid=1;@(negedge clk);sample_valid=0;repeat(6)@(negedge clk);
+    end
+    while(!frame_valid)@(negedge clk);
+    if(dut.history_count!==(hop==(1<<z)-1 ? 7'd1 : 7'd0))$fatal(1,"Wrong history cadence zoom=%0d hop=%0d count=%0d",z,hop,dut.history_count);
+   end
+   history_scale=(z+1)%4;repeat(3)@(negedge clk);
+   if(dut.history_count!=0 || dut.history_frames!=0)$fatal(1,"Cadence change retained mixed timestamps");
+  end
   link_up=0;repeat(3)@(negedge clk);
   if(ready || frame_valid || history_value!==0)$fatal(1,"Disconnect retained valid history");
   link_up=1;repeat(8)@(negedge clk);
   if(ready)$fatal(1,"Reconnect displayed data before a complete new FFT frame");
-  $display("PASS: 71 FFT frames, max processing %0d clocks (<1 ms), spectrum/history consistency, 64-column wrap, silence and disconnect",max_latency);
+  $display("PASS: 86 FFT frames, max processing %0d clocks (<1 ms), spectrum/history consistency, 64-column wrap, four history cadences/reset, silence and disconnect",max_latency);
   $finish;
  end
  initial begin #200000000;$fatal(1,"FFT test watchdog");end

@@ -52,7 +52,7 @@ def main():
     connections = []
     live = {'clk', 'rst_n', 'in_pixel_x', 'in_pixel_y', 'in_den',
             'ui_touch_valid', 'ui_touch_down', 'ui_touch_x', 'ui_touch_y'}
-    for match in re.finditer(r'input\s+wire\s*(\[\d+:\d+\])?\s*([^\n]+)', ports):
+    for match in re.finditer(r'input\s+wire\s*(?:signed\s*)?(\[\d+:\d+\])?\s*([^\n]+)', ports):
         width, names = match.groups()
         for name in names.split('//')[0].rstrip(' ,\r').split(','):
             name = name.strip()
@@ -213,10 +213,8 @@ endmodule
     (out / 'tb_ui_frame.v').write_text(tb, encoding='utf-8')
     subprocess.run([str(MODELSIM/'vlib.exe'), 'work'], cwd=out, check=True, capture_output=True)
     ui = ROOT/'rtl/ui_vector_engine'
-    files = [str(ui/name) for name in ['sine_table.v', 'knob_vector_unit.v',
-             'osc_panel_renderer.v', 'filter_panel_renderer.v', 'env_panel_renderer.v',
-             'button_vector_unit.v', 'fx_matrix_panel_renderer.v', 'ui_navigation_state.v', 'ui_navigation_renderer.v',
-             'fx_editor_state.v', 'fx_strip_renderer.v', 'lfo_smooth_table.v', 'lfo_binding_state.v', 'modulation_preview.v', 'modulation_overlay.v', 'lfo_editor_state.v', 'lfo_panel_renderer.v', 'curve_hint_renderer.v', 'ui_top_renderer.v']]
+    import xml.etree.ElementTree as ET
+    files = [str(ROOT / e.attrib['path']) for e in ET.parse(ROOT/'2_ui_touch_hub.gprj').findall('.//File') if e.attrib['path'].endswith('.v')]
     with (out/'compile.log').open('w') as log:
         subprocess.run([str(MODELSIM/'vlog.exe'), '-sv', '+incdir+'+str(ui),
                         *files, 'tb_ui_frame.v'], cwd=out, stdout=log, stderr=subprocess.STDOUT, check=True)

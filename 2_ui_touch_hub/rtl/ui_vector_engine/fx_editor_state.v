@@ -8,6 +8,8 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
     input wire [6:0] external_value,
     output wire [132:0] values,
     output reg [10:0] switches,
+    output reg focus_valid,
+    output reg [7:0] focus_id,
     output reg event_valid,
     output reg [7:0] event_id,
     output reg [6:0] event_value
@@ -79,11 +81,12 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
             finger<=0;drag<=0;captured<=0;anchor_x<=0;anchor_y<=0;anchor_value<=0;
+            focus_valid<=0;focus_id<=0;
             watchdog<=0;switches<=11'b00001001111;event_valid<=0;event_id<=0;event_value<=0;
             for(i=0;i<19;i=i+1) params[i]<=64;
             params[5]<=32;params[12]<=32;params[15]<=64;params[18]<=64;
         end else begin
-            event_valid<=0;
+            event_valid<=0;focus_valid<=0;
             if(watchdog<WATCHDOG_CYCLES) watchdog<=watchdog+1'b1;
             else begin finger<=0;drag<=0;end
             if(external_pending && packet_external_id>=8'h60 && packet_external_id<=8'h72 &&
@@ -110,6 +113,7 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
                     if(!finger) begin
                         drag<=target!=0;
                         if(target!=0) begin
+                            focus_valid<=1;focus_id<=target;
                             captured<=target-8'h60;anchor_x<=packet_x;anchor_y<=packet_y;
                             anchor_value<=params[target-8'h60];
                         end else if(toggle_id<9) begin

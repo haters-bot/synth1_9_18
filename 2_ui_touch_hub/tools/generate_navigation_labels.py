@@ -3,8 +3,19 @@ from pathlib import Path
 import json
 ROOT=Path(__file__).resolve().parents[1]
 
+def generate_knob_captions(chars):
+    captions=['K01 OSC A WT POS', 'K02 OSC A WARP', 'K03 OSC A PAN', 'K04 OSC A VOLUME', 'K05 OSC A UNISON', 'K06 OSC A DETUNE', 'K07 OSC A BLEND', 'K08 OSC A PHASE', 'K09 ENV ATTACK', 'K10 ENV HOLD', 'K11 ENV DECAY', 'K12 ENV SUSTAIN', 'K13 ENV RELEASE', 'K14 MASTER VOLUME', 'K15 MACRO 1', 'K16 MACRO 2', 'K17 OSC B WT POS', 'K18 OSC B WARP', 'K19 OSC B PAN', 'K20 OSC B VOLUME', 'K21 OSC B UNISON', 'K22 OSC B DETUNE', 'K23 OSC B BLEND', 'K24 OSC B PHASE', 'K25 FLT CUTOFF', 'K26 FLT RES', 'K27 FLT PAN', 'K28 FLT DRIVE', 'K29 FLT FAT', 'K30 FLT MIX', 'K31 REVERB SIZE', 'K32 DELAY FEEDBACK']
+    out=['function [5:0] knob_caption; input [4:0] knob; input [5:0] col; begin case({knob,col})\n']
+    for knob,caption in enumerate(captions):
+        for col,ch in enumerate(caption[:18]):
+            if ch!=' ':out.append(f"11'd{knob*64+col}:knob_caption=6'd{chars.index(ch)};\n")
+    out.append('default:knob_caption=0;endcase end endfunction\n')
+    (ROOT/'rtl/ui_vector_engine/knob_setting_labels.vh').write_text(''.join(out))
+
+
 def main():
     chars=json.loads((ROOT/'tools/ui_font_7x10.json').read_text())['characters']
+    generate_knob_captions(chars)
     lines=[]
     named={}
     def add(condition,x,y,text,large=False,color='DDE7F4',name=None):
@@ -22,63 +33,58 @@ def main():
     add('view==1',24,56,'PERFORMANCE MONITOR',True)
     add('view==1',800,64,'SIX VIEWS / I2S RETURN',False,'B3C5D8')
     titles=['01 AUDIO OVERVIEW','02 WAVEFORM','03 STEREO PHASE','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
-    details=['LEVEL DBFS / 96 KHZ','10.7 MS / AUTO TRIGGER','CORR +000 / BAL +000',
-             'PEAK 00000 HZ','BLUE LOW / RED HIGH','P R DBFS / C CREST DB']
+    details=['LEVEL DBFS / 96 KHZ','AUTO TRIGGER','CORR +000 / BAL +000',
+             'PEAK 00000','BLUE LOW / RED HIGH','DBFS / PEAK / CREST']
     ready=['metrics_ready','waveform_ready','phase_ready','spectrum_ready','spectrum_ready','metrics_ready']
     for i in range(6):
         x=24+(i%3)*418;y=96+(i//3)*296
         add('view==1',x+20,y+12,titles[i],True)
         live=f'view==1 && audio_link_up && {ready[i]}'
-        subtitle=['I2S PCM / LIVE ENERGY','LEFT PCM / ZERO CROSS','L X / R Y / PCM',
-                  'CENTER 00000 HZ','LOG FREQ / TIME RIGHT','PEAK / RMS / CREST'][i]
-        add(live,x+22,y+56,subtitle,False,'B3C5D8',name='CENTROID' if i==3 else None)
+        subtitle=['I2S PCM / LIVE ENERGY','LEFT PCM : 10.67 MS','L X / R Y / PCM',
+                  'CENTER 00000 HZ','LOG FREQ / TIME RIGHT','STEREO RMS / PEAK HOLD'][i]
+        add(live,x+22,y+56,subtitle,False,'B3C5D8',name='CENTROID' if i==3 else 'WAVE_SPAN' if i==1 else None)
         add('view==1 && !audio_link_up',x+22,y+56,'I2S DISCONNECTED',False,'D5AD78')
         add(f'view==1 && audio_link_up && !{ready[i]}',x+22,y+56,'WAITING FOR PCM',False,'D5AD78')
-        add('view==1',x+20,y+248,details[i],False,'C0D0E0',name={2:'STEREO',3:'PEAK_HZ'}.get(i))
+        add('view==1',x+20,y+238,details[i],False,'C0D0E0',name={2:'STEREO',3:'PEAK_HZ'}.get(i))
+    add('view==1',222,630,'TO 00000HZ',False,'C0D0E0',name='SPECTRUM_RANGE')
     live='view==1 && audio_link_up && metrics_ready'
     add(live,238,198,'RMS -00.0',False,'61DED1',name='OV_RMS')
     add(live,238,230,'PK  -00.0',False,'65CDA4',name='OV_PEAK')
     add(live,238,262,'00000 HZ',False,'F5D36A',name='OV_HZ')
     add(live,238,294,'L    R',False,'B3C5D8')
-    add(live,882,488,'P -00.0',False,'65CDA4',name='LEVEL_PEAK')
-    add(live,882,528,'R -00.0',False,'61DED1',name='LEVEL_RMS')
-    add(live,882,568,'C  00.0',False,'F5D36A',name='LEVEL_CREST')
-    add('view==1 && audio_link_up && metrics_ready && metrics_clip!=0',882,608,'CLIP',False,'E87565')
+    add(live,882,488,'L -00.0',False,'65CDA4',name='LEVEL_L')
+    add(live,882,608,'P -00.0',False,'65CDA4',name='LEVEL_PEAK')
+    add(live,882,552,'R -00.0',False,'61DED1',name='LEVEL_RMS')
+    add(live,1034,608,'C  00.0',False,'F5D36A',name='LEVEL_CREST')
+    add('view==1 && audio_link_up && metrics_ready && metrics_clip!=0',1176,580,'CLIP',False,'E87565')
     add('view==1 && audio_link_up && metrics_ready && metrics_transient!=0',238,318,'ATTACK',False,'F5D36A')
     add('view==2',32,56,'SYSTEM SETTINGS',True)
     for i,title in enumerate(['CONTROLS','DISPLAY','INPUTS','ABOUT']):
         x=[32,336,632,928][i]
         add('view==2',x+24,98,title,False,'E8F0FA')
-    add('view==2 && settings_section_id==1',48,136,'CONTROLS',True)
-    add('view==2 && settings_section_id==1',48,184,'MACROS : AUDIO MAPPING NOT CONNECTED',False,'AFC3D8')
-    for i in range(4):
-        y=248+i*64
-        add('view==2 && settings_section_id==1',64,y,f'MACRO {i+1}')
-        add('view==2 && settings_section_id==1',264,y,'-',True)
-        add('view==2 && settings_section_id==1',600,y,'+',True)
-    add('view==2 && settings_section_id==1',48,528,'AUDIO MAPPING NOT CONNECTED',False,'D6B989')
-    add('view==2 && settings_section_id==1',48,560,'VALUES KEPT WHEN CHANGING PAGES',False,'AFC3D8')
-    add('view==2 && settings_section_id==1',736,136,'DEVICE STATUS',True)
-    add('view==2 && settings_section_id==1 && usb_connected && !usb_error',736,192,'TOUCH USB: CONNECTED',False,'58DDB8')
-    add('view==2 && settings_section_id==1 && (!usb_connected || usb_error)',736,192,'TOUCH USB: OFFLINE / ERROR',False,'D0A46C')
-    add('view==2 && settings_section_id==1',736,232,'VIDEO : 1280 X 720 / 50 MHZ')
-    add('view==2 && settings_section_id==1',736,264,'REFRESH : 40.4 HZ')
-    add('view==2 && settings_section_id==1',736,304,'FIRMWARE : R17 NAV / SIX SLOTS')
-    add('view==2 && settings_section_id==1',736,344,'AUDIO INPUT : I2S RETURN',False,'B3C5D8')
-    add('view==2 && settings_section_id==1',736,384,'NOTE INPUT : NOT CONNECTED',False,'D6B989')
-    add('view==2 && settings_section_id==1',736,424,'DEPLOYMENT : SRAM')
-    add('view==2 && settings_section_id==1',736,480,'TOUCH DIAGNOSTICS')
-    add('view==2 && settings_section_id==1 && show_diagnostics',904,544,'ON : TAP TO HIDE')
-    add('view==2 && settings_section_id==1 && !show_diagnostics',904,544,'OFF : TAP TO SHOW')
-    add('view==2 && settings_section_id==2',64,152,'DISPLAY INFO',True)
-    add('view==2 && settings_section_id==2',64,224,'OUTPUT : 1280 X 720')
-    add('view==2 && settings_section_id==2',64,272,'PIXEL CLOCK : 50 MHZ')
-    add('view==2 && settings_section_id==2',64,320,'REFRESH : 40.4 HZ')
-    add('view==2 && settings_section_id==2',64,392,'DISPLAY MODE IS FIXED BY THE FPGA',False,'AFC3D8')
-    add('view==2 && settings_section_id==2',64,432,'NO BRIGHTNESS CONTROL IS CONNECTED',False,'D6B989')
-    add('view==2 && settings_section_id==2',760,216,'DISPLAY INTERFACE',True)
-    add('view==2 && settings_section_id==2',760,296,'VIDEO MODE IS SET BY FPGA')
-    add('view==2 && settings_section_id==2',760,344,'FUTURE OPTIONS SLOT')
+    add('view==2 && settings_section_id==1',48,144,'ENCODER STEP',True)
+    add('view==2 && settings_section_id==1',448,144,'APPLY ALL',False,'61DED1')
+    for row in range(8):
+        add('view==2 && settings_section_id==1',64,218+row*44,
+            'K00                1    2    4    8',name=f'KNOB{row}')
+    add('view==2 && settings_section_id==1',64,584,'PREV       PAGE 1:4          NEXT',name='KNOB_PAGE')
+    add('view==2 && settings_section_id==1',736,152,'PHYSICAL ENCODERS',True)
+    add('view==2 && settings_section_id==1',736,216,'STEP PER DETENT : 1 2 4 8')
+    add('view==2 && settings_section_id==1',736,272,'EACH KNOB HAS ITS OWN STEP')
+    add('view==2 && settings_section_id==1',736,328,'APPLY ALL USES LAST CHOICE')
+    add('view==2 && settings_section_id==1',736,384,'TOUCH DRAG IS UNCHANGED')
+    add('view==2 && settings_section_id==1',736,440,'SESSION SETTINGS : DEFAULT 4')
+    add('view==2 && settings_section_id==1',736,520,'TOUCH DIAGNOSTICS')
+    add('view==2 && settings_section_id==1 && show_diagnostics',904,552,'ON : TAP TO HIDE')
+    add('view==2 && settings_section_id==1 && !show_diagnostics',904,552,'OFF : TAP TO SHOW')
+    add('view==2 && settings_section_id==2',48,144,'PLOT DISPLAY SCALES',True)
+    for row,title in enumerate(['ENERGY GAIN','WAVE GAIN:TIME','PHASE Y:X','SPECTRUM Y:ZOOM','HISTORY COLOR:TIME','METER GAIN']):
+        add('view==2 && settings_section_id==2',64,212+row*56,f'{row+1} {title}',name=f'SCALE{row}')
+        add('view==2 && settings_section_id==2',400,212+row*56,'Y1 --' if row in (0,5) else 'Y1 X1',name=f'SCALE_VALUE{row}')
+        add('view==2 && settings_section_id==2',560,212+row*56,
+            'Y-        Y+        X-        X+' if row not in (0,5) else 'Y-        Y+')
+    add('view==2 && settings_section_id==2',64,576,'DISPLAY ONLY : MEASUREMENTS UNCHANGED',False,'AFC3D8')
+    add('view==2 && settings_section_id==2',64,616,'PLOT FOOTER SHORTCUTS USE THE SAME SETTINGS',False,'61DED1')
     add('view==2 && settings_section_id==3',64,152,'INPUT STATUS',True)
     add('view==2 && settings_section_id==3 && usb_connected && !usb_error',64,224,'TOUCH USB : CONNECTED',False,'58DDB8')
     add('view==2 && settings_section_id==3 && (!usb_connected || usb_error)',64,224,'TOUCH USB : OFFLINE / ERROR',False,'D0A46C')

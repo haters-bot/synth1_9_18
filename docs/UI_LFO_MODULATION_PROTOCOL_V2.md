@@ -218,12 +218,14 @@ def ui_lfo_value(points, phase, stepped=False):
 ```text
 wave = lfo_wave[source]            # 0..127（查表值 >>6，单极性）
 base = 该目标当前 CC 基础值         # 0..127，来自 CC 链路（静态）
-modulated = clamp( base + ((depth_signed × wave) >> 7), 0, 127 )
+modulated = base                         # source == 0
+modulated = floor(wave * depth / 127)     # source != 0, depth >= 0
+modulated = floor((127-wave) * (-depth) / 127)  # source != 0, depth < 0
 ```
 
-- `depth_signed` 为 −127..+127；`>>7` 为**算术右移**（保留符号）。
+- `depth` 为 −127..+127；默认 +127。绑定时曲线表示绝对目标范围，静态 base 不叠加：曲线 10..20 在满深度显示 10..20；负深度先反转波形，再按绝对深度缩放。
 - 调制结果钳位后**进入音频端现有的 CC→物理值映射与平滑路径**（如 Cutoff 的 Q7.8 与 5.33 ms 平滑、Mix 模式切换保护等），后处理链一律不动。
-- **废弃旧模型的差异项**：双极性 Q1.13 偏移加法（`base + lfo_q13×depth_q13`）与 Comb 模式 141/256 深度缩放不再使用；V2 统一为上式（与 UI 预览 `modulation_preview.v` 第 58–60 行逐位一致）。
+- **废弃旧模型的差异项**：双极性 Q1.13 偏移加法（`base + lfo_q13×depth_q13`）与 Comb 模式 141/256 深度缩放不再使用；2026-10-27 起按上式统一；旧版 base+depth*wave/128 加法模型也已废弃。音频端需要同步这个数学语义，SysEx 封包与 ID 不变。
 - `source=0` 的目标直接输出 base（无偏移）。
 - 路由计算预算：音频端现有路由器 10 拍（8 槽）；V2 最多 53 槽 ≈ 55 拍，仍在每样本 521 个 50 MHz 拍的预算内（<11%），可继续时分复用单乘法器。
 
@@ -259,4 +261,5 @@ once：index 到 383 后停（累加器冻结），等待 ID72 重启帧
 
 ## 8. 变更记录
 
+- 2026-10-27：按用户确认改为绝对曲线预览，AMOUNT 默认 +127，负深度反转。静态 CC 与 LFO 配置仍分开发送；音频侧算法兼容性待其实现方确认。
 - 2026-10-25 v2.0：ZCode 依用户决策（展示端/合成端分离、静态值+配置传输、调制在音频板完成）从 UI RTL 提炼成文，替代三点/两段曲率模型。

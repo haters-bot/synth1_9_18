@@ -118,14 +118,15 @@ initial begin
  scan_page(2);
  initial_m1=m1;initial_m2=m2;initial_m4=m4;
  click(264,256);click(600,320);click(600,448);
- if(delta_count!=3 || last_id!=4 || last_delta!=1)$fatal(1,"Macro event pairing/count failed");
- if(m1!=initial_m1-1 || m2!=initial_m2+1 || m4!=initial_m4+1)$fatal(1,"Macro changes did not reach real parameter bank");
+ if(delta_count!=0)$fatal(1,"Encoder settings leaked into synth parameter events");
+ if(dut.user_knob_steps[5:4]!=3 || dut.user_apply_step!=3)$fatal(1,"Knob K03 step setting failed");
+ if(m1!=initial_m1 || m2!=initial_m2 || m4!=initial_m4)$fatal(1,"Macro changes did not reach real parameter bank");
  click(1000,548);if(!dut.show_diagnostics)$fatal(1,"Diagnostics toggle failed");
  click(450,100);if(dut.settings_section_id!=2)$fatal(1,"Display settings tab failed");scan_settings_tab(2);
  click(780,100);if(dut.settings_section_id!=3)$fatal(1,"Input settings tab failed");scan_settings_tab(3);
  click(1080,100);if(dut.settings_section_id!=4)$fatal(1,"About settings tab failed");scan_settings_tab(4);
  click(180,100);if(dut.settings_section_id!=1)$fatal(1,"Controls settings tab failed");scan_settings_tab(1);
- if(m1!=initial_m1-1 || m2!=initial_m2+1 || m4!=initial_m4+1)$fatal(1,"Changing settings tabs changed Macro values");
+ if(m1!=initial_m1 || m2!=initial_m2 || m4!=initial_m4)$fatal(1,"Changing settings tabs changed Macro values");
  click(48,22);frame_boundary();if(dut.navigation_view!=3)$fatal(1,"Menu did not open");
  scan_page(3);
  click(120,220);frame_boundary();if(dut.navigation_view!=0 || capture)$fatal(1,"Synth return blocked");
@@ -139,7 +140,7 @@ initial begin
   $fatal(1,"Navigation failed to cancel transient drag without losing routes");
  click(152,22);frame_boundary();click(448,416); // no stranded page/gesture capture
  if(capture)$fatal(1,"Navigation contact remained captured");
- $display("PASS: vblank page commit, six-slot visual isolation, real edit/binding retention, menu navigation, macro event pairing, diagnostics and cancel active BIND");
+ $display("PASS: vblank page commit, six-slot visual isolation, real edit/binding retention, menu navigation, encoder setting isolation, diagnostics and cancel active BIND");
  $finish;
 end
 initial begin #150000000;$fatal(1,"Navigation timeout");end

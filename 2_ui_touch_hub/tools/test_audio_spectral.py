@@ -35,7 +35,7 @@ def main():
     run('library',[MS/'vlib.exe','work'])
     sources=[ROOT/'rtl/audio'/p for p in ('audio_fft_tables.v','audio_fft_analyzer.v','audio_phase_plot.v')]
     sources += [ROOT/'sim'/p for p in ('tb_audio_fft_analyzer.v','tb_audio_phase_plot.v')]
-    run('compile',[MS/'vlog.exe','-sv',*sources])
+    run('compile',[MS/'vlog.exe','-sv','+incdir+'+str(ROOT/'rtl/ui_vector_engine'),*sources])
     for top in ('tb_audio_fft_analyzer','tb_audio_phase_plot'):
         log=run(top,[MS/'vsim.exe','-c',top,'-do','run -all; quit -f'])
         assert '# PASS:' in log,(top,out)
@@ -87,7 +87,7 @@ def main():
         levels_checked+=1
     assert levels_checked==224,(levels_checked,out)
     assert centroid_checked==7,(centroid_checked,out)
-    (out/'result.json').write_text(json.dumps({'passed':True,'frames':71,'dft_bins_checked':3591,'display_levels_checked':levels_checked,'frequency_centroid_frames':centroid_checked,'maximum_complex_error_lsb':maximum_error},indent=2))
+    (out/'result.json').write_text(json.dumps({'passed':True,'frames':86,'dft_bins_checked':3591,'display_levels_checked':levels_checked,'frequency_centroid_frames':centroid_checked,'maximum_complex_error_lsb':maximum_error},indent=2))
     print(f'PASS: 3591 FFT bins against floating DFT; maximum complex error {maximum_error:.3f} LSB',flush=True)
     print(f'PASS: {levels_checked} display levels against independent exponent/mantissa calculation',flush=True)
     print(out,flush=True)

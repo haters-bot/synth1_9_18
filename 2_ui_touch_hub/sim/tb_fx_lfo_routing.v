@@ -182,20 +182,20 @@ module tb_fx_lfo_routing;
         // Base parameter state stays untouched by dynamic preview and clearing.
         step=0;curve={7{7'd127}};base_values={53{7'd20}};
         tab=0;bind_target(23);repeat(500) @(negedge clk);
-        if(preview[23*7+:7]!=83 || base_values[23*7+:7]!=20) $fatal(1,"Preview corrupted base or amplitude");
+        if(preview[23*7+:7]!=127 || base_values[23*7+:7]!=20) $fatal(1,"Preview corrupted base or amplitude");
         click(1190,675);repeat(5) @(negedge clk);
         if(preview[23*7+:7]!=20) $fatal(1,"Clearing did not restore base");
         // Distinct bases exercise shared-multiplier destination alignment.
         for(i=0;i<53;i=i+1) base_values[i*7+:7]=i;
         repeat(500) @(negedge clk);
         for(i=0;i<53;i=i+1) begin
-            v=i==23 ? i : i+63;
+            v=i==23 ? i : 127;
             if(preview[i*7+:7]!=v) $fatal(1,"Shared preview index mismatch %d: %d != %d",i,preview[i*7+:7],v);
         end
         tab=0;bind_target(23);base_values[23*7+:7]=100;
-        for(i=0;i<16;i=i+1) click(1030,675);
+        for(i=0;i<32;i=i+1) click(1030,675);
         repeat(500) @(negedge clk);
-        if(preview[23*7+:7]!=36) $fatal(1,"Shared preview negative-depth rounding failed");
+        if(preview[23*7+:7]!=0) $fatal(1,"Shared preview negative-depth rounding failed");
         $display("PASS: 53 route targets, three LFO sources, release-zero, invalid drop/watchdog, depth +/- saturation, clear, 19 FX knobs/external arbitration, nine switches, back-to-back binding/drag/source metadata and simultaneous external arbitration, bounded smooth curve and separate preview/base");
         $finish;
     end

@@ -75,10 +75,10 @@ module tb_knob_spi_rx;
     initial begin
         #2500;rst_n=1;
         wait_ms(8); // reset release and baseline snapshot
-        // One CW detent: AB 11 -> 10 -> 00 -> 01 -> 11. SW stays high.
-        p0_u1=8'hFD;wait_ms(3);
-        p0_u1=8'hFC;wait_ms(3);
+        // One CW detent: AB 11 -> 01 -> 00 -> 10 -> 11. SW stays high.
         p0_u1=8'hFE;wait_ms(3);
+        p0_u1=8'hFC;wait_ms(3);
+        p0_u1=8'hFD;wait_ms(3);
         p0_u1=8'hFF;wait_ms(5);
         if(cw_count!=1 || ccw_count!=0) $fatal(1,"K01 CW detent decode failed CW=%0d CCW=%0d",cw_count,ccw_count);
         if(ui_osca_wt_pos!==7'd1) $fatal(1,"K01 did not update live UI parameter: %0d",ui_osca_wt_pos);

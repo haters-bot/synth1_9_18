@@ -3,9 +3,10 @@ module tb_audio_waveform_capture;
  reg clk=0,rst_n=0,link_up=0,sample_valid=0;
  reg signed [15:0] sample=0;
  reg [6:0] read_address=0;
+ reg [1:0] time_zoom=0;
  wire [7:0] plot_sample,plot_previous;
  wire ready,frame_valid,triggered;
- integer n,saved_bank;
+ integer n,saved_bank,z;
  audio_waveform_capture dut(.*);
  always #10 clk=~clk;
  task send;
@@ -45,7 +46,13 @@ module tb_audio_waveform_capture;
   if(ready || frame_valid || triggered)$fatal(1,"Disconnected waveform valid");
   link_up=1;send(0,1023);if(ready)$fatal(1,"Stale frame on reconnect");
   send(0,1);for(n=0;n<128;n=n+1)check_read(n,0,0);
-  $display("PASS: trigger hysteresis, immutable double buffering, 128 synchronous samples/segments, DC auto trigger and reconnect");$finish;
+  for(z=0;z<4;z=z+1)begin
+   link_up=0;time_zoom=z;repeat(3)@(negedge clk);link_up=1;
+   send(0,128*(8>>z)-1);if(ready)$fatal(1,"Zoom window published early zoom=%0d",z);
+   send(0,1);if(!ready)$fatal(1,"Zoom window wrong duration zoom=%0d",z);
+   for(n=0;n<128;n=n+1)check_read(n,0,0);
+  end
+  $display("PASS: trigger hysteresis, immutable double buffering, 128 synchronous samples/segments, DC auto trigger, reconnect and four exact time-zoom capture spans");$finish;
  end
  initial begin #2000000;$fatal(1,"Waveform capture watchdog");end
 endmodule

@@ -16,7 +16,7 @@ def main():
     sources = [ROOT / 'rtl/audio/i2s_visual_rx.v', ROOT.parent / 'src/i2s_tx.v',
                ROOT / 'rtl/audio/audio_fft_tables.v',ROOT / 'rtl/audio/audio_fft_analyzer.v',
                ROOT / 'rtl/audio/audio_phase_plot.v',
-               ROOT / 'rtl/audio/audio_pcm_metrics.v',
+               ROOT / 'rtl/audio/audio_pcm_metrics.v', ROOT / 'rtl/audio/audio_stereo_meter.v',
                ROOT / 'rtl/audio/audio_correlation_cursor.v',
                ROOT / 'sim/tb_audio_correlation_cursor.v',
                ROOT / 'rtl/audio/audio_waveform_capture.v',

@@ -9,6 +9,9 @@ module ui_navigation_renderer(
  input wire [7:0] settings_section_id,
  input wire show_diagnostics,usb_connected,usb_error,
  input wire [27:0] macro_values,
+ input tri0 [63:0] knob_steps,
+ input tri0 [1:0] knob_page,apply_step,
+ input tri0 [23:0] plot_scales,
  input wire audio_sample_valid,
  input wire signed [15:0] audio_sample,
  input wire signed [15:0] audio_right_sample,
@@ -35,6 +38,8 @@ module ui_navigation_renderer(
   end
  end
  `include "navigation_font_hd.vh"
+ `include "knob_setting_labels.vh"
+ `include "audio_plot_gain.vh"
  reg hit;reg [23:0] bg;
  reg [1:0] macro_row;
  reg macro_number;
@@ -66,16 +71,27 @@ module ui_navigation_renderer(
   .rms_db10(metrics_rms_db),.peak_db10(metrics_peak_db),.hold_db10(metrics_hold_db),.crest_db10(metrics_crest),
   .correlation(metrics_corr),.balance(metrics_balance),.correlation_valid(metrics_corr_valid),
   .clip_hold(metrics_clip),.transient_hold(metrics_transient));
+ wire signed [11:0] stereo_db_l,stereo_db_r;
+ wire [7:0] stereo_width_l,stereo_width_r,stereo_hold_l,stereo_hold_r;
+ audio_stereo_meter u_stereo_meter(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .frame_valid(metrics_frame_valid),.rms_l(metrics_rms_l),.rms_r(metrics_rms_r),
+  .peak_l(metrics_peak_l),.peak_r(metrics_peak_r),.gain(plot_scales[21:20]),
+  .db_l(stereo_db_l),.db_r(stereo_db_r),.width_l(stereo_width_l),.width_r(stereo_width_r),
+  .hold_width_l(stereo_hold_l),.hold_width_r(stereo_hold_r));
+ reg [5:0] metric_decimal_delay;
+ always @(posedge clk or negedge rst_n)
+  if(!rst_n)metric_decimal_delay<=0;else metric_decimal_delay<={metric_decimal_delay[4:0],metrics_frame_valid};
  audio_fft_analyzer u_spectrum(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
   .sample_valid(audio_sample_valid),.sample(audio_sample),
   .spectrum_address(spectrum_address0),.spectrum_value(spectrum_value),
-  .history_column(history_column0),.history_band(history_band0),
+  .history_column(history_column0),.history_band(history_band0),.history_scale(plot_scales[19:18]),
   .history_value(history_value),.ready(spectrum_ready),.frame_valid(spectrum_frame_valid),
   .peak_band(spectrum_peak_band),.peak_valid(spectrum_peak_valid),.peak_bin(spectrum_peak_bin),
   .peak_hz(spectrum_peak_hz),.centroid_hz(spectrum_centroid_hz));
  audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
   .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
-  .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready));
+  .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready),
+  .gain_x(plot_scales[11:10]),.gain_y(plot_scales[9:8]));
 
  // Convert seven changing values in parallel, one binary bit per clock.
  // The raster only selects precomputed digit nibbles; no / or log in pixels.
@@ -88,8 +104,8 @@ module ui_navigation_renderer(
    decimal_step={adjusted[18:0],bit_value};
   end
  endfunction
- reg [16:0] decimal_binary[0:6];
- reg [19:0] decimal_work[0:6],audio_digits[0:6];
+ reg [16:0] decimal_binary[0:8];
+ reg [19:0] decimal_work[0:8],audio_digits[0:8];
  reg decimal_busy;
  reg [4:0] decimal_bit;
  reg corr_negative,bal_negative,corr_pending_sign,bal_pending_sign;
@@ -100,16 +116,18 @@ module ui_navigation_renderer(
  reg [12:0] energy_radius2;
  integer decimal_index;
  wire [15:0] energy_rms=metrics_rms_l>metrics_rms_r ? metrics_rms_l : metrics_rms_r;
- wire [6:0] energy_radius=7'd8+{1'b0,energy_rms[15:10]};
+ wire signed [15:0] energy_scaled=plot_gain($signed({1'b0,energy_rms[15:1]}),plot_scales[1:0]);
+ wire [6:0] energy_radius_raw=7'd8+energy_scaled[14:9];
+ wire [6:0] energy_radius=energy_radius_raw>52 ? 7'd52 : energy_radius_raw;
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
    decimal_busy<=0;decimal_bit<=0;corr_negative<=0;bal_negative<=0;
    peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;energy_radius2<=64;
-   for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
+   for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
   end else if(!audio_link_up)begin
    decimal_busy<=0;peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;
    energy_radius2<=64;corr_negative<=0;bal_negative<=0;
-   for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
+   for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
   end else begin
    if(metrics_frame_valid)begin
     peak_width<=(12'sd960+metrics_peak_db)/12'd6;
@@ -118,18 +136,19 @@ module ui_navigation_renderer(
     crest_width<=metrics_crest>=240 ? 8'd160 : (metrics_crest*12'd2)/12'd3;
     energy_radius2<=energy_radius*energy_radius;
    end
-   if(!decimal_busy && (metrics_frame_valid || spectrum_frame_valid))begin
+   if(!decimal_busy && (metric_decimal_delay[5] || spectrum_frame_valid))begin
     decimal_busy<=1;decimal_bit<=0;
     decimal_binary[0]<=-metrics_rms_db;decimal_binary[1]<=-metrics_peak_db;
     decimal_binary[2]<=metrics_crest;
+    decimal_binary[7]<=-stereo_db_l;decimal_binary[8]<=-stereo_db_r;
     decimal_binary[3]<=spectrum_peak_hz;decimal_binary[4]<=spectrum_centroid_hz;
     decimal_binary[5]<=metrics_corr[7] ? -metrics_corr : metrics_corr;
     decimal_binary[6]<=metrics_balance[7] ? -metrics_balance : metrics_balance;
     corr_pending_sign<=metrics_corr[7];bal_pending_sign<=metrics_balance[7];
-    for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)decimal_work[decimal_index]<=0;
+    for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)decimal_work[decimal_index]<=0;
    end else if(decimal_busy)begin
     decimal_bit<=decimal_bit+1'b1;
-    for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)begin
+    for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)begin
      decimal_work[decimal_index]<=decimal_step(decimal_work[decimal_index],decimal_binary[decimal_index][16]);
      decimal_binary[decimal_index]<=decimal_binary[decimal_index]<<1;
      if(decimal_bit==16)audio_digits[decimal_index]<=decimal_step(decimal_work[decimal_index],decimal_binary[decimal_index][16]);
@@ -167,7 +186,8 @@ module ui_navigation_renderer(
    assign tile_demo_color[tile]=(lamp_l&&channel_l)||(lamp_r&&channel_r) ? 24'h61DED1 : 24'h26394B;
   end else if(tile==1)begin: live_waveform
    wire live_wave=audio_link_up&&waveform_ready;
-   wire [6:0] held_amplitude=metrics_peak_hold[15:9];
+   wire [18:0] held_scaled={3'd0,metrics_peak_hold}<<plot_scales[5:4];
+   wire [6:0] held_amplitude=held_scaled>=32768 ? 7'd64 : held_scaled[15:9];
    wire hold_line=live_wave&&metrics_ready&&metrics_peak_hold!=0&&in_x>=496&&in_x<752&&
        in_x[3:0]<4&&(in_y==14'd248-held_amplitude||in_y==14'd248+held_amplitude);
    // The live trace is composed after the registered RAM read below.
@@ -186,16 +206,14 @@ module ui_navigation_renderer(
    assign tile_demo_hit[tile]=legend;
    assign tile_demo_color[tile]=heat_color((in_x-14'd512)>>2);
   end else begin: live_levels
-   wire bar1=in_y>=490&&in_y<506&&in_x>=1064&&in_x<1224;
-   wire bar2=in_y>=530&&in_y<546&&in_x>=1064&&in_x<1224;
-   wire bar3=in_y>=570&&in_y<586&&in_x>=1064&&in_x<1224;
+   wire bar_l=in_y>=512&&in_y<540&&in_x>=1064&&in_x<1224;
+   wire bar_r=in_y>=576&&in_y<604&&in_x>=1064&&in_x<1224;
    wire [8:0] level_x=in_x-1064;
-   wire fill1=bar1&&audio_link_up&&metrics_ready&&level_x<{1'b0,peak_width};
-   wire fill2=bar2&&audio_link_up&&metrics_ready&&level_x<{1'b0,rms_width};
-   wire fill3=bar3&&audio_link_up&&metrics_ready&&level_x<{1'b0,crest_width};
-   wire hold_marker=bar1&&audio_link_up&&metrics_ready&&level_x=={1'b0,hold_width};
-   assign tile_demo_hit[tile]=graph_area&&(bar1||bar2||bar3);
-   assign tile_demo_color[tile]=hold_marker ? 24'hFFFFFF : fill3 ? 24'hF5D36A : fill2 ? 24'h61DED1 : fill1 ? 24'h65CDA4 : 24'h26394B;
+   wire filled=audio_link_up&&metrics_ready&&((bar_l&&level_x<stereo_width_l)||(bar_r&&level_x<stereo_width_r));
+   wire held=audio_link_up&&metrics_ready&&((bar_l&&stereo_hold_l!=0&&level_x==stereo_hold_l-1'b1)||(bar_r&&stereo_hold_r!=0&&level_x==stereo_hold_r-1'b1));
+   wire [23:0] zone=level_x>=150 ? 24'hE87565 : level_x>=120 ? 24'hF5D36A : 24'h65CDA4;
+   assign tile_demo_hit[tile]=bar_l||bar_r;
+   assign tile_demo_color[tile]=held ? 24'hFFFFFF : filled ? zone : 24'h26394B;
   end
   assign tile_hit[tile]=inside_tile;
   assign tile_color[tile]=!inside_tile ? 24'd0 : border ? 24'h35495F :
@@ -226,10 +244,11 @@ module ui_navigation_renderer(
   end else if(view==2 && settings_section_id==8'd1)begin
    if(in_x>=32 && in_x<=680 && in_y>=120 && in_y<=616)bg=24'h142030;
    if(in_x>=712 && in_x<=1248 && in_y>=120 && in_y<=616)bg=24'h142030;
-   if(in_x>=240 && in_x<=640 && in_y>=232 && in_y<=480)begin
-    if((in_y-232)%64<=56)bg=24'h22374C;
-    if(in_x>304 && in_x<576)bg=24'h101A27;
-   end
+   for(integer kr=0;kr<8;kr=kr+1)for(integer kc=0;kc<4;kc=kc+1)
+    if(in_y>=208+kr*44 && in_y<244+kr*44 && in_x>=352+kc*80 && in_x<416+kc*80)
+     bg=knob_steps[(knob_page*8+kr)*2+:2]==kc ? 24'h246B68 : 24'h22374C;
+   if(in_y>=144&&in_y<176&&in_x>=432&&in_x<656)bg=24'h24545B;
+   if(in_y>=576&&in_y<612&&((in_x>=48&&in_x<208)||(in_x>=496&&in_x<656)))bg=24'h22374C;
    if(in_x>=880 && in_x<=1216 && in_y>=520 && in_y<=584)
     bg=show_diagnostics ? 24'h205148 : 24'h25384D;
   end else if(view==3)begin
@@ -249,6 +268,10 @@ module ui_navigation_renderer(
    if(in_x>=712&&in_x<=1248&&in_y>=120&&in_y<=616&&
       (in_x==712||in_x==1248||in_y==120||in_y==616))bg=24'h35495F;
   end
+  if(view==2 && settings_section_id==2)
+   for(integer sr=0;sr<6;sr=sr+1)for(integer sc=0;sc<4;sc=sc+1)
+    if(!((sr==0 || sr==5)&&sc>=2)&&in_y>=200+sr*56&&in_y<240+sr*56&&in_x>=528+sc*160&&in_x<656+sc*160)
+     bg=24'h223C4C;
   if(view==2 && in_y>=88 && in_y<120)begin
    bg=24'h1A2735;
    if((settings_section_id==8'd1&&in_x>=32&&in_x<336)||(settings_section_id==8'd2&&in_x>=336&&in_x<632)||
@@ -256,7 +279,7 @@ module ui_navigation_renderer(
    if(in_y==119)bg=24'h347B90;
   end
   macro_row=(in_y-248)>>6;
-  macro_number=view==2 && settings_section_id==8'd1 && in_y>=248 && in_y<460 && ((in_y-248)&63)<16 && in_x>=416 && in_x<464;
+  macro_number=0;
   case(macro_row)
    0:number=macro_values[0+:7];1:number=macro_values[7+:7];
    2:number=macro_values[14+:7];default:number=macro_values[21+:7];
@@ -266,6 +289,29 @@ module ui_navigation_renderer(
    1:number_char=`CH_0+bcd[macro_row][7:4];
    default:number_char=`CH_0+bcd[macro_row][3:0];
   endcase
+ end
+ reg shortcut;
+ reg [5:0] shortcut_char;
+ reg [3:0] shortcut_x;reg [4:0] shortcut_y;
+ integer st,sc,cc;reg [1:0] code;
+ always @*begin
+  shortcut=0;shortcut_char=0;shortcut_x=0;shortcut_y=0;code=0;cc=0;
+  for(st=0;st<6;st=st+1)for(sc=0;sc<4;sc=sc+1)begin
+   if(view==1 && !((st==0||st==5)&&sc>=2) &&
+      in_y>=96+(st/3)*296+260 && in_y<96+(st/3)*296+276 &&
+      in_x>=24+(st%3)*418+24+sc*92 && in_x<24+(st%3)*418+88+sc*92)begin
+    shortcut=1;shortcut_x=(in_x-(24+(st%3)*418+24+sc*92))%8;
+    shortcut_y=in_y-(96+(st/3)*296+260);
+    code=plot_scales[st*4+(sc>=2 ? 2 : 0)+:2];cc=(in_x-(24+(st%3)*418+24+sc*92))/8;
+    case(cc)
+     0:shortcut_char=sc<2 ? `CH_Y : `CH_X;
+     1:shortcut_char=(sc==0||sc==2) ? `CH_MINUS : `CH_PLUS;
+     3:shortcut_char=`CH_0+(4'd1<<code);
+     4:shortcut_char=`CH_X;
+     default:shortcut_char=`CH_SPACE;
+    endcase
+   end
+  end
  end
  reg h0,h1,h2,h3;
  reg [23:0] b0,b1,b2,b3,fg0,fg1,fg2,fg3;
@@ -280,7 +326,15 @@ module ui_navigation_renderer(
  reg [3:0] rx0;reg [4:0] ry0;
  reg large0;
  reg tv0,tv1;reg [5:0] digit0;
- reg number0;
+ reg number0;reg compact0;
+ function [2:0] scale_tile;
+  input [6:0] id;
+  begin case(id)
+   NAV_SCALE_VALUE1:scale_tile=1;NAV_SCALE_VALUE2:scale_tile=2;
+   NAV_SCALE_VALUE3:scale_tile=3;NAV_SCALE_VALUE4:scale_tile=4;
+   NAV_SCALE_VALUE5:scale_tile=5;default:scale_tile=0;
+  endcase end
+ endfunction
  reg audio_number;
  reg [5:0] audio_number_char;
  function [5:0] audio_digit;
@@ -291,15 +345,43 @@ module ui_navigation_renderer(
  always @* begin
   audio_number=0;audio_number_char=`CH_SPACE;
   case(id0)
+   NAV_KNOB0,NAV_KNOB1,NAV_KNOB2,NAV_KNOB3,NAV_KNOB4,NAV_KNOB5,NAV_KNOB6,NAV_KNOB7:begin
+    if(col0<18)begin audio_number=1;audio_number_char=knob_caption({knob_page,3'd0}+(id0-NAV_KNOB0),col0);end
+   end
+   NAV_SCALE_VALUE0,NAV_SCALE_VALUE1,NAV_SCALE_VALUE2,NAV_SCALE_VALUE3,NAV_SCALE_VALUE4,NAV_SCALE_VALUE5:begin
+    if(col0==1 || (col0==4 && id0!=NAV_SCALE_VALUE0 && id0!=NAV_SCALE_VALUE5))begin
+     audio_number=1;audio_number_char=`CH_0+(4'd1<<plot_scales[scale_tile(id0)*4+(col0==4 ? 2 : 0)+:2]);
+    end
+   end
+   NAV_KNOB_PAGE:if(col0==16)begin audio_number=1;audio_number_char=`CH_1+knob_page;end
+
+   NAV_SPECTRUM_RANGE:if(col0>=3 && col0<=7)begin
+    audio_number=1;
+    case(plot_scales[15:14])
+     0:case(col0)3:audio_number_char=`CH_4;4:audio_number_char=`CH_8;default:audio_number_char=`CH_0;endcase
+     1:case(col0)3,6:audio_number_char=`CH_0;4:audio_number_char=`CH_2;5:audio_number_char=`CH_9;default:audio_number_char=`CH_6;endcase
+     2:case(col0)3,4:audio_number_char=`CH_0;5:audio_number_char=`CH_8;default:audio_number_char=`CH_4;endcase
+     3:case(col0)3,4:audio_number_char=`CH_0;5:audio_number_char=`CH_4;6:audio_number_char=`CH_6;default:audio_number_char=`CH_9;endcase
+    endcase
+   end
+   NAV_WAVE_SPAN:if(col0>=11 && col0<=15)begin
+    audio_number=1;
+    case(plot_scales[7:6])
+     0:case(col0)11:audio_number_char=`CH_1;12:audio_number_char=`CH_0;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_6;default:audio_number_char=`CH_7;endcase
+     1:case(col0)11:audio_number_char=`CH_SPACE;12:audio_number_char=`CH_5;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_3;default:audio_number_char=`CH_3;endcase
+     2:case(col0)11:audio_number_char=`CH_SPACE;12:audio_number_char=`CH_2;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_6;default:audio_number_char=`CH_7;endcase
+     3:case(col0)11:audio_number_char=`CH_SPACE;12:audio_number_char=`CH_1;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_3;default:audio_number_char=`CH_3;endcase
+    endcase
+   end
    NAV_OV_RMS,NAV_OV_PEAK:begin
     if(col0==5 || col0==6 || col0==8)begin
      audio_number=1;audio_number_char=audio_digit(audio_digits[id0==NAV_OV_RMS ? 0 : 1],
       col0==5 ? 3'd2 : col0==6 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
     end
    end
-   NAV_LEVEL_PEAK,NAV_LEVEL_RMS,NAV_LEVEL_CREST:begin
+   NAV_LEVEL_PEAK,NAV_LEVEL_RMS,NAV_LEVEL_CREST,NAV_LEVEL_L:begin
     if(col0==3 || col0==4 || col0==6)begin
-     audio_number=1;audio_number_char=audio_digit(audio_digits[id0==NAV_LEVEL_PEAK ? 1 : id0==NAV_LEVEL_RMS ? 0 : 2],
+     audio_number=1;audio_number_char=audio_digit(audio_digits[id0==NAV_LEVEL_PEAK ? 1 : id0==NAV_LEVEL_RMS ? 8 : id0==NAV_LEVEL_L ? 7 : 2],
       col0==3 ? 3'd2 : col0==4 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
     end
    end
@@ -370,12 +452,14 @@ module ui_navigation_renderer(
  reg [7:0] wave_gy0,wave_gy1;
  wire triggered_wave;
  audio_waveform_capture u_waveform(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
-  .sample_valid(audio_sample_valid),.sample(audio_sample),.read_address(wave_addr0),
+  .sample_valid(audio_sample_valid),.sample(audio_sample),.read_address(wave_addr0),.time_zoom(plot_scales[7:6]),
   .plot_sample(wave_sample1),.plot_previous(wave_previous1),.ready(waveform_ready),
   .frame_valid(),.triggered(triggered_wave));
  reg wave_area0,wave_area1,wave_hit2;
- wire [7:0] wave_y1=8'd72-{wave_sample1[7],wave_sample1[7:1]};
- wire [7:0] wave_previous_y1=8'd72-{wave_previous1[7],wave_previous1[7:1]};
+ wire signed [15:0] scaled_wave=plot_gain({wave_sample1,8'd0},plot_scales[5:4]);
+ wire signed [15:0] scaled_previous=plot_gain({wave_previous1,8'd0},plot_scales[5:4]);
+ wire [7:0] wave_y1=8'd72-{{1{scaled_wave[15]}},scaled_wave[15:9]};
+ wire [7:0] wave_previous_y1=8'd72-{{1{scaled_previous[15]}},scaled_previous[15:9]};
  wire [7:0] wave_low1=wave_y1<wave_previous_y1 ? wave_y1 : wave_previous_y1;
  wire [7:0] wave_high1=wave_y1>wave_previous_y1 ? wave_y1 : wave_previous_y1;
  always @(posedge clk or negedge rst_n) begin
@@ -427,10 +511,10 @@ module ui_navigation_renderer(
   energy_rgb2<=energy_distance1<=energy_radius2 ? 24'h61DED1 :
     metrics_clip!=0 ? 24'hE87565 : metrics_transient!=0 ? 24'hF5D36A : 24'h368DAC;
   phase_address0<={phase_dy[6:1],phase_dx[7:1]};
-  spectrum_address0<=spectrum_dx[7:3];
+  spectrum_address0<=spectrum_dx[7:3]>>plot_scales[15:14];
   history_column0<=history_dx[7:2];history_band0<=5'd31-history_dy[6:2];
   spectrum_y0<=14'd616-in_y;spectrum_y1<=spectrum_y0;
-  history_rgb2<=heat_color(history_value);
+  history_rgb2<=heat_color(({6'd0,history_value}<<plot_scales[17:16])>63 ? 6'd63 : (history_value<<plot_scales[17:16]));
  end
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
@@ -451,15 +535,15 @@ module ui_navigation_renderer(
      in_x>=94 && in_x<350 && spectrum_dx[2:0]<6 && in_y>=480 && in_y<=616;
    spectrum_area1<=spectrum_area0;
    spectrum_hit2<=spectrum_area1 && spectrum_value!=0 &&
-     {1'b0,spectrum_y1}<{2'b00,spectrum_value,1'b0};
+     {3'b000,spectrum_y1}<({5'd0,spectrum_value}<<(plot_scales[13:12]+3'd1));
    spectrum_peak0<=view==1 && audio_link_up && spectrum_ready && spectrum_peak_valid &&
      in_x>=94 && in_x<350 && spectrum_dx[2:0]<6 &&
      in_y>=480 && in_y<=616 &&
-     spectrum_dx[7:3]==spectrum_peak_band;
+     (spectrum_dx[7:3]>>plot_scales[15:14])==spectrum_peak_band;
    spectrum_peak1<=spectrum_peak0;
    // Highlight only the measured bar. Silent frames have no winner marker.
    spectrum_peak2<=spectrum_peak1 && spectrum_value!=0 &&
-     {1'b0,spectrum_y1}<{2'b00,spectrum_value,1'b0};
+     {3'b000,spectrum_y1}<({5'd0,spectrum_value}<<(plot_scales[13:12]+3'd1));
    history_area0<=view==1 && audio_link_up && spectrum_ready &&
      in_x>=512 && in_x<768 && in_y>=480 && in_y<608;
    history_area1<=history_area0;history_hit2<=history_area1 && history_value!=0;
@@ -478,13 +562,15 @@ module ui_navigation_renderer(
   end
   else begin
    h0<=hit;b0<=bg;fg0<=text_color;id0<=text_id;col0<=text_col;
-   tv0<=text_valid||macro_number;number0<=macro_number;digit0<=number_char;
-   rx0<=macro_number ? in_x[3:0] : text_rx;ry0<=macro_number ? ((in_y-248)&63) : text_ry;
+   tv0<=text_valid||macro_number||shortcut;number0<=macro_number||shortcut;digit0<=shortcut ? shortcut_char : number_char;
+   compact0<=shortcut;
+   rx0<=shortcut ? shortcut_x : macro_number ? in_x[3:0] : text_rx;
+   ry0<=shortcut ? shortcut_y : macro_number ? ((in_y-248)&63) : text_ry;
    large0<=!macro_number && text_large;
-   h1<=h0;b1<=b0;fg1<=fg0;
-   tv1<=tv0 && (large0 ? (rx0<14 && ry0<20) : (rx0<12 && ry0<16));
+   h1<=h0;b1<=b0;fg1<=compact0 ? 24'h9ED6D3 : fg0;
+   tv1<=tv0 && (compact0 ? (rx0<7 && ry0<10) : large0 ? (rx0<14 && ry0<20) : (rx0<12 && ry0<16));
    number1<=number0||audio_number;digit1<=number0 ? digit0 : audio_number_char;
-   glyph_x1<=glyph_x(large0,rx0);glyph_y1<=glyph_y(large0,ry0);
+   glyph_x1<=compact0 ? rx0[2:0] : glyph_x(large0,rx0);glyph_y1<=compact0 ? ry0[3:0] : glyph_y(large0,ry0);
    h2<=h1;b2<=b1;fg2<=fg1;
    glyph_row2<=get_font_7x10_row(ch1,glyph_y1);glyph_x2<=glyph_x1;glyph_valid2<=tv1;
    h3<=h2;b3<=energy_hit2 ? energy_rgb2 : wave_hit2 ? 24'h61DED1 : phase_hit2 ? 24'h67CDE0 :

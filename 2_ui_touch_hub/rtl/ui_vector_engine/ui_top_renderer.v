@@ -87,6 +87,9 @@ module ui_top_renderer (
     input wire [6:0] external_param_value,
     output wire binding_capture,
     output wire navigation_capture,
+    output wire [63:0] user_knob_steps,
+    output wire fx_touch_focus_valid,
+    output wire [7:0] fx_touch_focus_id,
     output wire navigation_delta_valid,
     output wire [7:0] navigation_delta_id,
     output wire signed [7:0] navigation_delta_value,
@@ -152,10 +155,17 @@ module ui_top_renderer (
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .view(navigation_view),.settings_section_id(settings_section_id),.capture_active(navigation_capture),.show_diagnostics(show_diagnostics),
         .delta_valid(navigation_delta_valid),.delta_id(navigation_delta_id),.delta_value(navigation_delta_value));
+    wire [1:0] user_knob_page,user_apply_step;
+    wire [23:0] user_plot_scales;
+    ui_user_settings u_user_settings(.clk(clk),.rst_n(rst_n),
+        .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .view(navigation_view),.section(settings_section_id),.knob_steps(user_knob_steps),
+        .knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales));
     ui_navigation_renderer u_navigation_render(.clk(clk),.rst_n(rst_n),
         .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
         .show_diagnostics(show_diagnostics),.usb_connected(usb_connected),.usb_error(usb_conn_err),
         .macro_values({val_macro4,val_macro3,val_macro2,val_macro1}),
+        .knob_steps(user_knob_steps),.knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales),
         .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),.audio_link_up(audio_link_up),
         .audio_right_sample(audio_right_sample),.audio_stereo_valid(audio_stereo_valid),
         .out_hit(navigation_hit),.out_rgb(navigation_rgb));
@@ -251,7 +261,7 @@ module ui_top_renderer (
         .touch_valid(ui_touch_valid),.touch_down(synth_touch_down && !binding_capture),
         .touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .external_valid(external_param_valid),.external_id(external_param_id),.external_value(external_param_value),
-        .values(fx_values),.switches(fx_switches),
+        .values(fx_values),.switches(fx_switches),.focus_valid(fx_touch_focus_valid),.focus_id(fx_touch_focus_id),
         .event_valid(fx_event_valid),.event_id(fx_event_id),.event_value(fx_event_value));
     lfo_binding_state #(.ENABLE_CANCEL(1)) u_binding(.clk(clk),.rst_n(rst_n),
         .cancel(navigation_capture),
@@ -266,7 +276,7 @@ module ui_top_renderer (
         .sources(mod_sources),.depths(mod_depths),.base_values(mod_base),
         .preview_values(mod_preview),.raster_q6(lfo_curve_q6));
     fx_strip_renderer u_fx_strip(.clk(clk),.rst_n(rst_n),.in_x(raster_x[1]),.in_y(raster_y[1]),
-        .values(mod_preview[238+:133]),.switches(fx_switches),.out_hit(hit_fx_strip),.out_rgb(fx_strip_rgb));
+        .values(mod_preview[238+:133]),.switches(fx_switches),.selected_id(hud_selected_id),.out_hit(hit_fx_strip),.out_rgb(fx_strip_rgb));
     modulation_overlay u_mod_overlay(.clk(clk),.rst_n(rst_n),.in_x(raster_x[2]),.in_y(raster_y[2]),
         .sources(mod_sources),.depths(mod_depths),.preview_values(mod_preview),
         .armed(mod_armed),.dragging(mod_dragging),.hover_target(mod_hover),.selected_target(mod_selected),
@@ -494,40 +504,40 @@ module ui_top_renderer (
     reg [6:0] sel_val;
     always @(*) begin
         case (hud_selected_id)
-            `PARAM_ID_MACRO1:       sel_val_comb = val_macro1;
-            `PARAM_ID_MACRO2:       sel_val_comb = val_macro2;
-            `PARAM_ID_MACRO3:       sel_val_comb = val_macro3;
-            `PARAM_ID_MACRO4:       sel_val_comb = val_macro4;
-            `PARAM_ID_MASTER_VOL:   sel_val_comb = val_master_vol;
-            `PARAM_ID_OSCA_UNISON:  sel_val_comb = val_osca_unison;
-            `PARAM_ID_OSCA_DETUNE:  sel_val_comb = val_osca_detune;
-            `PARAM_ID_OSCA_BLEND:   sel_val_comb = val_osca_blend;
-            `PARAM_ID_OSCA_PHASE:   sel_val_comb = val_osca_phase;
-            `PARAM_ID_OSCA_RAND:    sel_val_comb = val_osca_rand;
-            `PARAM_ID_OSCA_WT_POS:  sel_val_comb = val_osca_wt_pos;
-            `PARAM_ID_OSCA_WARP:    sel_val_comb = val_osca_warp;
-            `PARAM_ID_OSCA_PAN:     sel_val_comb = val_osca_pan;
-            `PARAM_ID_OSCA_VOL:     sel_val_comb = val_osca_vol;
-            `PARAM_ID_OSCB_UNISON:  sel_val_comb = val_oscb_unison;
-            `PARAM_ID_OSCB_DETUNE:  sel_val_comb = val_oscb_detune;
-            `PARAM_ID_OSCB_BLEND:   sel_val_comb = val_oscb_blend;
-            `PARAM_ID_OSCB_PHASE:   sel_val_comb = val_oscb_phase;
-            `PARAM_ID_OSCB_RAND:    sel_val_comb = val_oscb_rand;
-            `PARAM_ID_OSCB_WT_POS:  sel_val_comb = val_oscb_wt_pos;
-            `PARAM_ID_OSCB_WARP:    sel_val_comb = val_oscb_warp;
-            `PARAM_ID_OSCB_PAN:     sel_val_comb = val_oscb_pan;
-            `PARAM_ID_OSCB_VOL:     sel_val_comb = val_oscb_vol;
-            `PARAM_ID_FLT_CUTOFF:   sel_val_comb = val_flt_cutoff;
-            `PARAM_ID_FLT_RES:      sel_val_comb = val_flt_res;
-            `PARAM_ID_FLT_PAN:      sel_val_comb = val_flt_pan;
-            `PARAM_ID_FLT_DRIVE:    sel_val_comb = val_flt_drive;
-            `PARAM_ID_FLT_FAT:      sel_val_comb = val_flt_fat;
-            `PARAM_ID_FLT_MIX:      sel_val_comb = val_flt_mix;
-            `PARAM_ID_ENV1_ATTACK:  sel_val_comb = val_env_attack;
-            `PARAM_ID_ENV1_HOLD:    sel_val_comb = val_env_hold;
-            `PARAM_ID_ENV1_DECAY:   sel_val_comb = val_env_decay;
-            `PARAM_ID_ENV1_SUSTAIN: sel_val_comb = val_env_sustain;
-            `PARAM_ID_ENV1_RELEASE: sel_val_comb = val_env_release;
+            `PARAM_ID_MACRO1:       sel_val_comb = mod_preview[0+:7];
+            `PARAM_ID_MACRO2:       sel_val_comb = mod_preview[7+:7];
+            `PARAM_ID_MACRO3:       sel_val_comb = mod_preview[14+:7];
+            `PARAM_ID_MACRO4:       sel_val_comb = mod_preview[21+:7];
+            `PARAM_ID_MASTER_VOL:   sel_val_comb = mod_preview[28+:7];
+            `PARAM_ID_OSCA_UNISON:  sel_val_comb = mod_preview[35+:7];
+            `PARAM_ID_OSCA_DETUNE:  sel_val_comb = mod_preview[42+:7];
+            `PARAM_ID_OSCA_BLEND:   sel_val_comb = mod_preview[49+:7];
+            `PARAM_ID_OSCA_PHASE:   sel_val_comb = mod_preview[56+:7];
+            `PARAM_ID_OSCA_RAND:    sel_val_comb = mod_preview[63+:7];
+            `PARAM_ID_OSCA_WT_POS:  sel_val_comb = mod_preview[70+:7];
+            `PARAM_ID_OSCA_WARP:    sel_val_comb = mod_preview[77+:7];
+            `PARAM_ID_OSCA_PAN:     sel_val_comb = mod_preview[84+:7];
+            `PARAM_ID_OSCA_VOL:     sel_val_comb = mod_preview[91+:7];
+            `PARAM_ID_OSCB_UNISON:  sel_val_comb = mod_preview[98+:7];
+            `PARAM_ID_OSCB_DETUNE:  sel_val_comb = mod_preview[105+:7];
+            `PARAM_ID_OSCB_BLEND:   sel_val_comb = mod_preview[112+:7];
+            `PARAM_ID_OSCB_PHASE:   sel_val_comb = mod_preview[119+:7];
+            `PARAM_ID_OSCB_RAND:    sel_val_comb = mod_preview[126+:7];
+            `PARAM_ID_OSCB_WT_POS:  sel_val_comb = mod_preview[133+:7];
+            `PARAM_ID_OSCB_WARP:    sel_val_comb = mod_preview[140+:7];
+            `PARAM_ID_OSCB_PAN:     sel_val_comb = mod_preview[147+:7];
+            `PARAM_ID_OSCB_VOL:     sel_val_comb = mod_preview[154+:7];
+            `PARAM_ID_FLT_CUTOFF:   sel_val_comb = mod_preview[161+:7];
+            `PARAM_ID_FLT_RES:      sel_val_comb = mod_preview[168+:7];
+            `PARAM_ID_FLT_PAN:      sel_val_comb = mod_preview[175+:7];
+            `PARAM_ID_FLT_DRIVE:    sel_val_comb = mod_preview[182+:7];
+            `PARAM_ID_FLT_FAT:      sel_val_comb = mod_preview[189+:7];
+            `PARAM_ID_FLT_MIX:      sel_val_comb = mod_preview[196+:7];
+            `PARAM_ID_ENV1_ATTACK:  sel_val_comb = mod_preview[203+:7];
+            `PARAM_ID_ENV1_HOLD:    sel_val_comb = mod_preview[210+:7];
+            `PARAM_ID_ENV1_DECAY:   sel_val_comb = mod_preview[217+:7];
+            `PARAM_ID_ENV1_SUSTAIN: sel_val_comb = mod_preview[224+:7];
+            `PARAM_ID_ENV1_RELEASE: sel_val_comb = mod_preview[231+:7];
             `PARAM_ID_FX_REVERB:    sel_val_comb = val_fx_reverb;
             `PARAM_ID_FX_DELAY:     sel_val_comb = val_fx_delay;
             `PARAM_ID_FX_CHORUS:    sel_val_comb = val_fx_chorus;
@@ -542,7 +552,7 @@ module ui_top_renderer (
             `PARAM_ID_OSCB_WAVE:    sel_val_comb = {5'd0, val_oscb_wave};
             `PARAM_ID_FLT_TYPE:     sel_val_comb = {5'd0, val_flt_type};
             `PARAM_ID_ENV_TAB:      sel_val_comb = {5'd0, val_env_tab};
-            default:                sel_val_comb = 7'd64;
+            default:                sel_val_comb = hud_selected_id>=8'h60 && hud_selected_id<=8'h72 ? mod_preview[(34+hud_selected_id-8'h60)*7+:7] : 7'd64;
         endcase
     end
 

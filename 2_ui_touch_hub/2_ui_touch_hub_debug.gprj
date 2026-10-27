@@ -33,6 +33,8 @@
         <File path="rtl/ui_vector_engine/curve_hint_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/ui_top_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/ui_navigation_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/ui_user_settings.v" type="file.verilog" enable="1"/>
+        <File path="rtl/knob_spi_intake/knob_ui_control.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/ui_navigation_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/navigation_font.vh" type="file.verilog" enable="1"/>
         <File path="rtl/touch_intake/uart_touch_rx.v" type="file.verilog" enable="1"/>
@@ -49,6 +51,7 @@
         <File path="rtl/audio/audio_fft_analyzer.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_phase_plot.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_pcm_metrics.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_stereo_meter.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_correlation_cursor.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_waveform_capture.v" type="file.verilog" enable="1"/>
         <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
