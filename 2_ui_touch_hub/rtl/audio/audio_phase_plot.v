@@ -27,7 +27,7 @@ module audio_phase_plot(
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
    write_bank<=0;display_bank<=1;clearing<=1;clear_address<=0;
-   count<=0;decimate<=0;ready<=0;applied_gains<={gain_x,gain_y};
+   count<=0;decimate<=0;ready<=0;applied_gains<=4'd0;
   end else if(!link_up)begin
    write_bank<=0;display_bank<=1;clearing<=1;clear_address<=0;
    count<=0;decimate<=0;ready<=0;applied_gains<={gain_x,gain_y};

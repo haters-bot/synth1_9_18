@@ -31,7 +31,7 @@ module audio_waveform_capture(
  end
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
-   captured_zoom<=time_zoom;display_bank<=0;capturing<=1;armed<=0;capture_triggered<=0;
+   captured_zoom<=2'd0;display_bank<=0;capturing<=1;armed<=0;capture_triggered<=0;
    decimate<=0;write_index<=0;arm_age<=0;last_sample<=0;
    ready<=0;frame_valid<=0;triggered<=0;
   end else if(!link_up || captured_zoom!=time_zoom)begin
