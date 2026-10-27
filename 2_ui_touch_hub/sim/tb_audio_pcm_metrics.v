@@ -10,14 +10,22 @@ module tb_audio_pcm_metrics;
  wire [5:0] clip_hold;wire [3:0] transient_hold;
  reg [31:0] stimulus[0:16383];
  integer f,n,fd,frames_seen=0;
+ reg logging=1;
  audio_pcm_metrics dut(.*);
  always #10 clk=~clk;
- always @(negedge clk)if(frame_valid)begin
+ always @(negedge clk)if(frame_valid&&logging)begin
   $fdisplay(fd,"%0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
    frames_seen,rms_left,rms_right,peak_left,peak_right,rms_db10,peak_db10,
    crest_db10,correlation,balance,correlation_valid,peak_hold,clip_hold);
   frames_seen=frames_seen+1;
  end
+ task constant_window;
+  input signed [15:0] value;integer j;
+  begin
+   left_sample=value;right_sample=value;pair_valid=1;
+   repeat(1024)@(negedge clk);pair_valid=0;repeat(200)@(negedge clk);
+  end
+ endtask
  initial begin
   $readmemh("metrics_input.hex",stimulus);fd=$fopen("metrics_output.txt","w");
   repeat(5)@(negedge clk);rst_n=1;link_up=1;
@@ -37,7 +45,18 @@ module tb_audio_pcm_metrics;
   if(ready)$fatal(1,"Partial reconnect window published");
   pair_valid=1;@(negedge clk);pair_valid=0;repeat(200)@(negedge clk);
   if(!ready || rms_left!=1000 || rms_right!=1000)$fatal(1,"Fresh reconnect window missing");
-  $fclose(fd);$display("PASS: 16 contiguous stereo windows, reconnect validity and all metric resets");$finish;
+  logging=0;
+  constant_window(-32768);
+  if(peak_hold!=32768 || clip_hold!=48)$fatal(1,"Hold timers not loaded");
+  for(f=0;f<94;f=f+1)begin
+   constant_window(0);
+   if(peak_hold!=32768)$fatal(1,"Peak hold expired before 94 windows");
+   if(f==47 && clip_hold!=0)$fatal(1,"Clip hold did not expire after 48 windows");
+  end
+  constant_window(0);
+  if(peak_hold!=30720 || rms_db10!=-960 || peak_db10!=-960 || crest_db10 || correlation_valid || transient_hold)
+   $fatal(1,"Peak release or silent metrics incorrect");
+  $fclose(fd);$display("PASS: 16 contiguous stereo windows, reconnect validity, 94-window peak hold/decay and 48-window clip expiry");$finish;
  end
- initial begin #2000000;$fatal(1,"Metrics watchdog");end
+ initial begin #5000000;$fatal(1,"Metrics watchdog");end
 endmodule

@@ -22,6 +22,7 @@ def main():
                ROOT / 'rtl/ui_vector_engine/ui_navigation_renderer.v',
                ROOT / 'sim/tb_audio_visual_windows.v']
     sources.append(ROOT / 'sim/tb_audio_waveform_capture.v')
+    sources.append(ROOT / 'sim/tb_i2s_metrics_chain.v')
     headers = list((ROOT / 'rtl/ui_vector_engine').glob('*.vh'))
     hashes = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources + headers}
 
@@ -37,7 +38,7 @@ def main():
     run('library', [str(MODELSIM / 'vlib.exe'), 'work'])
     run('compile', [str(MODELSIM / 'vlog.exe'), '-sv', '-work', 'work',
                     '+incdir+' + str(ROOT / 'rtl/ui_vector_engine'), *map(str, sources)])
-    for top in ('tb_i2s_visual_rx', 'tb_i2s_visual_loopback', 'tb_audio_visual_windows','tb_audio_waveform_capture'):
+    for top in ('tb_i2s_visual_rx', 'tb_i2s_visual_loopback', 'tb_audio_visual_windows','tb_audio_waveform_capture','tb_i2s_metrics_chain'):
         # ModelSim can exit zero after a testbench failure. Require the
         # explicit PASS marker as well as a clean process and transcript.
         log = run(top, [str(MODELSIM / 'vsim.exe'), '-c', '-lib', 'work', top,

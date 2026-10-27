@@ -33,6 +33,21 @@ module tb_audio_visual_windows;
    end
   end
  endtask
+ task digit_cell;
+  input integer px,py;input [5:0] character;
+  integer cx,cy,alpha;reg [23:0] back,expected;reg [1:0] coverage;
+  begin
+   for(cy=0;cy<16;cy=cy+1)for(cx=0;cx<12;cx=cx+1)begin
+    back=((px+cx)%64==0 || (py+cy)%64==0) ? 24'h152331 : 24'h0B131D;
+    coverage=dut.navigation_font(character,1'b0,cx,cy);
+    alpha=coverage==3 ? 4 : coverage==2 ? 3 : coverage;
+    expected[23:16]=(97*alpha+back[23:16]*(4-alpha))/4;
+    expected[15:8]=(222*alpha+back[15:8]*(4-alpha))/4;
+    expected[7:0]=(209*alpha+back[7:0]*(4-alpha))/4;
+    pixel(px+cx,py+cy,expected);
+   end
+  end
+ endtask
  task pixel;
   input [13:0] px,py;input [23:0] expected;
   begin
@@ -77,6 +92,7 @@ module tb_audio_visual_windows;
    $fatal(1,"Cached displayed numbers are incorrect");
   if(dut.correlation_x!=1184)$fatal(1,"Positive stereo cursor overflowed");
   pixel(140,248,24'h61DED1);pixel(140,200,24'h0B131D);
+  digit_cell(318,198,6'd28);digit_cell(334,198,6'd35);digit_cell(366,198,6'd28);
   pixel(1064,500,24'h65CDA4);pixel(1220,500,24'h26394B);
   pixel(1064,536,24'h61DED1);pixel(1064,572,24'h26394B);
   @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
