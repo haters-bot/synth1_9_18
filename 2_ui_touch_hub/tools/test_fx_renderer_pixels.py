@@ -1,4 +1,4 @@
-"""Compare optimized FX output pixels with the saved, rendered f99d1cd version."""
+"""Compare optimized FX output pixels with the accepted 20d749e baseline."""
 from datetime import datetime
 from pathlib import Path
 import subprocess
@@ -9,7 +9,7 @@ MS=Path('D:/altera/modelsim_ase/win32aloem')
 def main():
     out=ROOT/'impl'/('fx_pixel_tests_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
     out.mkdir()
-    reference=subprocess.check_output(['git','show','f99d1cd:rtl/ui_vector_engine/fx_strip_renderer.v'],cwd=ROOT).decode()
+    reference=subprocess.check_output(['git','show','20d749e:2_ui_touch_hub/rtl/ui_vector_engine/fx_strip_renderer.v'],cwd=ROOT).decode()
     reference=reference.replace('module fx_strip_renderer(', 'module fx_strip_renderer_reference(',1)
     (out/'reference.v').write_text(reference)
     def run(args,name,timeout=300):

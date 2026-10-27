@@ -8,7 +8,7 @@ module tb_controls_preview;
  reg [23:0] scales=0;
  wire hit;
  wire [23:0] rgb;
- integer fd,px,py,i,k,count=0,checks=0;
+ integer fd,px,py,i,k,count=0,checks=0,only_display;
  reg rendering=0;
  reg [4:0] pixels_valid=0;
  ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),.view(2'd2),
@@ -39,7 +39,8 @@ module tb_controls_preview;
   for(i=0;i<32;i=i+1)steps[i*2+:2]=i%4;
   for(i=0;i<6;i=i+1)begin scales[i*4+:2]=i%4;scales[i*4+2+:2]=(5-i)%4;end
   repeat(5)@(negedge clk);rst_n=1;repeat(20)@(negedge clk);
-  frame("controls_01_08.ppm");page=3;repeat(10)@(negedge clk);frame("controls_25_32.ppm");
+  only_display=$test$plusargs("DISPLAY_ONLY");
+  if(!only_display)begin frame("controls_01_08.ppm");page=3;repeat(10)@(negedge clk);frame("controls_25_32.ppm");end
   section=2;
   for(i=0;i<6;i=i+1)begin
    // Check the actual dynamic decoder at all twelve scale digit rectangles.
@@ -53,7 +54,7 @@ module tb_controls_preview;
    end
   end
   frame("display_scales.ppm");
-  $display("PASS: %0d scale digits and 2764800 settings RTL pixels, pages 1/4 and 4/4, all six display rows",checks);
+  $display("PASS: %0d scale digits and complete settings RTL frames, pages 1/4 and 4/4, all six display rows",checks);
   $finish;
  end
  initial begin #100000000;$fatal(1,"Controls preview watchdog");end

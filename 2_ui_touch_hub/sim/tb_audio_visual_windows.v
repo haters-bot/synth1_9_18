@@ -17,7 +17,7 @@ module tb_audio_visual_windows;
  reg [23:0] pixel_history[0:4];
  ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),
   .view(2'd1),.settings_section_id(8'd1),.show_diagnostics(1'b0),
-  .usb_connected(usb_connected),.usb_error(usb_error),.macro_values(28'd0),
+  .usb_connected(usb_connected),.usb_error(usb_error),.knob_steps(64'd0),.knob_page(2'd0),.apply_step(2'd0),.plot_scales(24'd0),.macro_values(28'd0),
   .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),
   .audio_right_sample(audio_sample),.audio_stereo_valid(audio_sample_valid),
   .audio_link_up(audio_link_up),.out_hit(hit),.out_rgb(rgb));

@@ -8,6 +8,8 @@ module audio_stereo_meter(
  output reg [7:0] hold_width_l,hold_width_r
 );
  reg [15:0] held_l,held_r;
+ wire [15:0] decay_l=held_l<128 ? 16'd0 : held_l-(held_l>>4);
+ wire [15:0] decay_r=held_r<128 ? 16'd0 : held_r-(held_r>>4);
  reg [6:0] count_l,count_r;
  wire signed [11:0] held_db_l,held_db_r;
  reg signed [12:0] level_l,level_r,level_hold_l,level_hold_r;
@@ -39,10 +41,10 @@ module audio_stereo_meter(
    if(frame_valid)begin
     if(peak_l>=held_l)begin held_l<=peak_l;count_l<=94;end
     else if(count_l!=0)count_l<=count_l-1'b1;
-    else held_l<=held_l<128 ? peak_l : held_l-(held_l>>4);
+    else held_l<=peak_l>decay_l ? peak_l : decay_l;
     if(peak_r>=held_r)begin held_r<=peak_r;count_r<=94;end
     else if(count_r!=0)count_r<=count_r-1'b1;
-    else held_r<=held_r<128 ? peak_r : held_r-(held_r>>4);
+    else held_r<=peak_r>decay_r ? peak_r : decay_r;
    end
    // Input statistics publish about every 10.7ms, but the display targets
    // settle a few clocks later. Each statistics frame decays the rendered bars.

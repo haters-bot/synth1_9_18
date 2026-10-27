@@ -10,7 +10,7 @@ module audio_fft_analyzer #(
  input wire [4:0] spectrum_address,
  output reg [5:0] spectrum_value,
  input wire [5:0] history_column,
- input tri0 [1:0] history_scale,
+ input wire [1:0] history_scale,
  input wire [4:0] history_band,
  output reg [5:0] history_value,
  output reg ready,

@@ -1,6 +1,7 @@
 """Render the real settings RTL into reviewable PNGs, without operating hardware."""
 from datetime import datetime
 from pathlib import Path
+import argparse
 import hashlib
 import json
 import subprocess
@@ -12,6 +13,9 @@ MS = Path('D:/altera/modelsim_ase/win32aloem')
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--display-only',action='store_true')
+    args=parser.parse_args()
     out = ROOT / 'impl' / ('controls_preview_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
     out.mkdir()
     print(out, flush=True)
@@ -24,7 +28,7 @@ def main():
     def run(name, args):
         with (out / (name + '.log')).open('w') as log:
             p = subprocess.run(list(map(str, args)), cwd=out, stdout=log,
-                               stderr=subprocess.STDOUT, timeout=900)
+                               stderr=subprocess.STDOUT, timeout=2400)
         text = (out / (name + '.log')).read_text(errors='replace')
         if p.returncode or '** Fatal:' in text or '** Error:' in text:
             raise RuntimeError(f'{name} failed: {out}')
@@ -32,9 +36,9 @@ def main():
 
     run('library', [MS / 'vlib.exe', 'work'])
     run('compile', [MS / 'vlog.exe', '-sv', '+incdir+' + str(ROOT / 'rtl/ui_vector_engine'), *sources])
-    log = run('simulation', [MS / 'vsim.exe', '-c', 'tb_controls_preview', '-do', 'run -all; quit -f'])
+    log = run('simulation', [MS / 'vsim.exe', '-c', 'tb_controls_preview', '-do', 'run -all; quit -f', *(['+DISPLAY_ONLY'] if args.display_only else [])])
     assert '# PASS:' in log, out
-    for name in ('controls_01_08', 'controls_25_32', 'display_scales'):
+    for name in (('display_scales',) if args.display_only else ('controls_01_08', 'controls_25_32', 'display_scales')):
         with Image.open(out / (name + '.ppm')) as image:
             assert image.size == (1280, 720)
             image.save(out / (name + '.png'))

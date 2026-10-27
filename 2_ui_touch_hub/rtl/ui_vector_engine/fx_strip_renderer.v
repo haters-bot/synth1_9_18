@@ -8,7 +8,7 @@ module fx_strip_renderer(
     input wire [13:0] in_x,in_y,
     input wire [132:0] values,
     input wire [10:0] switches,
-    input tri0 [7:0] selected_id,
+    input wire [7:0] selected_id,
     output reg out_hit,
     output reg [23:0] out_rgb
 );

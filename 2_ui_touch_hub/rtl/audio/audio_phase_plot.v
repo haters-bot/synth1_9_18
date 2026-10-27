@@ -3,7 +3,7 @@
 module audio_phase_plot(
  input wire clk,rst_n,link_up,pair_valid,
  input wire signed [15:0] left_sample,right_sample,
- input tri0 [1:0] gain_x,gain_y,
+ input wire [1:0] gain_x,gain_y,
  input wire [12:0] read_address,
  output reg pixel,
  output reg ready

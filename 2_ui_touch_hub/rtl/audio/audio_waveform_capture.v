@@ -5,7 +5,7 @@
 module audio_waveform_capture(
  input wire clk,rst_n,link_up,sample_valid,
  input wire signed [15:0] sample,
- input tri0 [1:0] time_zoom,
+ input wire [1:0] time_zoom,
  input wire [6:0] read_address,
  output reg [7:0] plot_sample,plot_previous,
  output reg ready,frame_valid,triggered

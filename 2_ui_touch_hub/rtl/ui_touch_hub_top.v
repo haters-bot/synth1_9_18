@@ -366,7 +366,7 @@ module ui_touch_hub_top #(
         .motion_valid(spi_param_valid),.motion_cw(spi_param_cw),.motion_id(spi_param_id),
         .button_valid(knob_select_valid),.button_id(knob_select_id),.button_action(knob_select_action),
         .fx_touch_focus_valid(fx_touch_focus_valid),.fx_touch_focus_id(fx_touch_focus_id),
-        .touch_focus_valid(selected_valid),.touch_focus_id(selected_param_id),.touch_down(ui_touch_down),
+        .touch_focus_valid(selected_valid && !navigation_capture && !binding_capture),.touch_focus_id(selected_param_id),.touch_down(ui_touch_down),
         .steps(user_knob_steps),.delta(physical_delta),.focus_id(display_focus_id));
 
     // --------------------------------------------------------------------------
