@@ -1,7 +1,7 @@
 """Preserve audio inputs and run one signoff Gowin build in a fresh folder."""
 from datetime import datetime
 from pathlib import Path
-import hashlib,json,shutil,subprocess,xml.etree.ElementTree as ET
+import argparse,hashlib,json,shutil,subprocess,sys,xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
 GOWIN=Path('D:/Gowin/Gowin_V1.9.11.03_Education_x64/IDE/bin/gw_sh.exe')
@@ -54,4 +54,27 @@ exit
     print('GOWIN_EXIT='+str(code),flush=True)
     raise SystemExit(code)
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--background',action='store_true',help='Launch outside the terminal job with a hidden WMI process')
+    parser.add_argument('--launch-log',type=Path,help=argparse.SUPPRESS)
+    args=parser.parse_args()
+    if args.background:
+        launch=ROOT/'impl'/('audio_launcher_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
+        launch.mkdir(parents=True)
+        log=launch/'supervisor.log'
+        cmd=subprocess.list2cmdline([sys.executable,str(Path(__file__).resolve()),'--launch-log',str(log)])
+        quote=lambda s:"'"+str(s).replace("'","''")+"'"
+        ps=("$s=([wmiclass]'Win32_ProcessStartup').CreateInstance(); $s.ShowWindow=0; "
+            "$r=([wmiclass]'Win32_Process').Create("+quote(cmd)+","+quote(ROOT)+",$s); "
+            "$r | Select-Object ReturnValue,ProcessId | ConvertTo-Json -Compress")
+        result=json.loads(subprocess.check_output(['powershell','-NoProfile','-Command',ps],text=True))
+        if result['ReturnValue']!=0:raise RuntimeError(result)
+        result.update(log=str(log),command=cmd)
+        (launch/'launcher.json').write_text(json.dumps(result,indent=2))
+        print(json.dumps(result,indent=2))
+    else:
+        if args.launch_log:
+            stream=args.launch_log.open('x',encoding='utf-8',buffering=1)
+            sys.stdout=sys.stderr=stream
+        main()

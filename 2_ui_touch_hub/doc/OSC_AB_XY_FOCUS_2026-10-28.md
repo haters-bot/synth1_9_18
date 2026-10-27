@@ -52,3 +52,13 @@ UI唯一候选 `D:/github/synth1_9_18/2_ui_touch_hub/impl/R16A_build_20261028_03
 > **2026-10-28 03:44 接续：UI 新版已实际部署，音频构建中。** UI候选 `D:/github/synth1_9_18/2_ui_touch_hub/impl/R16A_build_20261028_032336` 已完成五类时序审计，73输入哈希一致、0 setup/hold端点、pixel50.879/50MHz；setup/hold/recovery/removal/pulse余量+0.346/+0.203/+0.184/+0.497/+0.453ns。用户确认JTAG接UI板后，仅一次SRAM2部署 `20261028_034258_R16_OSC_AB_FOCUS_UI` 成功，PROGRAMMER_EXIT=0、User Code0x00009A81、Status0x00026230，双机SHA256 `0322CBA28DC6004AB1CA697DE30F5874B46C4C2A3C2140B7B0DC9933F6D06DB2`；摄像头画面正常，触摸后实体高亮验收待用户回复。原副本与构建输入完全相符，新整合副本20个输入只有CRLF/LF差异，故使用原副本严格审计/部署，不弱化哈希。音频首候选034022在Tcl因不支持-inc_place退出，尚未综合；脚本改用全新目录保证无增量，并修正生成Tcl原始字节哈希。当前唯一Gowin为整合副本impl/AUDIO_XY_build_20261028_034258_711468，PID24760、session61358，正在综合；不得另起Gowin。预览session43904继续运行。两板独立供电、仅一根JTAG，音频烧录前仍须用户切换并确认目标。Flash未动，音频未烧录，目标未完成。**
 
 以上新状态覆盖前面的历史待办。UI烧录后的照片只证明画面正常，焦点动态行为仍待用户验收；音频需完成构建、五类时序审计、切换JTAG并烧录后再验收。
+
+## UI焦点现场验收与完整预览
+
+用户按“实体A→触摸B→实体A”的顺序测试，确认“高亮已正常恢复并保留”。原话已保存原副本部署目录focus_acceptance.json。本条只验收UI焦点，不表示音频板或OSC A/B已验收。
+
+整合副本2_ui_touch_hub/impl/audio_upgrade_preview_20261028_033725_079173完成4096逐拍检查、921600个实际RTL像素和64输入哈希核对，result.json passed=true、workspace_mismatches为空。已查看preview.png，第三窗标签和A/B轨迹正确，其余五窗显示保留；输入为合成PCM，不能代替板上验证。
+
+## 04:01 构建中断恢复
+
+> **2026-10-28 04:01 恢复更新：UI焦点已通过用户现场验收。** 用户确认“高亮已正常恢复并保留”，验收记录位于原副本部署034258的focus_acceptance.json。旧音频候选034258在会话续接后已无Gowin/监督进程，日志停Placement Phase1、无fs/最终STA，状态已记interrupted_no_exit_code，不能当作运行中或合格。未自动重烧、未删除文件。为避免终端任务被会话中断带走，构建器新增--background，经WMI隐藏独立启动；当前唯一音频候选为整合副本impl/AUDIO_XY_build_20261028_040056_136483，Gowin PID13268、监督PID20512，启动日志impl/audio_launcher_20261028_040055_308690/supervisor.log。通过文件/真实进程核对，不依赖已失效exec句柄。音频未部署，JTAG仍UI，五类审计后再请用户切换；目标未完成。**
