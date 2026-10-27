@@ -41,7 +41,7 @@ module lfo_smooth_table(
     reg signed [23:0] h2;
     reg signed [14:0] h3;
     wire signed [31:0] final_sum=h2*$signed({1'b0,t2})+($signed({1'b0,a2})<<<18);
-    always @(posedge clk or negedge rst_n) begin
+    always @(posedge clk) begin
         if(!rst_n) begin
             build_index<=0;va<=0;vb<=0;vc<=0;valid0<=0;valid1<=0;valid2<=0;valid3<=0;
             pa<=0;aa<=0;ba<=0;na<=0;ta<=0;ab<=0;tb<=0;ac<=0;tc<=0;
