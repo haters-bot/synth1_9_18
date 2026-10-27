@@ -51,17 +51,27 @@ module tb_visual_return_v2;
    end
   end
  end
- // Integrate the production plot and final-output meters without synthesized
- // fake phase. This proves which stream each consumer receives.
+ // Exercise the complete navigation renderer, including its production
+ // routing to XY, FFT, waveform, energy and final-output meters.
  wire phase_pixel,phase_ready,metrics_ready,metrics_frame_valid;
  reg [12:0] read_address=0;
  wire [15:0] rms_l,rms_r;
- audio_phase_plot phase(.clk(clk),.rst_n(rst_n),.link_up(link_up && xy_available),
-  .pair_valid(xy_valid),.left_sample(osc_a_sample),.right_sample(osc_b_sample),
-  .gain_x(2'd0),.gain_y(2'd0),.read_address(read_address),.pixel(phase_pixel),.ready(phase_ready));
- audio_pcm_metrics metrics(.clk(clk),.rst_n(rst_n),.link_up(link_up),
-  .pair_valid(stereo_valid),.left_sample(sample),.right_sample(sample_right),
-  .ready(metrics_ready),.frame_valid(metrics_frame_valid),.rms_left(rms_l),.rms_right(rms_r));
+ wire [13:0] pixel_x=14'd930+{6'd0,read_address[6:0],1'b0};
+ wire [13:0] pixel_y=14'd184+{7'd0,read_address[12:7],1'b0};
+ wire [23:0] pixel_rgb;
+ ui_navigation_renderer display(.clk(clk),.rst_n(rst_n),.in_x(pixel_x),.in_y(pixel_y),
+  .view(2'd1),.settings_section_id(8'd0),.show_diagnostics(1'b0),
+  .usb_connected(1'b0),.usb_error(1'b0),.macro_values(28'd0),
+  .knob_steps(64'd0),.knob_page(2'd0),.apply_step(2'd0),.plot_scales(24'd0),
+  .audio_sample_valid(sample_valid),.audio_sample(sample),.audio_right_sample(sample_right),
+  .audio_stereo_valid(stereo_valid),.audio_link_up(link_up),
+  .audio_xy_a(osc_a_sample),.audio_xy_b(osc_b_sample),
+  .audio_xy_valid(xy_valid),.audio_xy_available(xy_available),.out_rgb(pixel_rgb));
+ assign phase_pixel=pixel_rgb==24'h67CDE0;
+ assign phase_ready=display.phase_ready;
+ assign metrics_ready=display.metrics_ready;
+ assign rms_l=display.metrics_rms_l;
+ assign rms_r=display.metrics_rms_r;
  integer occupied=0,off_diagonal=0;
  initial begin
   repeat(10)@(negedge clk);rst_n=1;
@@ -80,8 +90,10 @@ module tb_visual_return_v2;
   #24000000;
   if(!phase_ready || !metrics_ready || rms_l!=0 || rms_r!=0)
    $fatal(1,"Analysis taps changed final-output measurements or plot not ready");
+  if(!display.waveform_ready || !display.spectrum_ready || display.spectrum_peak_valid)
+   $fatal(1,"Waveform/FFT did not retain the silent final-output stream");
   for(n=0;n<8192;n=n+1)begin
-   read_address=n;repeat(2)@(negedge clk);
+   read_address=n;repeat(8)@(negedge clk);
    if(phase_pixel)begin
     occupied=occupied+1;
     if((n%128)<56 && (n/128)<28)off_diagonal=off_diagonal+1;
