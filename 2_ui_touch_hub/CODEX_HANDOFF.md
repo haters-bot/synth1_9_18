@@ -484,3 +484,15 @@ R15H 归档比特流 SHA256：`911054F05264B88D565FBF4FC6A600751E93848057080B9A1
 - 唯一 Gowin 构建 impl/R16A_build_20261027_212132（gw_sh PID33716，外层命令session82151）。构建尚未退出，不能启动第二份；须按真实进程/日志核对状态，再审计五类时序。
 - 整帧仿真 impl/audio_upgrade_preview_20261027_211752_968052（session58379）已通过4096项每拍能量/相位/频谱/历史像素对齐，正在输出921600像素。三分钟超时的旧预览211309已经终止，部分PPM不可作为完整画面。
 - 当前升级未烧录，Flash未动。板上最后已验收部署仍为20261027_190826_KNOB_SPI_BURST_C14_ASCII。完整定义/限制/测试路径见 doc/I2S_SIX_WINDOW_UPGRADE_2026-10-27.md。现场验收待本轮构建/审计通过后进行，不能把目标标记完成。
+
+## 当前继续入口（2026-10-27 22:02，覆盖上面的21:23构建状态）
+
+- 六窗升级仍未完成，不能标记goal complete。全部功能源码、独立数值/整链路/像素/导航/旋钮回归和完整预览已完成；时序收敛、SRAM上板、现场验收尚未完成。
+- 第一次构建212132已退出且不合格：25.302/50MHz，105 setup，最差-19.522ns，路径u_metrics/tmp_peak_l到hold_db10。禁止部署该位流。其余四类+0.149/+0.201/+0.497/+0.453ns。完整audit_20261027_215716_545084.json保留。
+- 已把原对数函数替换成三拍audio_dbfs_encoder，常数ROM取代32位乘除。32769种有效PCM幅值全部逐拍校验通过，最大0.315dB；16窗口RMS/相关/保持和生产I2S整链路回归通过。
+- 当前唯一活跃隔离构建：D:/github/synth1_9_18/2_ui_touch_hub/impl/R16A_build_20261027_220133，gw_sh PID40640，外层命令session45828。source_manifest含66个输入且工作区一致。先核对这个进程/句柄/日志，不可因为观察超时另起Gowin。
+- c8d9631已经推送（Git push需http.sslBackend=openssl，http.version=HTTP/1.1，http.postBuffer=52428800；schannel此前多次Empty reply）。与本轮无关的根目录脏文件保持原样。
+- 预览：impl/audio_upgrade_preview_20261027_211752_968052/preview.png，完整921600像素和4096每拍能量/相位/频谱/历史对照均通过，已人工查看。模拟PCM，不是实板。预览在对数流水线替换前生成，数值语义已由穷举/字形回归证明一致。整帧原PPM及早先超时不完整PPM全部保留。
+- 最新测试：metrics_tests_20261027_215958_053975；i2s_tests_20261027_215850_217355；spectral_tests_20261027_211752_887973；knob_integration_20261027_211825_465226；navigation_20261027_211943；video_alignment_20261027_212213_225013。
+- 工程机ssh gaoyun hostname已验证可达；目前未烧录任何升级位流，板上仍190826旋钮稳定版。待当前构建完成必须audit_build五类全通过，再tools/deploy_verified.py --label R16_I2S_SIX_WINDOW_UPGRADE --fs <该构建>/impl/pnr/2_ui_touch_hub.fs（默认SRAMoperation2）。SSH烧录超时禁止自动重试，Flash暂停。
+- 详细定义、误差、抽取波形6kHz混叠边界、失败时序与测量限制见doc/I2S_SIX_WINDOW_UPGRADE_2026-10-27.md。现场需要用户确认六窗随真实声音变化且旋钮仍正常；不可把仿真或摄像头静帧当作音频响应证明。
