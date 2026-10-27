@@ -18,7 +18,7 @@
 
 module ui_touch_hub_top #(
     parameter DEBUG_TOUCH_LOG=0,
-    parameter DEBUG_KNOB_ASCII=0
+    parameter DEBUG_KNOB_ASCII=1
 )(
     input  wire        clk,             // 板载 50MHz 有源晶振 (V22)
     input  wire        rst_n,           // 板载复位按键 S2 (AA13, 低有效)
@@ -59,7 +59,7 @@ module ui_touch_hub_top #(
     input  wire        audio_vis_din,
 
     // External debug UART on the user header: C14=TX, E13=RX (3.3V TTL).
-    // TX mirrors the selected monitor stream; RX is reserved for commands.
+    // TX reports knob/link events at 115200 8N1; RX is reserved for commands.
     output wire        debug_uart_tx,
     input  wire        debug_uart_rx,
 
@@ -678,8 +678,8 @@ module ui_touch_hub_top #(
         .tx_busy       (midi_tx_busy)
     );
 
-    // Diagnostic UI trace remains independently selectable. The current
-    // knob test build keeps MIDI on U15 and sends knob text only on C14.
+    // Diagnostic UI trace remains independently selectable. Both normal and
+    // diagnostic builds keep MIDI on U15 and knob text on C14 by default.
     generate if(DEBUG_TOUCH_LOG) begin: g_trace
         assign audio_link_tx=1'b1;
         assign midi_uart_tx=audio_midi_tx;
@@ -689,7 +689,7 @@ module ui_touch_hub_top #(
     end endgenerate
 
     generate if(DEBUG_KNOB_ASCII) begin: g_knob_ascii
-        knob_ascii_trace #(.FIFO_BITS(2)) u_knob_trace(
+        knob_ascii_trace #(.FIFO_BITS(7)) u_knob_trace(
             .clk(clk_pixel),.rst_n(sys_rst_n_sync),
             .knob_valid(spi_param_valid),.knob_id(spi_param_id),.knob_cw(spi_param_cw),
             .button_valid(knob_select_valid),.button_id(knob_select_id),.button_action(knob_select_action),
@@ -698,7 +698,8 @@ module ui_touch_hub_top #(
         );
     end else begin: g_debug_uart_mirror
         assign debug_uart_tx=midi_uart_tx;
-    end endgenerate    // --------------------------------------------------------------------------
+    end endgenerate
+    // --------------------------------------------------------------------------
     // 9. 心跳与系统状态指示
     // --------------------------------------------------------------------------
     reg [26:0] heartbeat_cnt;

@@ -446,3 +446,26 @@ R15H 归档比特流 SHA256：`911054F05264B88D565FBF4FC6A600751E93848057080B9A1
 - 原 13:18 UI SRAM 烧录成功，但接收功能仿真此前未跑完。已复现旧接收器解出 0 个左声道样本；修正 16 位 I2S 槽末位与 WS 边界，生产发送器 141 样本逐值环回、复位和断线恢复通过。
 - 第二窗改 128 点/约 10.7 ms 的同步 RAM 历史；第六窗改真实峰值、平均绝对幅度和削波保持。显示专项、导航状态保持、6136 项视频对齐与串口回归通过。
 - 候选 `D:/github/synth1_9_18/2_ui_touch_hub/impl/R16A_build_20261027_140338` 正在构建，尚未通过时序审计或部署。完整说明在同副本 `doc/I2S_LIVE_WAVEFORM_LEVELS_2026-10-27.md`。Flash 暂停，不删除或覆盖旧产物。
+
+## 2026-10-27：旋钮 SPI 连续帧和普通固件 C14 日志修复（仅源码/仿真，尚未部署）
+
+- 用户确认原接线 A15/B20/B21/B17/D17/A18/D14，串口 C14、115200 8N1。实际修复在 D:/github/synth1_9_18/2_ui_touch_hub；gaoyun 旧 RTL 不反向覆盖。
+- 已定位普通顶层关闭 ASCII 导致 C14 镜像 MIDI；SPI 接收器又使用 24-clock 逐端口帧，未复用已实测成功的 64-clock 连续读。原文件哈希与 161611 已部署快照一致。严格引脚级模型在旧代码上复现“expected 64 clocks, got 24”。
+- 已修复连续读、普通顶层默认 ASCII、多旋钮/开关事件逐个发出、两颗芯片独立断线处理；现有共享参数增量入口保留，按压不增加业务功能，SPI 状态仅首次/变化时打印。
+- 专项 1366 个 SPI 帧、139 行精确 ASCII 校验、32 路 CW/CCW/PRESS/RELEASE、触屏与实体交替/限幅、单颗断开重连全部通过。既有串口回归和独立参数中枢回归通过。曲线套件 tb_curve_touch_editor 另报 Pending curve MIDI did not drain，其编译输入未含本轮修改 RTL，不能列为全绿。
+- 未运行 Gowin、未生成新部署位流、未烧录、未操作 Flash、未删除文件。板上最后有记录的部署仍为 20261027_162828_I2S_LIVE_PHASE_SPECTRUM_HISTORY。工作副本 AGENTS.md 要求明确请求后才进行 Gowin 构建；时序审计和实板联动验收仍待后续完成。
+- 完整证据与备份位置：实际副本 doc/KNOB_SPI_BURST_FIX_2026-10-27.md；原文件备份 impl/knob_fix_backup_20261027_164910_066。
+
+## 后续执行更新：用户已明确授权构建与条件 SRAM 烧录
+
+- 用户回复“是，构建并在审计通过后烧录 SRAM”，已满足工作副本 AGENTS.md 的明确请求要求。
+- 当前唯一隔离构建：D:/github/synth1_9_18/2_ui_touch_hub/impl/R16A_build_20261027_185258，gw_sh PID 47704。综合与引脚约束解析完成，正在布局；source_manifest.json 已保存。恢复工作时先核对进程与日志，不重复启动 Gowin。
+- 尚未产生最终时序结论，尚未调用烧录器。上文“未运行 Gowin”是授权之前的状态，以此更新为准；Flash 继续暂停。
+
+## 2026-10-27 19:08–19:09：旋钮 SPI 连续帧/C14 ASCII 修正版构建并部署
+
+- 用户已授权“构建并在审计通过后烧录 SRAM”。唯一隔离构建 `impl/R16A_build_20261027_185258` 完成，Gowin exit 0；64 个源文件快照与工作区一致。
+- 五类审计通过：clk_pixel 56.905/50 MHz；setup +0.622 ns；hold +0.191 ns；recovery +0.201 ns；removal +0.497 ns；pulse width +0.453 ns；setup/hold 违例 0，负路径 0，OSER10 recovery/removal 三路均有报告，无 reset 例外。
+- 仅执行一次 UI SRAM operation 2：`impl/deploy_runs/20261027_190826_KNOB_SPI_BURST_C14_ASCII/`。远程 `PROGRAMMER_EXIT=0`，User Code `0x00001766`，Status `0x00026230`；本地/远程位流 SHA256 `76E2B27474035033C464B72036230395BB29A1BDF15B95C928480BD9406C4DA5`。现场预览 `preview.jpg` 已抓取，屏幕画面正常。Flash 未操作。
+- 当前待用户实测：打开 C14 串口（C14→USB-TTL RX、GND 共地、115200 8N1）后复位 UI 板，期望首次看到 `U1 SPI CONNECTED`、`U2 SPI CONNECTED`；随后旋转/按压应输出 `Kxx CW/CCW/PRESS/RELEASE U1/U2`。空闲不应每秒打印。SPI 连接状态只在首次检测或状态变化打印。
+- 硬件状态仍需用户现场验证，不能用预览图替代旋钮事件验收。若要验证断线状态，先断电再改变接线并重新上电，避免带电插拔。

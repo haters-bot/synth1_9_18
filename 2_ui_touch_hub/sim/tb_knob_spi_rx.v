@@ -13,7 +13,7 @@ module tb_knob_spi_rx;
     reg [7:0] p0_u1=8'hFF,p1_u1=8'hFF,p2_u1=8'hFF,p3_u1=8'hFF,p4_u1=8'hFF,p5_u1=8'hFF;
     reg [7:0] p0_u2=8'hFF,p1_u2=8'hFF,p2_u2=8'hFF,p3_u2=8'hFF,p4_u2=8'hFF,p5_u2=8'hFF;
     reg link_ok=1'b1;
-    reg [23:0] reply=0;
+    reg [63:0] reply=0;
     integer bitpos=0;
     integer cw_count=0,ccw_count=0,press_count=0,released_count=0,link_up_count=0,link_down_count=0;
 
@@ -38,19 +38,11 @@ module tb_knob_spi_rx;
         .midi_cc_param_id(midi_id),.midi_cc_val(midi_value));
 
     task load_reply;
-        reg [7:0] data;
         begin
-            case(dut.port_idx)
-                0:data=dut.chip_sel?p0_u2:p0_u1;
-                1:data=dut.chip_sel?p1_u2:p1_u1;
-                2:data=dut.chip_sel?p2_u2:p2_u1;
-                3:data=dut.chip_sel?p3_u2:p3_u1;
-                4:data=dut.chip_sel?p4_u2:p4_u1;
-                default:data=dut.chip_sel?p5_u2:p5_u1;
-            endcase
-            reply={link_ok?8'hC0:8'h00,8'h00,data};
+            if(!cs1) reply={link_ok?8'hC0:8'h00,8'h00,p0_u1,p1_u1,p2_u1,p3_u1,p4_u1,p5_u1};
+            else reply={link_ok?8'hC0:8'h00,8'h00,p0_u2,p1_u2,p2_u2,p3_u2,p4_u2,p5_u2};
             bitpos=0;
-            sdo=reply[23];
+            sdo=reply[63];
         end
     endtask
 
@@ -58,8 +50,8 @@ module tb_knob_spi_rx;
     always @(negedge cs2) load_reply();
     always @(negedge sclk) begin
         if(!cs1 || !cs2) begin
-            if(bitpos<23) bitpos=bitpos+1;
-            sdo=reply[23-bitpos];
+            if(bitpos<63) bitpos=bitpos+1;
+            sdo=reply[63-bitpos];
         end
     end
 
