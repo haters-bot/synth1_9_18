@@ -17,6 +17,9 @@ module top #(
     output wire MAX_DIN,       // MAX98357A串行音频数据，引脚AB22
     output wire MAX_BCLK,      // MAX98357A位时钟，引脚Y22
     output wire MAX_LRC,       // MAX98357A左右声道时钟，引脚Y21
+    output wire VIS_BCLK,      // 音频可视化从机位时钟，引脚R19
+    output wire VIS_LRC,       // 音频可视化从机左右声道时钟，引脚U21
+    output wire VIS_DIN,       // 音频可视化从机串行数据，引脚R17
     output wire PA_EN,         // 板载NS4263使能，低电平有效，引脚AB16
 
     output wire        sd_clk,
@@ -293,6 +296,10 @@ module top #(
     assign PA_EN    = 1'b1;
     assign MAX_SD   = 1'b1;
     assign MAX_GAIN = 1'b1;
+    // 第二组排针直接镜像同一组I2S信号，不增加采样、缓存或时钟域。
+    assign VIS_BCLK = MAX_BCLK;
+    assign VIS_LRC  = MAX_LRC;
+    assign VIS_DIN  = MAX_DIN;
 
     sys_clock_manager u_sys_clock_manager (
         .clk_ref_50m(sys_clk),
