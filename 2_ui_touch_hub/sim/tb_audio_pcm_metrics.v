@@ -14,9 +14,9 @@ module tb_audio_pcm_metrics;
  audio_pcm_metrics dut(.*);
  always #10 clk=~clk;
  always @(negedge clk)if(frame_valid&&logging)begin
-  $fdisplay(fd,"%0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
+  $fdisplay(fd,"%0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d",
    frames_seen,rms_left,rms_right,peak_left,peak_right,rms_db10,peak_db10,
-   crest_db10,correlation,balance,correlation_valid,peak_hold,clip_hold);
+   crest_db10,correlation,balance,correlation_valid,peak_hold,clip_hold,hold_db10);
   frames_seen=frames_seen+1;
  end
  task constant_window;
@@ -50,12 +50,15 @@ module tb_audio_pcm_metrics;
   if(peak_hold!=32768 || clip_hold!=48)$fatal(1,"Hold timers not loaded");
   for(f=0;f<94;f=f+1)begin
    constant_window(0);
-   if(peak_hold!=32768)$fatal(1,"Peak hold expired before 94 windows");
+   if(peak_hold!=32768 || hold_db10!=0)$fatal(1,"Peak hold amplitude/dBFS expired before 94 windows");
    if(f==47 && clip_hold!=0)$fatal(1,"Clip hold did not expire after 48 windows");
   end
   constant_window(0);
-  if(peak_hold!=30720 || rms_db10!=-960 || peak_db10!=-960 || crest_db10 || correlation_valid || transient_hold)
+  if(peak_hold!=30720 || hold_db10!=0 || rms_db10!=-960 || peak_db10!=-960 || crest_db10 || correlation_valid || transient_hold)
    $fatal(1,"Peak release or silent metrics incorrect");
+  constant_window(0);
+  if(peak_hold!=28800 || hold_db10< -8 || hold_db10> -4)
+   $fatal(1,"Released peak dBFS not based on prior held amplitude: %0d",hold_db10);
   $fclose(fd);$display("PASS: 16 contiguous stereo windows, reconnect validity, 94-window peak hold/decay and 48-window clip expiry");$finish;
  end
  initial begin #5000000;$fatal(1,"Metrics watchdog");end

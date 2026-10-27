@@ -94,7 +94,9 @@ module ui_navigation_renderer(
  reg [4:0] decimal_bit;
  reg corr_negative,bal_negative,corr_pending_sign,bal_pending_sign;
  reg [7:0] peak_width,rms_width,hold_width,crest_width;
- reg [13:0] correlation_x;
+ wire [13:0] correlation_x;
+ audio_correlation_cursor u_correlation_cursor(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .value_valid(metrics_frame_valid),.correlation(metrics_corr),.position(correlation_x),.position_valid());
  reg [12:0] energy_radius2;
  integer decimal_index;
  wire [15:0] energy_rms=metrics_rms_l>metrics_rms_r ? metrics_rms_l : metrics_rms_r;
@@ -102,11 +104,11 @@ module ui_navigation_renderer(
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
    decimal_busy<=0;decimal_bit<=0;corr_negative<=0;bal_negative<=0;
-   peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;correlation_x<=1058;energy_radius2<=64;
+   peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;energy_radius2<=64;
    for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
   end else if(!audio_link_up)begin
    decimal_busy<=0;peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;
-   correlation_x<=1058;energy_radius2<=64;corr_negative<=0;bal_negative<=0;
+   energy_radius2<=64;corr_negative<=0;bal_negative<=0;
    for(decimal_index=0;decimal_index<7;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
   end else begin
    if(metrics_frame_valid)begin
@@ -114,7 +116,6 @@ module ui_navigation_renderer(
     rms_width<=(12'sd960+metrics_rms_db)/12'd6;
     hold_width<=metrics_hold_db>=0 ? 8'd159 : (12'sd960+metrics_hold_db)/12'd6;
     crest_width<=metrics_crest>=240 ? 8'd160 : (metrics_crest*12'd2)/12'd3;
-    correlation_x<=32'sd1058+($signed(metrics_corr)*32'sd126)/32'sd100;
     energy_radius2<=energy_radius*energy_radius;
    end
    if(!decimal_busy && (metrics_frame_valid || spectrum_frame_valid))begin

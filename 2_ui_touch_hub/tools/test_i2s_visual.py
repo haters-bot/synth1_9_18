@@ -17,6 +17,8 @@ def main():
                ROOT / 'rtl/audio/audio_fft_tables.v',ROOT / 'rtl/audio/audio_fft_analyzer.v',
                ROOT / 'rtl/audio/audio_phase_plot.v',
                ROOT / 'rtl/audio/audio_pcm_metrics.v',
+               ROOT / 'rtl/audio/audio_correlation_cursor.v',
+               ROOT / 'sim/tb_audio_correlation_cursor.v',
                ROOT / 'rtl/audio/audio_waveform_capture.v',
                ROOT / 'sim/tb_i2s_visual_rx.v', ROOT / 'sim/tb_i2s_visual_loopback.v',
                ROOT / 'rtl/ui_vector_engine/ui_navigation_renderer.v',
@@ -38,7 +40,7 @@ def main():
     run('library', [str(MODELSIM / 'vlib.exe'), 'work'])
     run('compile', [str(MODELSIM / 'vlog.exe'), '-sv', '-work', 'work',
                     '+incdir+' + str(ROOT / 'rtl/ui_vector_engine'), *map(str, sources)])
-    for top in ('tb_i2s_visual_rx', 'tb_i2s_visual_loopback', 'tb_audio_visual_windows','tb_audio_waveform_capture','tb_i2s_metrics_chain'):
+    for top in ('tb_i2s_visual_rx', 'tb_i2s_visual_loopback', 'tb_audio_visual_windows','tb_audio_waveform_capture','tb_i2s_metrics_chain','tb_audio_correlation_cursor'):
         # ModelSim can exit zero after a testbench failure. Require the
         # explicit PASS marker as well as a clean process and transcript.
         log = run(top, [str(MODELSIM / 'vsim.exe'), '-c', '-lib', 'work', top,

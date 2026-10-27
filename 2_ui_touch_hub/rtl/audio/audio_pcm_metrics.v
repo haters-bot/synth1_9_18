@@ -106,10 +106,21 @@ module audio_pcm_metrics(
  wire [15:0] current_peak=tmp_peak_l>tmp_peak_r ? tmp_peak_l : tmp_peak_r;
  wire signed [11:0] current_peak_db,current_rms_db,current_hold_db;
  // Operands settle >96 cycles before PUBLISH (two sequential divisions).
- // Three encoder stages therefore finish without adding any capture gap.
- audio_dbfs_encoder u_peak_db(.clk(clk),.amplitude(current_peak),.db10(current_peak_db));
- audio_dbfs_encoder u_rms_db(.clk(clk),.amplitude(tmp_l>tmp_r ? tmp_l : tmp_r),.db10(current_rms_db));
- audio_dbfs_encoder u_hold_db(.clk(clk),.amplitude(current_peak>=peak_hold ? current_peak : peak_hold),.db10(current_hold_db));
+ // Register each maximum selection before the three-stage priority encoder.
+ // Two selection stages plus encoding finish without adding any capture gap.
+ reg [15:0] peak_amplitude,rms_amplitude,held_amplitude;
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin peak_amplitude<=0;rms_amplitude<=0;held_amplitude<=0;end
+  else if(!link_up)begin peak_amplitude<=0;rms_amplitude<=0;held_amplitude<=0;end
+  else begin
+   peak_amplitude<=current_peak;
+   rms_amplitude<=tmp_l>tmp_r ? tmp_l : tmp_r;
+   held_amplitude<=peak_amplitude>=peak_hold ? peak_amplitude : peak_hold;
+  end
+ end
+ audio_dbfs_encoder u_peak_db(.clk(clk),.amplitude(peak_amplitude),.db10(current_peak_db));
+ audio_dbfs_encoder u_rms_db(.clk(clk),.amplitude(rms_amplitude),.db10(current_rms_db));
+ audio_dbfs_encoder u_hold_db(.clk(clk),.amplitude(held_amplitude),.db10(current_hold_db));
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
    state<=IDLE;ready<=0;frame_valid<=0;rms_left<=0;rms_right<=0;

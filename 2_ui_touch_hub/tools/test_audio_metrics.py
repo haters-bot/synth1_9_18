@@ -51,7 +51,7 @@ def main():
     max_db_error = 0
     held = 0
     for row,(left,right) in zip(rows,frames):
-        f,rl,rr,pl,pr,db,pdb,crest,corr,bal,cvalid,hold,clip = row
+        f,rl,rr,pl,pr,db,pdb,crest,corr,bal,cvalid,hold,clip,hdb = row
         el = math.isqrt(sum(x*x for x in left)//1024)
         er = math.isqrt(sum(x*x for x in right)//1024)
         epl,epr = max(map(abs,left)),max(map(abs,right))
@@ -70,6 +70,7 @@ def main():
         assert crest==(pdb-db if max(epl,epr) else 0),(row,out)
         held = max(held,epl,epr)
         assert hold==held,(row,held,out)
+        assert abs(hdb-db10(held))<=3.2,(row,held,out)
         if max(epl,epr)>=32752:assert clip==48,(row,out)
     (out/'result.json').write_text(json.dumps(dict(passed=True,frames=16,
         independent_samples=16384,max_db_error=max_db_error/10,
