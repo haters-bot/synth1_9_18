@@ -26,9 +26,23 @@ module lfo_hermite_table (
     reg signed [10:0] c1, c2, c3;
     reg signed [17:0] h1;
     reg signed [24:0] h2;
-    wire signed [32:0] final_sum = h2 * $signed({1'b0,t})
-                                      + ($signed({1'b0,a}) <<< 18);
-    wire signed [32:0] result_q6 = final_sum >>> 12;
+    // Gowin在原h2乘加/符号移位推断中出现SP00019/10CSHIFT1内部错误。
+    // 每级先寄存完整乘积，再显式扩位相加；不依赖移位表达式的上下文扩位。
+    reg signed [18:0] product_h1;
+    reg signed [25:0] product_h2;
+    reg signed [32:0] product_h3;
+    reg signed [32:0] final_sum;
+    wire signed [7:0] fraction = {1'b0,t};
+    wire signed [10:0] dm_ext = {{3{dm[7]}},dm};
+    wire signed [10:0] m0_ext = {{3{m0[7]}},m0};
+    wire signed [10:0] m1_ext = {{3{m1[7]}},m1};
+    wire signed [18:0] c2_scaled = {{2{c2[10]}},c2,6'd0};
+    wire signed [25:0] c1_scaled = {{3{c1[10]}},c1,12'd0};
+    wire signed [32:0] node_scaled = {8'd0,a,18'd0};
+    wire signed [18:0] h1_sum = product_h1+c2_scaled;
+    wire signed [25:0] h2_sum = product_h2+c1_scaled;
+    // Q6只在最后去掉12位小数，符号位保留。合法节点范围内h1/h2截取不溢出。
+    wire signed [20:0] result_q6 = final_sum[32:12];
     wire [12:0] clipped_q6 = stepped && index != 9'd384 ? {a,6'd0}
         : result_q6 < 0 ? 13'd0 : result_q6 > 8128 ? 13'd8128
         : result_q6[12:0];
@@ -67,6 +81,7 @@ module lfo_hermite_table (
             state<=0; nodes<=0; stepped<=0; write_bank<=0;
             index<=0; a<=0; t<=0; dl<=0; dm<=0; dr<=0;
             m0<=0; m1<=0; c1<=0; c2<=0; c3<=0; h1<=0; h2<=0;
+            product_h1<=0; product_h2<=0; product_h3<=0; final_sum<=0;
             build_done<=0;
         end else begin
             build_done<=0;
@@ -91,14 +106,27 @@ module lfo_hermite_table (
                     m1<=segment==5 ? 8'sd0 : minmod(dm,dr); state<=3;
                 end
                 3: begin
-                    c1<=m0; c2<=11'sd3*dm-11'sd2*m0-m1;
-                    c3<=-11'sd2*dm+m0+m1; state<=4;
+                    c1<=m0_ext;
+                    c2<=dm_ext+dm_ext+dm_ext-m0_ext-m0_ext-m1_ext;
+                    c3<=m0_ext+m1_ext-dm_ext-dm_ext; state<=4;
                 end
                 4: begin
-                    h1<=c3*$signed({1'b0,t})+($signed(c2)<<<6); state<=5;
+                    product_h1<=c3*fraction; state<=5;
                 end
                 5: begin
-                    h2<=h1*$signed({1'b0,t})+($signed(c1)<<<12); state<=8;
+                    h1<=h1_sum[17:0]; state<=6;
+                end
+                6: begin
+                    product_h2<=h1*fraction; state<=7;
+                end
+                7: begin
+                    h2<=h2_sum[24:0]; state<=9;
+                end
+                9: begin
+                    product_h3<=h2*fraction; state<=10;
+                end
+                10: begin
+                    final_sum<=product_h3+node_scaled; state<=8;
                 end
                 8: begin
                     // RAM写入由上方独立时序块完成，不复位RAM内容。

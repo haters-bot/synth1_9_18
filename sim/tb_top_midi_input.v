@@ -387,7 +387,7 @@ module tb_top_midi_input;
         send_highres_parameter(7'd96, 14'h140);
         send_highres_parameter(7'd72, 14'd4);
         send_highres_parameter(7'd126, 14'd0);
-        repeat (3500) @(posedge sys_clk);
+        repeat (6000) @(posedge sys_clk);
         if (dut.u_lfo_v2_engine.active_sources[46+:2] !== 2'd1
             || dut.u_lfo_v2_engine.active_depths[184+:8] !== 8'd64
             || dut.lfo_v2_config_error) begin
@@ -395,7 +395,8 @@ module tb_top_midi_input;
             errors = errors + 1;
         end
 
-        // 两组WT Position和Warp Amount平滑器应分别朝自己的目标前进一步。
+        // 两组平滑器未到目标时前进一步，到达后保持。构表等待时间增加后，
+        // WT B可能已到42，不能继续要求它无条件加1。
         wt_a_before = dut.osc_a_wt_position_current;
         wt_b_before = dut.osc_b_wt_position_current;
         warp_a_before = dut.osc_a_warp_amount_current;
@@ -403,10 +404,10 @@ module tb_top_midi_input;
         @(posedge dut.sample_tick);
         @(posedge sys_clk);
         #1;
-        if (dut.osc_a_wt_position_current !== (wt_a_before + 1)
-            || dut.osc_b_wt_position_current !== (wt_b_before + 1)
-            || dut.osc_a_warp_amount_current !== (warp_a_before + 1)
-            || dut.osc_b_warp_amount_current !== (warp_b_before + 1)) begin
+        if (dut.osc_a_wt_position_current !== (wt_a_before < 85 ? wt_a_before + 1 : 85)
+            || dut.osc_b_wt_position_current !== (wt_b_before < 42 ? wt_b_before + 1 : 42)
+            || dut.osc_a_warp_amount_current !== (warp_a_before < 96 ? warp_a_before + 1 : 96)
+            || dut.osc_b_warp_amount_current !== (warp_b_before < 127 ? warp_b_before + 1 : 127)) begin
             $display("ERROR: independent parameter smoothing failed");
             errors = errors + 1;
         end
