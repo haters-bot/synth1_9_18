@@ -139,8 +139,8 @@ $tclCommands = @(
     "set_option -use_cpu_as_gpio 1"
     "set_option -use_sspi_as_gpio 1"
     "set_option -top_module top"
-    # Keep timing-driven routing enabled in every profile. Fast only reduces
-    # search effort; it does not turn timing checks into a functional build.
+    # 所有档位都保留时序驱动和保持时间修正；Fast 只缩短搜索过程，
+    # 并不跳过时序检查，也不能代替最终的 Signoff 构建。
     "set_option -timing_driven 1"
     "set_option -correct_hold_violation 1"
 )
@@ -157,7 +157,8 @@ switch ($BuildProfile) {
     "Fast" {
         $tclCommands += @(
             "set_option -place_option 0"
-            "set_option -route_option 0"
+            # GW5A(S)(T)-138 的 Route Option 2 是提高布线速度的算法。
+            "set_option -route_option 2"
             "set_option -inc_place 0"
             "set_option -inc_pnr 0"
         )
