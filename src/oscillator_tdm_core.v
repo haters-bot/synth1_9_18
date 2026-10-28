@@ -10,6 +10,7 @@
 module oscillator_tdm_core #(
     parameter integer SLOTS_PER_ENGINE = 4,
     parameter integer PARTIAL_SUM_WIDTH = 24,
+    parameter integer INITIAL_PHASE_ENABLE = 0,
     parameter integer REALTIME_DETUNE_ENABLE = 0,
     parameter integer ENVELOPE_UPDATE_DIV = 16
 )(
@@ -53,6 +54,7 @@ module oscillator_tdm_core #(
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
+    input wire [31:0] task_update_initial_phase,
 
     output reg signed [PARTIAL_SUM_WIDTH-1:0] partial_sum,
     output reg                                partial_valid,
@@ -715,7 +717,8 @@ module oscillator_tdm_core #(
                         <= task_update_velocity;
 
                     if (task_update_phase_reset && !clear_phase)
-                        phase_state[task_update_slot] <= 32'd0;
+                        phase_state[task_update_slot] <= INITIAL_PHASE_ENABLE
+                            ? task_update_initial_phase : 32'd0;
                 end else if (enable_state[task_update_slot]) begin
                     gate_state[task_update_slot] <= 1'b0;
                     envelope_stage[task_update_slot] <= ENV_RELEASE;

@@ -5,6 +5,8 @@
 // The physical oscillator engines do not know whether a task belongs to a
 // Unison group.
 module oscillator_task_scheduler #(
+    parameter integer INITIAL_PHASE_ENABLE = 0,
+    parameter [31:0] RANDOM_SEED = 32'h6D2B79F5,
     parameter integer ENGINE_COUNT     = 4,
     parameter integer SLOTS_PER_ENGINE = 8,
     parameter integer MAX_UNISON       = 8,
@@ -19,6 +21,7 @@ module oscillator_task_scheduler #(
     input  wire [6:0] note_event_velocity,
     input  wire [3:0] unison_count,
     input  wire [6:0] detune_amount,
+    input wire [6:0] phase_control, rand_control,
     input  wire [(ENGINE_COUNT*SLOTS_PER_ENGINE)-1:0] task_idle_mask,
 
     output reg        task_update_valid,
@@ -31,6 +34,7 @@ module oscillator_task_scheduler #(
     output reg [6:0]  task_update_velocity,
     output reg        task_update_enable,
     output reg        task_update_phase_reset,
+    output reg [31:0] task_update_initial_phase,
     // 8 个复音各使用 8 个 Unison 成员时共有 64 个任务，6 位无法表示 64。
     output reg [6:0]  active_task_count,
     output reg        scheduler_busy
@@ -57,6 +61,18 @@ module oscillator_task_scheduler #(
     reg [6:0] pending_velocity;
     reg [3:0] pending_unison_count;
     reg [6:0] pending_detune_amount;
+    // 触发时锁存参数；每个Unison成员计算独立随机相位，不额外占用音频TDM拍数。
+    reg [6:0] pending_phase_control, pending_rand_control;
+    reg [31:0] random_state;
+    reg [39:0] random_product_stage;
+    reg [31:0] pending_member_initial_phase [0:MAX_UNISON-1];
+    wire [7:0] random_scale = pending_rand_control==7'd127
+        ? 8'd128 : {1'b0,pending_rand_control};
+    function [31:0] next_random;
+        input [31:0] value;
+        reg [31:0] x;
+        begin x=value^(value<<13); x=x^(x>>17); next_random=x^(x<<5); end
+    endfunction
     reg [3:0] pending_member_index;
     reg [6:0] victim_note;
     reg [5:0] scan_index;
@@ -225,6 +241,8 @@ module oscillator_task_scheduler #(
             task_update_velocity <= 7'd0;
             task_update_enable <= 1'b0;
             task_update_phase_reset <= 1'b0;
+            task_update_initial_phase<=0; pending_phase_control<=0; pending_rand_control<=0;
+            random_product_stage<=0; random_state<=RANDOM_SEED==0 ? 32'd1 : RANDOM_SEED;
             pending_note <= 7'd0;
             pending_velocity <= 7'd0;
             pending_unison_count <= 4'd1;
@@ -288,6 +306,7 @@ module oscillator_task_scheduler #(
                         pending_unison_count
                             <= clamp_unison_count(unison_count);
                         pending_detune_amount <= detune_amount;
+                        pending_phase_control<=phase_control; pending_rand_control<=rand_control;
                         pending_member_index <= 4'd0;
                         phase_calc_index <= 4'd0;
                         scan_index <= 6'd0;
@@ -330,6 +349,10 @@ module oscillator_task_scheduler #(
                 // 每个Unison成员先离线计算相位步进。三级流水把移位加法、
                 // DSP乘法和最终舍入加减分开，分配状态只读取计算结果。
                 STATE_DETUNE_PREP: begin
+                    if (INITIAL_PHASE_ENABLE) begin
+                        random_product_stage<=random_state*random_scale;
+                        random_state<=next_random(random_state);
+                    end
                     detune_delta_stage
                         <= make_detune_delta(
                                pending_base_phase_step_latched,
@@ -353,6 +376,8 @@ module oscillator_task_scheduler #(
                 end
 
                 STATE_DETUNE_STORE: begin
+                    pending_member_initial_phase[phase_calc_index] <= INITIAL_PHASE_ENABLE
+                        ? {pending_phase_control,25'd0}+random_product_stage[38:7] : 32'd0;
                     pending_member_detune_unit[phase_calc_index] <= detune_delta_stage;
                     pending_member_detune_magnitude[phase_calc_index]
                         <= make_detune_magnitude(
@@ -382,6 +407,7 @@ module oscillator_task_scheduler #(
                         task_update_velocity <= pending_velocity;
                         task_update_enable <= 1'b1;
                         task_update_phase_reset <= 1'b1;
+                        task_update_initial_phase<=pending_member_initial_phase[pending_member_index];
                         task_update_base_step <= pending_base_phase_step_latched;
                         task_update_detune_unit <= pending_member_detune_unit[pending_member_index];
                         task_update_detune_magnitude
@@ -447,6 +473,7 @@ module oscillator_task_scheduler #(
                             task_update_velocity <= pending_velocity;
                             task_update_enable <= 1'b1;
                             task_update_phase_reset <= 1'b1;
+                            task_update_initial_phase<=pending_member_initial_phase[pending_member_index];
                             task_update_base_step <= pending_base_phase_step_latched;
                             task_update_detune_unit <= pending_member_detune_unit[pending_member_index];
                             task_update_detune_magnitude

@@ -44,6 +44,9 @@ vlog -work work_top_dual_unison8 \
     src/global_effects.v \
     src/i2s_tx.v \
     src/control_event_merge.v \
+    src/lfo_hermite_table.v \
+    src/lfo_target_router_v2.v \
+    src/lfo_v2_engine.v \
     src/top.v.v \
     sim/tb_top_dual_unison8.v
 

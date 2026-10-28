@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from lfo_curve import LfoCurve, LfoCurveEditor
+from lfo_v2_protocol import RATES_HZ, TARGET_NAMES, TARGET_CCS, configuration_fields
 
 try:
     import serial
@@ -75,61 +76,9 @@ VIBRATO_RATE_CC = 83
 VIBRATO_DEPTH_CC = 84
 PORTAMENTO_ENABLE_CC = 85
 PORTAMENTO_TIME_CC = 86
-# 三个独立三点LFO共享同一个8槽调制矩阵和一次原子提交。
-FILTER_LFO_PARAMETER_SETS = (
-    {
-        "enable": 16, "step_0": 17, "step_1": 18,
-        "point_0": 20, "point_1": 21, "point_2": 22,
-        "curve_0": 23, "curve_1": 24,
-    },
-    {
-        "enable": 31, "step_0": 32, "step_1": 33,
-        "point_0": 34, "point_1": 35, "point_2": 36,
-        "curve_0": 37, "curve_1": 38,
-    },
-    {
-        "enable": 39, "step_0": 40, "step_1": 41,
-        "point_0": 42, "point_1": 43, "point_2": 44,
-        "curve_0": 45, "curve_1": 46,
-    },
-)
-FILTER_LFO_PARAMETER = {
-    "commit": 25,
-    "route_index": 26,
-    "route_enable": 27,
-    "route_destination": 28,
-    "route_depth": 29,
-    "route_source": 30,
-}
+# V2：三条七点曲线，53个固定目标，每目标一个LFO来源。
 FILTER_LFO_CONFIG_DEBOUNCE_MS = 75
-FILTER_LFO_PHASE_BITS = 24
-FILTER_LFO_SAMPLE_RATE = 96000.0
-LFO_DESTINATIONS = {
-    "无": 0,
-    "OSC A WT Position": 1,
-    "OSC A Warp Amount": 2,
-    "OSC A Level": 3,
-    "OSC B WT Position": 4,
-    "OSC B Warp Amount": 5,
-    "OSC B Level": 6,
-    "Pan（当前预留）": 7,
-    "Filter Cutoff": 8,
-    "Filter Resonance": 9,
-    "Filter Mix": 10,
-    "OSC A Detune": 11,
-    "OSC B Detune": 12,
-    "Master Level": 13,
-    "Distortion Drive": 14,
-    "Distortion Mix": 15,
-    "Chorus Depth": 16,
-    "Chorus Mix": 17,
-    "Phaser Depth": 18,
-    "Phaser Mix": 19,
-    "Reverb Mix": 20,
-    "Delay Mix": 21,
-
-}
-LFO_SOURCES = {"LFO 1": 0, "LFO 2": 1, "LFO 3": 2}
+LFO_SOURCES = {"无": 0, "LFO 1": 1, "LFO 2": 2, "LFO 3": 3}
 OSC_A_CC = {
     "enable": 36,
     "warp_mode": 38,
@@ -144,6 +93,7 @@ OSC_A_CC = {
     "release": 27,
     "level": 46,
     "wavetable_index": 49,
+    "phase": 87, "rand": 88,
 }
 OSC_B_CC = {
     "enable": 37,
@@ -159,6 +109,7 @@ OSC_B_CC = {
     "release": 35,
     "level": 47,
     "wavetable_index": 50,
+    "phase": 89, "rand": 90,
 }
 WAVEFORM_VALUES = {
     "正弦波": 0,
@@ -375,6 +326,8 @@ class MidiUartSender:
         self.active_notes: set[int] = set()
         self.keyboard_notes: set[int] = set()
         self.filter_lfo_curves = [LfoCurve() for _ in range(3)]
+        for bank, curve in enumerate(self.filter_lfo_curves):
+            curve.preset(bank)
         self.filter_lfo_windows: list[tk.Toplevel | None] = [None, None, None]
         self.filter_lfo_config_after_id: str | None = None
 
@@ -429,28 +382,14 @@ class MidiUartSender:
             tk.BooleanVar(value=False) for _ in range(3)
         ]
         self.filter_lfo_rate = [
-            tk.DoubleVar(value=0.5) for _ in range(3)
+            tk.DoubleVar(value=1.0) for _ in range(3)
         ]
-        self.lfo_routes = []
-        default_routes = [
-            (True, "Filter Cutoff", 32),
-            (False, "无", 0),
-            (False, "无", 0),
-            (False, "无", 0),
-            (False, "无", 0),
-            (False, "无", 0),
-            (False, "无", 0),
-            (False, "无", 0),
+        self.filter_lfo_once = [tk.BooleanVar(value=False) for _ in range(3)]
+        self._lfo_v2_sent = {}
+        self.lfo_routes = [
+            {"source": tk.StringVar(value="无"), "depth": tk.IntVar(value=64)}
+            for _ in range(53)
         ]
-        for enabled, destination, depth in default_routes:
-            self.lfo_routes.append(
-                {
-                    "enabled": tk.BooleanVar(value=enabled),
-                    "source": tk.StringVar(value="LFO 1"),
-                    "destination": tk.StringVar(value=destination),
-                    "depth": tk.IntVar(value=depth),
-                }
-            )
         self.osc_controls = {}
         for osc_name in ("A", "B"):
             # 默认值与FPGA复位音色一致：约10 ms、102 ms、70%、315 ms。
@@ -462,6 +401,7 @@ class MidiUartSender:
                 "wt_position": tk.IntVar(value=0),
                 "wavetable_index": tk.IntVar(value=0),
                 "detune": tk.IntVar(value=64),
+                "phase": tk.IntVar(value=0), "rand": tk.IntVar(value=0),
                 "unison": tk.IntVar(value=1),
                 "attack": tk.IntVar(value=27),
                 "decay": tk.IntVar(value=54),
@@ -746,70 +686,36 @@ class MidiUartSender:
         )
 
         for lfo_index in range(3):
-            ttk.Checkbutton(
-                lfo_frame,
-                text=f"开启 LFO {lfo_index + 1}",
+            ttk.Checkbutton(lfo_frame, text=f"启用LFO{lfo_index+1}绑定",
                 variable=self.filter_lfo_enabled[lfo_index],
-                command=self.send_filter_lfo_configuration,
-            ).grid(row=lfo_index, column=0, padx=4, sticky="w")
-            ttk.Label(lfo_frame, text="速率/Hz").grid(
-                row=lfo_index, column=1, padx=4, sticky="e"
-            )
-            lfo_rate_scale = tk.Scale(
-                lfo_frame,
-                from_=0.1,
-                to=10.0,
-                resolution=0.1,
-                orient=tk.HORIZONTAL,
-                variable=self.filter_lfo_rate[lfo_index],
-                length=210,
-            )
-            lfo_rate_scale.grid(row=lfo_index, column=2, padx=4)
-            lfo_rate_scale.bind(
-                "<ButtonRelease-1>",
-                lambda _event: self.send_filter_lfo_configuration(),
-            )
-            ttk.Button(
-                lfo_frame,
-                text=f"编辑 LFO {lfo_index + 1} 曲线",
-                command=lambda index=lfo_index: self.open_filter_lfo_editor(index),
-            ).grid(row=lfo_index, column=3, padx=4)
-
-        ttk.Button(
-            lfo_frame,
-            text="应用LFO与路由",
-            command=self.send_filter_lfo_configuration,
-        ).grid(row=0, column=4, padx=4)
-
-        for route_index, route in enumerate(self.lfo_routes):
-            route_row = 3 + route_index
-            route_column = 0
-            ttk.Checkbutton(
-                lfo_frame,
-                text=f"路由{route_index + 1}",
-                variable=route["enabled"],
-            ).grid(row=route_row, column=route_column, padx=4, sticky="w")
-            ttk.Combobox(
-                lfo_frame,
-                textvariable=route["source"],
-                values=tuple(LFO_SOURCES),
-                width=6,
-                state="readonly",
-            ).grid(row=route_row, column=route_column + 1, padx=4)
-            ttk.Combobox(
-                lfo_frame,
-                textvariable=route["destination"],
-                values=tuple(LFO_DESTINATIONS),
-                width=20,
-                state="readonly",
-            ).grid(row=route_row, column=route_column + 2, padx=4)
-            tk.Spinbox(
-                lfo_frame,
-                from_=-127,
-                to=127,
-                textvariable=route["depth"],
-                width=6,
-            ).grid(row=route_row, column=route_column + 3, padx=4)
+                command=self.send_filter_lfo_configuration).grid(row=lfo_index,column=0,padx=4,sticky="w")
+            ttk.Label(lfo_frame,text="Hz").grid(row=lfo_index,column=1)
+            rate_box=ttk.Combobox(lfo_frame,textvariable=self.filter_lfo_rate[lfo_index],
+                values=RATES_HZ,width=6,state="readonly")
+            rate_box.grid(row=lfo_index,column=2,padx=4)
+            rate_box.bind("<<ComboboxSelected>>",lambda _event:self.send_filter_lfo_configuration())
+            ttk.Checkbutton(lfo_frame,text="Once",variable=self.filter_lfo_once[lfo_index],
+                command=self.send_filter_lfo_configuration).grid(row=lfo_index,column=3,padx=4)
+            ttk.Button(lfo_frame,text="编辑7节点",
+                command=lambda n=lfo_index:self.open_filter_lfo_editor(n)).grid(row=lfo_index,column=4,padx=4)
+            ttk.Button(lfo_frame,text="重启",
+                command=lambda n=lfo_index:self.restart_lfo(n)).grid(row=lfo_index,column=5,padx=4)
+        ttk.Button(lfo_frame,text="应用绑定",command=self.send_filter_lfo_configuration).grid(row=0,column=6,padx=4)
+        tabs=ttk.Notebook(lfo_frame)
+        tabs.grid(row=3,column=0,columnspan=7,sticky="ew",pady=6)
+        for title,first,last in (("全局 / OSC A",0,14),("OSC B",14,23),("滤波 / 包络",23,34),("FX",34,53)):
+            page=ttk.Frame(tabs,padding=4); tabs.add(page,text=title)
+            for row,idx in enumerate(range(first,last)):
+                route=self.lfo_routes[idx]
+                supported=idx in TARGET_CCS
+                label=f"{idx:02d} {TARGET_NAMES[idx]}"+("" if supported else " [预留]")
+                ttk.Label(page,text=label,width=33).grid(row=row,column=0,sticky="w")
+                box=ttk.Combobox(page,textvariable=route["source"],values=tuple(LFO_SOURCES),width=7,
+                    state="readonly" if supported else "disabled")
+                box.grid(row=row,column=1,padx=4)
+                tk.Spinbox(page,from_=-127,to=127,textvariable=route["depth"],width=6,
+                    state="normal" if supported else "disabled").grid(row=row,column=2,padx=4)
+        ttk.Label(lfo_frame,text="每目标只能绑定一个源；预留目标保存协议位置，不产生音频效果。Phase/Rand只影响后续起音。").grid(row=4,column=0,columnspan=7,sticky="w")
 
         effects_frame = ttk.LabelFrame(
             parameter_controls, text="全局效果器", padding=6
@@ -1062,6 +968,8 @@ class MidiUartSender:
             ("DDR波表编号", "wavetable_index", 0, 15),
             ("WT Position", "wt_position", 0, 127),
             ("Detune", "detune", 0, 127),
+            ("Phase（起始相位）", "phase", 0, 127),
+            ("Rand（随机相位）", "rand", 0, 127),
             ("Unison", "unison", 1, 8),
             ("Level", "level", 0, 127),
             ("Attack", "attack", 0, 127),
@@ -1290,6 +1198,8 @@ class MidiUartSender:
             getattr(self, control_name).set(value)
         for osc_name, values in preset["oscillators"].items():
             controls = self.osc_controls[osc_name]
+            controls["phase"].set(0)
+            controls["rand"].set(0)
             for control_name, value in values.items():
                 controls[control_name].set(value)
 
@@ -1297,9 +1207,7 @@ class MidiUartSender:
         for enabled in self.filter_lfo_enabled:
             enabled.set(False)
         for route in self.lfo_routes:
-            route["enabled"].set(False)
-            route["source"].set("LFO 1")
-            route["destination"].set("无")
+            route["source"].set("无")
             route["depth"].set(0)
 
         connected = self.port is not None and self.port.is_open
@@ -1339,113 +1247,38 @@ class MidiUartSender:
             self.send_filter_lfo_configuration,
         )
 
-    @staticmethod
-    def _encode_bipolar_q13(value: float) -> int:
-        value = max(-1.0, min(1.0, float(value)))
-        return max(0, min(0x3FFF, round((value + 1.0) * 8191.5)))
-
-    @staticmethod
-    def _encode_route_depth(value: int) -> int:
-        """把-127～+127转换为14位Offset Binary调制深度。"""
-        value = max(-127, min(127, int(value)))
-        return max(0, min(0x3FFF, round((value + 127) * 16383 / 254)))
-
     def send_filter_lfo_configuration(self) -> None:
-        """发送三条曲线和8条共享路由，最后在FPGA中原子提交。"""
-        self.filter_lfo_config_after_id = None
+        """仅发送变化字段；曲线/模式编辑重启对应bank，绑定变化不重启。"""
+        if self.filter_lfo_config_after_id is not None:
+            self.root.after_cancel(self.filter_lfo_config_after_id)
+            self.filter_lfo_config_after_id = None
         if self.port is None or not self.port.is_open:
             return
-
-        active_rates = []
-        phase_scale = float(1 << FILTER_LFO_PHASE_BITS)
-        for lfo_index, parameter_map in enumerate(FILTER_LFO_PARAMETER_SETS):
-            points = self.filter_lfo_curves[lfo_index].points
-            middle_time = max(0.125, min(0.875, float(points[1].time)))
-            rate_hz = max(
-                0.1, min(10.0, float(self.filter_lfo_rate[lfo_index].get()))
-            )
-            active_rates.append(rate_hz)
-            step_0 = round(
-                rate_hz * phase_scale / (FILTER_LFO_SAMPLE_RATE * middle_time)
-            )
-            step_1 = round(
-                rate_hz * phase_scale
-                / (FILTER_LFO_SAMPLE_RATE * (1.0 - middle_time))
-            )
-            values = (
-                (
-                    parameter_map["enable"],
-                    1 if self.filter_lfo_enabled[lfo_index].get() else 0,
-                ),
-                (parameter_map["step_0"], max(1, min(0x3FFF, step_0))),
-                (parameter_map["step_1"], max(1, min(0x3FFF, step_1))),
-                (
-                    parameter_map["point_0"],
-                    self._encode_bipolar_q13(points[0].level),
-                ),
-                (
-                    parameter_map["point_1"],
-                    self._encode_bipolar_q13(points[1].level),
-                ),
-                (
-                    parameter_map["point_2"],
-                    self._encode_bipolar_q13(points[2].level),
-                ),
-                (
-                    parameter_map["curve_0"],
-                    self._encode_bipolar_q13(points[0].curve),
-                ),
-                (
-                    parameter_map["curve_1"],
-                    self._encode_bipolar_q13(points[1].curve),
-                ),
-            )
-            for parameter_id, value in values:
-                if not self.send_highres_parameter(
-                    parameter_id, value, log_message=False
-                ):
-                    return
-
-        enabled_route_count = 0
-        for route_index, route in enumerate(self.lfo_routes):
-            destination_name = route["destination"].get()
-            destination = LFO_DESTINATIONS.get(destination_name, 0)
-            source = LFO_SOURCES.get(route["source"].get(), 0)
-            enabled = bool(route["enabled"].get()) and destination != 0
-            if enabled:
-                enabled_route_count += 1
-            route_values = (
-                (FILTER_LFO_PARAMETER["route_index"], route_index),
-                (FILTER_LFO_PARAMETER["route_enable"], 1 if enabled else 0),
-                (FILTER_LFO_PARAMETER["route_destination"], destination),
-                (
-                    FILTER_LFO_PARAMETER["route_depth"],
-                    self._encode_route_depth(route["depth"].get()),
-                ),
-                (FILTER_LFO_PARAMETER["route_source"], source),
-            )
-            for parameter_id, value in route_values:
-                if not self.send_highres_parameter(
-                    parameter_id, value, log_message=False
-                ):
-                    return
-
-        if not self.send_highres_parameter(
-            FILTER_LFO_PARAMETER["commit"], 1, log_message=False
-        ):
+        curves=[curve.values for curve in self.filter_lfo_curves]
+        modes=[(RATES_HZ.index(float(self.filter_lfo_rate[n].get())),
+                self.filter_lfo_curves[n].stepped,self.filter_lfo_once[n].get()) for n in range(3)]
+        routes=[]
+        for route in self.lfo_routes:
+            source=LFO_SOURCES.get(route["source"].get(),0)
+            if source and not self.filter_lfo_enabled[source-1].get(): source=0
+            routes.append((source,max(-127,min(127,int(route["depth"].get())))))
+        fields=configuration_fields(curves,modes,routes)
+        changed={key:value for key,value in fields.items() if self._lfo_v2_sent.get(key)!=value}
+        if not changed:
             return
+        restart_banks={bank for bank in range(3) if 69+bank in changed or any(48+7*bank+n in changed for n in range(7))}
+        for key,value in changed.items():
+            if not self.send_highres_parameter(key,value,log_message=False): return
+        for bank in sorted(restart_banks):
+            if not self.send_highres_parameter(72,4|bank,log_message=False): return
+        if not self.send_highres_parameter(126,0,log_message=False): return
+        self._lfo_v2_sent=fields
+        self.status.set(f"LFO V2：7节点、53目标，{sum(source!=0 for source,_ in routes)}个绑定；只发送配置")
 
-        enabled_names = [
-            f"LFO{index + 1}"
-            for index, enabled in enumerate(self.filter_lfo_enabled)
-            if enabled.get()
-        ]
-        state = "/".join(enabled_names) if enabled_names else "全部关闭"
-        self.status.set(
-            f"FPGA通用LFO：{state}，速率 "
-            f"{active_rates[0]:.1f}/{active_rates[1]:.1f}/{active_rates[2]:.1f} Hz，"
-            f"启用{enabled_route_count}条路由"
-        )
+    def restart_lfo(self, bank: int) -> None:
+        self.send_filter_lfo_configuration()
+        if self.send_highres_parameter(72,4|bank,log_message=False):
+            self.send_highres_parameter(126,0,log_message=False)
 
     def open_filter_lfo_editor(self, lfo_index: int) -> None:
         if self.filter_lfo_windows[lfo_index] is not None:
@@ -1471,6 +1304,7 @@ class MidiUartSender:
         window.protocol("WM_DELETE_WINDOW", close_editor)
 
     def send_all_synth_controls(self) -> None:
+        self._lfo_v2_sent = {}
         self.send_synth_control(PAN_CC, self.pan.get())
         self.send_filter_mode_selection()
         self.send_synth_control(FILTER_CUTOFF_CC, self.filter_cutoff.get())
@@ -1551,6 +1385,7 @@ class MidiUartSender:
                 "wavetable_index",
                 "wt_position",
                 "detune",
+                "phase", "rand",
                 "unison",
                 "level",
                 "attack",

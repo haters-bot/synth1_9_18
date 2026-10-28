@@ -105,6 +105,7 @@ module top #(
     wire [7:0]  osc_a_task_update_slot;
     wire [31:0] osc_a_task_update_phase_step;
     wire [31:0] osc_a_task_update_base_step;
+    wire [31:0] osc_a_task_update_initial_phase;
     wire [34:0] osc_a_task_update_detune_unit;
     wire [2:0]  osc_a_task_update_detune_magnitude;
     wire osc_a_task_update_detune_negative;
@@ -117,6 +118,7 @@ module top #(
     wire [7:0]  osc_b_task_update_slot;
     wire [31:0] osc_b_task_update_phase_step;
     wire [31:0] osc_b_task_update_base_step;
+    wire [31:0] osc_b_task_update_initial_phase;
     wire [34:0] osc_b_task_update_detune_unit;
     wire [2:0]  osc_b_task_update_detune_magnitude;
     wire osc_b_task_update_detune_negative;
@@ -150,20 +152,7 @@ module top #(
     wire       highres_parameter_valid;
     wire [6:0] highres_parameter_id;
     wire [13:0] highres_parameter_value;
-    wire       filter_cutoff_cc_valid;
     wire       filter_cutoff_interpolation_busy;
-    wire [14:0] filter_cutoff_manual_q8;
-    wire        filter_lfo_enabled;
-    wire        filter_lfo_active_segment;
-    wire [23:0] filter_lfo_segment_phase;
-    wire signed [14:0] lfo_value_q13;
-    wire        lfo_value_valid;
-    wire signed [14:0] lfo_1_value_q13;
-    wire signed [14:0] lfo_2_value_q13;
-    wire lfo_1_value_valid;
-    wire lfo_2_value_valid;
-    wire lfo_1_enabled;
-    wire lfo_2_enabled;
     wire        lfo_route_overrun;
     wire       routed_note_event_valid;
     wire       routed_note_event_on;
@@ -410,9 +399,7 @@ module top #(
     endgenerate
 
     assign oscillator_start_tick = oversample_tick;
-    assign filter_cutoff_cc_valid = midi_control_change_valid
-                                  && (midi_control_change_channel == 4'd15)
-                                  && (midi_control_change_number == 7'd43);
+
 
     // 两组WT Position、Warp Amount和全局滤波参数均在96 kHz边界平滑。
     always @(posedge clk_sys or negedge rst_n_sys) begin
@@ -716,124 +703,131 @@ module top #(
     assign highres_parameter_id = merged_control_event[20:14];
     assign highres_parameter_value = merged_control_event[13:0];
 
-    // 静态CC43仍经过5.33 ms平滑器。高精度SysEx只负责写入LFO配置，
-    // 不再周期性覆盖Cutoff目标。
-    parameter_linear_interpolator #(
-        .VALUE_WIDTH(15),
-        .INTERPOLATION_SHIFT(9),
-        .RESET_VALUE({7'd127, 8'd0})
-    ) u_filter_cutoff_interpolator (
-        .clk          (clk_sys),
-        .rst_n        (rst_n_sys),
-        .sample_tick  (sample_tick),
-        .target_valid (filter_cutoff_cc_valid),
-        .target_value ({midi_control_change_value, 8'd0}),
-        .current_value(filter_cutoff_manual_q8),
-        .busy         (filter_cutoff_interpolation_busy)
-    );
-
-    // 三个三点两曲率 LFO 在 FPGA 内以 96 kHz 并行运行，只产生归一化控制值。
-    // 8 槽调制矩阵为每条路由选择一个 LFO，再叠加到可选的连续参数。
-    curve_lfo_core u_curve_lfo_core (
-        .clk             (clk_sys),
-        .rst_n           (rst_n_sys),
-        .sample_tick     (sample_tick),
-        .parameter_valid (highres_parameter_valid),
-        .parameter_id    (highres_parameter_id),
-        .parameter_value (highres_parameter_value),
-        .lfo_value_q13   (lfo_value_q13),
-        .lfo_value_valid (lfo_value_valid),
-        .lfo_enabled     (filter_lfo_enabled),
-        .active_segment  (filter_lfo_active_segment),
-        .segment_phase   (filter_lfo_segment_phase)
-    );
-
-    curve_lfo_core #(
-        .PARAM_ENABLE (7'd31), .PARAM_STEP_0 (7'd32),
-        .PARAM_STEP_1 (7'd33), .PARAM_POINT_0(7'd34),
-        .PARAM_POINT_1(7'd35), .PARAM_POINT_2(7'd36),
-        .PARAM_CURVE_0(7'd37), .PARAM_CURVE_1(7'd38),
-        .PARAM_COMMIT (7'd25)
-    ) u_curve_lfo_core_1 (
-        .clk(clk_sys), .rst_n(rst_n_sys), .sample_tick(sample_tick),
-        .parameter_valid(highres_parameter_valid),
-        .parameter_id(highres_parameter_id),
-        .parameter_value(highres_parameter_value),
-        .lfo_value_q13(lfo_1_value_q13),
-        .lfo_value_valid(lfo_1_value_valid),
-        .lfo_enabled(lfo_1_enabled), .active_segment(), .segment_phase()
-    );
-
-    curve_lfo_core #(
-        .PARAM_ENABLE (7'd39), .PARAM_STEP_0 (7'd40),
-        .PARAM_STEP_1 (7'd41), .PARAM_POINT_0(7'd42),
-        .PARAM_POINT_1(7'd43), .PARAM_POINT_2(7'd44),
-        .PARAM_CURVE_0(7'd45), .PARAM_CURVE_1(7'd46),
-        .PARAM_COMMIT (7'd25)
-    ) u_curve_lfo_core_2 (
-        .clk(clk_sys), .rst_n(rst_n_sys), .sample_tick(sample_tick),
-        .parameter_valid(highres_parameter_valid),
-        .parameter_id(highres_parameter_id),
-        .parameter_value(highres_parameter_value),
-        .lfo_value_q13(lfo_2_value_q13),
-        .lfo_value_valid(lfo_2_value_valid),
-        .lfo_enabled(lfo_2_enabled), .active_segment(), .segment_phase()
-    );
-
+    // V2：每个UI目标一个固定槽；无音频对应的槽只保存绑定，不连到其他参数。
+    wire [370:0] lfo_v2_base, lfo_v2_mod;
+    wire lfo_v2_output_valid, lfo_v2_config_busy, lfo_v2_config_error, lfo_v2_config_applied;
+    wire [26:0] lfo_v2_phase_indices;
+    wire [20:0] lfo_v2_waves;
+    wire [6:0] osc_a_phase_target, osc_a_rand_target, osc_b_phase_target, osc_b_rand_target;
+    assign lfo_v2_base[0+:7]=7'd0; // 目标0：预留
+    assign lfo_v2_base[7+:7]=7'd0; // 目标1：预留
+    assign lfo_v2_base[14+:7]=7'd0; // 目标2：预留
+    assign lfo_v2_base[21+:7]=7'd0; // 目标3：预留
     wire [6:0] lfo_master_level_target;
-    wire [6:0] lfo_distortion_drive_target;
-    wire [6:0] lfo_distortion_mix_target;
-    wire [6:0] lfo_chorus_depth_target;
-    wire [6:0] lfo_chorus_mix_target;
-    wire [6:0] lfo_phaser_depth_target;
-    wire [6:0] lfo_phaser_mix_target;
-    wire [6:0] lfo_reverb_mix_target;
+    assign lfo_v2_base[28+:7]=master_level_target;
+    assign lfo_master_level_target=lfo_v2_mod[28+:7];
+    assign lfo_v2_base[35+:7]=7'd0; // 目标5：预留
+    wire [6:0] lfo_osc_a_detune_target;
+    assign lfo_v2_base[42+:7]=osc_a_detune_amount;
+    assign lfo_osc_a_detune_target=lfo_v2_mod[42+:7];
+    assign lfo_v2_base[49+:7]=7'd0; // 目标7：预留
+    wire [6:0] lfo_osc_a_phase_target;
+    assign lfo_v2_base[56+:7]=osc_a_phase_target;
+    assign lfo_osc_a_phase_target=lfo_v2_mod[56+:7];
+    wire [6:0] lfo_osc_a_rand_target;
+    assign lfo_v2_base[63+:7]=osc_a_rand_target;
+    assign lfo_osc_a_rand_target=lfo_v2_mod[63+:7];
+    assign lfo_v2_base[70+:7]=osc_a_wt_position_target;
+    assign lfo_osc_a_wt_target=lfo_v2_mod[70+:7];
+    assign lfo_v2_base[77+:7]=osc_a_warp_amount_target;
+    assign lfo_osc_a_warp_target=lfo_v2_mod[77+:7];
+    assign lfo_v2_base[84+:7]=7'd0; // 目标12：预留
+    assign lfo_v2_base[91+:7]=osc_a_level;
+    assign lfo_osc_a_level_target=lfo_v2_mod[91+:7];
+    assign lfo_v2_base[98+:7]=7'd0; // 目标14：预留
+    wire [6:0] lfo_osc_b_detune_target;
+    assign lfo_v2_base[105+:7]=osc_b_detune_amount;
+    assign lfo_osc_b_detune_target=lfo_v2_mod[105+:7];
+    assign lfo_v2_base[112+:7]=7'd0; // 目标16：预留
+    wire [6:0] lfo_osc_b_phase_target;
+    assign lfo_v2_base[119+:7]=osc_b_phase_target;
+    assign lfo_osc_b_phase_target=lfo_v2_mod[119+:7];
+    wire [6:0] lfo_osc_b_rand_target;
+    assign lfo_v2_base[126+:7]=osc_b_rand_target;
+    assign lfo_osc_b_rand_target=lfo_v2_mod[126+:7];
+    assign lfo_v2_base[133+:7]=osc_b_wt_position_target;
+    assign lfo_osc_b_wt_target=lfo_v2_mod[133+:7];
+    assign lfo_v2_base[140+:7]=osc_b_warp_amount_target;
+    assign lfo_osc_b_warp_target=lfo_v2_mod[140+:7];
+    assign lfo_v2_base[147+:7]=7'd0; // 目标21：预留
+    assign lfo_v2_base[154+:7]=osc_b_level;
+    assign lfo_osc_b_level_target=lfo_v2_mod[154+:7];
+    wire [6:0] lfo_filter_cutoff_target;
+    assign lfo_v2_base[161+:7]=filter_cutoff_target;
+    assign lfo_filter_cutoff_target=lfo_v2_mod[161+:7];
+    assign lfo_v2_base[168+:7]=filter_resonance_target;
+    assign lfo_filter_resonance_target=lfo_v2_mod[168+:7];
+    assign lfo_v2_base[175+:7]=7'd0; // 目标25：预留
+    assign lfo_v2_base[182+:7]=7'd0; // 目标26：预留
+    assign lfo_v2_base[189+:7]=7'd0; // 目标27：预留
+    assign lfo_v2_base[196+:7]=filter_mix_target;
+    assign lfo_filter_mix_target=lfo_v2_mod[196+:7];
+    assign lfo_v2_base[203+:7]=7'd0; // 目标29：预留
+    assign lfo_v2_base[210+:7]=7'd0; // 目标30：预留
+    assign lfo_v2_base[217+:7]=7'd0; // 目标31：预留
+    assign lfo_v2_base[224+:7]=7'd0; // 目标32：预留
+    assign lfo_v2_base[231+:7]=7'd0; // 目标33：预留
+    wire [6:0] lfo_delay_feedback_target;
+    assign lfo_v2_base[238+:7]=delay_feedback_target;
+    assign lfo_delay_feedback_target=lfo_v2_mod[238+:7];
+    wire [6:0] lfo_delay_time_target;
+    assign lfo_v2_base[245+:7]=delay_time_target;
+    assign lfo_delay_time_target=lfo_v2_mod[245+:7];
+    assign lfo_v2_base[252+:7]=7'd0; // 目标36：预留
+    assign lfo_v2_base[259+:7]=7'd0; // 目标37：预留
+    assign lfo_v2_base[266+:7]=7'd0; // 目标38：预留
     wire [6:0] lfo_delay_mix_target;
-
-    wire [6:0] lfo_osc_a_detune_target, lfo_osc_b_detune_target;
-    lfo_modulation_router u_lfo_modulation_router (
-        .clk                       (clk_sys),
-        .rst_n                     (rst_n_sys),
-        .lfo_value_valid           (lfo_value_valid),
-        .lfo_value_q13             (lfo_value_q13),
-        .lfo_1_value_q13           (lfo_1_value_q13),
-        .lfo_2_value_q13           (lfo_2_value_q13),
-        .parameter_valid           (highres_parameter_valid),
-        .parameter_id              (highres_parameter_id),
-        .parameter_value           (highres_parameter_value),
-        .filter_mode               (filter_mode_active),
-        .base_osc_a_wt             (osc_a_wt_position_target),
-        .base_osc_a_warp           (osc_a_warp_amount_target),
-        .base_osc_a_level          (osc_a_level),
-        .base_osc_b_wt             (osc_b_wt_position_target),
-        .base_osc_b_warp           (osc_b_warp_amount_target),
-        .base_osc_b_level          (osc_b_level),
-        .base_pan                  (pan_target),
-        .base_filter_cutoff_q8     (filter_cutoff_manual_q8),
-        .base_filter_resonance     (filter_resonance_target),
-        .base_filter_mix           (filter_mix_target),
-        .mod_osc_a_wt              (lfo_osc_a_wt_target),
-        .mod_osc_a_warp            (lfo_osc_a_warp_target),
-        .mod_osc_a_level           (lfo_osc_a_level_target),
-        .mod_osc_b_wt              (lfo_osc_b_wt_target),
-        .mod_osc_b_warp            (lfo_osc_b_warp_target),
-        .mod_osc_b_level           (lfo_osc_b_level_target),
-        .mod_pan                   (lfo_pan_target),
-        .mod_filter_cutoff_q8      (filter_cutoff_current_q8),
-        .mod_filter_resonance      (lfo_filter_resonance_target),
-        .mod_filter_mix            (lfo_filter_mix_target),
-        .base_master_level(master_level_target), .mod_master_level(lfo_master_level_target),
-        .base_distortion_drive(distortion_drive_target), .mod_distortion_drive(lfo_distortion_drive_target),
-        .base_distortion_mix(distortion_mix_target), .mod_distortion_mix(lfo_distortion_mix_target),
-        .base_chorus_depth(chorus_depth_target), .mod_chorus_depth(lfo_chorus_depth_target),
-        .base_chorus_mix(chorus_mix_target), .mod_chorus_mix(lfo_chorus_mix_target),
-        .base_phaser_depth(phaser_depth_target), .mod_phaser_depth(lfo_phaser_depth_target),
-        .base_phaser_mix(phaser_mix_target), .mod_phaser_mix(lfo_phaser_mix_target),
-        .base_reverb_mix(reverb_mix_target), .mod_reverb_mix(lfo_reverb_mix_target),
-        .base_delay_mix(delay_mix_target), .mod_delay_mix(lfo_delay_mix_target),
-        .base_osc_a_detune(osc_a_detune_amount), .mod_osc_a_detune(lfo_osc_a_detune_target),
-        .base_osc_b_detune(osc_b_detune_amount), .mod_osc_b_detune(lfo_osc_b_detune_target),
-        .route_overrun             (lfo_route_overrun)
+    assign lfo_v2_base[273+:7]=delay_mix_target;
+    assign lfo_delay_mix_target=lfo_v2_mod[273+:7];
+    wire [6:0] lfo_reverb_size_target;
+    assign lfo_v2_base[280+:7]=reverb_size_target;
+    assign lfo_reverb_size_target=lfo_v2_mod[280+:7];
+    wire [6:0] lfo_reverb_decay_target;
+    assign lfo_v2_base[287+:7]=reverb_decay_target;
+    assign lfo_reverb_decay_target=lfo_v2_mod[287+:7];
+    assign lfo_v2_base[294+:7]=7'd0; // 目标42：预留
+    assign lfo_v2_base[301+:7]=7'd0; // 目标43：预留
+    assign lfo_v2_base[308+:7]=7'd0; // 目标44：预留
+    assign lfo_v2_base[315+:7]=7'd0; // 目标45：预留
+    wire [6:0] lfo_reverb_mix_target;
+    assign lfo_v2_base[322+:7]=reverb_mix_target;
+    assign lfo_reverb_mix_target=lfo_v2_mod[322+:7];
+    assign lfo_v2_base[329+:7]=7'd0; // 目标47：预留
+    assign lfo_v2_base[336+:7]=7'd0; // 目标48：预留
+    assign lfo_v2_base[343+:7]=7'd0; // 目标49：预留
+    assign lfo_v2_base[350+:7]=7'd0; // 目标50：预留
+    assign lfo_v2_base[357+:7]=7'd0; // 目标51：预留
+    assign lfo_v2_base[364+:7]=7'd0; // 目标52：预留
+    wire [6:0] lfo_distortion_drive_target=distortion_drive_target;
+    wire [6:0] lfo_distortion_mix_target=distortion_mix_target;
+    wire [6:0] lfo_chorus_depth_target=chorus_depth_target;
+    wire [6:0] lfo_chorus_mix_target=chorus_mix_target;
+    wire [6:0] lfo_phaser_depth_target=phaser_depth_target;
+    wire [6:0] lfo_phaser_mix_target=phaser_mix_target;
+    assign lfo_pan_target=pan_target;
+    lfo_v2_engine u_lfo_v2_engine (
+        .clk(clk_sys), .rst_n(rst_n_sys), .sample_tick(sample_tick),
+        .parameter_valid(highres_parameter_valid), .parameter_id(highres_parameter_id),
+        .parameter_value(highres_parameter_value), .base_values(lfo_v2_base),
+        .mod_values(lfo_v2_mod), .output_valid(lfo_v2_output_valid),
+        .route_overrun(lfo_route_overrun), .config_busy(lfo_v2_config_busy),
+        .config_error(lfo_v2_config_error), .config_applied(lfo_v2_config_applied),
+        .phase_indices(lfo_v2_phase_indices), .wave_values(lfo_v2_waves)
+    );
+    // 调制发生在原始CC域，随后统一进入原有5.33 ms线性平滑器。
+    // 只有目标改变时重装插值，避免恒定目标每样本重启平滑。
+    reg [6:0] lfo_cutoff_previous;
+    wire lfo_cutoff_changed=lfo_v2_output_valid && lfo_filter_cutoff_target!=lfo_cutoff_previous;
+    always @(posedge clk_sys or negedge rst_n_sys) begin
+        if (!rst_n_sys) lfo_cutoff_previous<=7'd127;
+        else if (lfo_cutoff_changed) lfo_cutoff_previous<=lfo_filter_cutoff_target;
+    end
+    parameter_linear_interpolator #(
+        .VALUE_WIDTH(15), .INTERPOLATION_SHIFT(9), .RESET_VALUE({7'd127,8'd0})
+    ) u_filter_cutoff_interpolator (
+        .clk(clk_sys), .rst_n(rst_n_sys), .sample_tick(sample_tick),
+        .target_valid(lfo_cutoff_changed), .target_value({lfo_filter_cutoff_target,8'd0}),
+        .current_value(filter_cutoff_current_q8), .busy(filter_cutoff_interpolation_busy)
     );
 
     synth_control_router #(
@@ -900,6 +894,7 @@ module top #(
         .portamento_time           (portamento_time),
         .osc_a_wt_position_target  (osc_a_wt_position_target),
         .osc_a_waveform_select     (osc_a_waveform_select),
+        .osc_a_phase(osc_a_phase_target), .osc_a_rand(osc_a_rand_target),
         .osc_a_detune_amount       (osc_a_detune_amount),
         .osc_a_unison_count        (osc_a_unison_count),
         .osc_a_attack_control      (osc_a_attack_control),
@@ -913,6 +908,7 @@ module top #(
         .osc_a_wavetable_index     (osc_a_wavetable_index),
         .osc_b_wt_position_target  (osc_b_wt_position_target),
         .osc_b_waveform_select     (osc_b_waveform_select),
+        .osc_b_phase(osc_b_phase_target), .osc_b_rand(osc_b_rand_target),
         .osc_b_detune_amount       (osc_b_detune_amount),
         .osc_b_unison_count        (osc_b_unison_count),
         .osc_b_attack_control      (osc_b_attack_control),
@@ -975,6 +971,7 @@ module top #(
     );
 
     oscillator_task_scheduler #(
+        .INITIAL_PHASE_ENABLE(1),
         .ENGINE_COUNT    (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE)
     ) u_osc_a_task_scheduler (
@@ -986,6 +983,7 @@ module top #(
         .note_event_velocity     (pitch_note_event_velocity),
         .unison_count            (osc_a_unison_count),
         .detune_amount           (lfo_osc_a_detune_target),
+        .phase_control(lfo_osc_a_phase_target), .rand_control(lfo_osc_a_rand_target),
         .task_idle_mask          (osc_a_task_idle_mask),
         .task_update_valid       (osc_a_task_update_valid),
         .task_update_slot        (osc_a_task_update_slot),
@@ -998,11 +996,13 @@ module top #(
         .task_update_velocity    (osc_a_task_update_velocity),
         .task_update_enable      (osc_a_task_update_enable),
         .task_update_phase_reset (osc_a_task_update_phase_reset),
+        .task_update_initial_phase(osc_a_task_update_initial_phase),
         .active_task_count       (osc_a_active_task_count),
         .scheduler_busy          (osc_a_scheduler_busy)
     );
 
     oscillator_task_scheduler #(
+        .INITIAL_PHASE_ENABLE(1), .RANDOM_SEED(32'hA511E9B3),
         .ENGINE_COUNT    (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE)
     ) u_osc_b_task_scheduler (
@@ -1014,6 +1014,7 @@ module top #(
         .note_event_velocity     (pitch_note_event_velocity),
         .unison_count            (osc_b_unison_count),
         .detune_amount           (lfo_osc_b_detune_target),
+        .phase_control(lfo_osc_b_phase_target), .rand_control(lfo_osc_b_rand_target),
         .task_idle_mask          (osc_b_task_idle_mask),
         .task_update_valid       (osc_b_task_update_valid),
         .task_update_slot        (osc_b_task_update_slot),
@@ -1026,11 +1027,13 @@ module top #(
         .task_update_velocity    (osc_b_task_update_velocity),
         .task_update_enable      (osc_b_task_update_enable),
         .task_update_phase_reset (osc_b_task_update_phase_reset),
+        .task_update_initial_phase(osc_b_task_update_initial_phase),
         .active_task_count       (osc_b_active_task_count),
         .scheduler_busy          (osc_b_scheduler_busy)
     );
 
     oscillator_tdm_bank #(
+        .INITIAL_PHASE_ENABLE(1),
         .REALTIME_DETUNE_ENABLE(1),
         .ENGINE_COUNT      (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE)
@@ -1073,6 +1076,7 @@ module top #(
         .task_update_velocity      (osc_a_task_update_velocity),
         .task_update_enable        (osc_a_task_update_enable),
         .task_update_phase_reset   (osc_a_task_update_phase_reset),
+        .task_update_initial_phase(osc_a_task_update_initial_phase),
         .active_task_count         (osc_a_active_task_count),
         .sample_out                (osc_a_mix),
         .sample_valid              (osc_a_mix_valid),
@@ -1084,6 +1088,7 @@ module top #(
     );
 
     oscillator_tdm_bank #(
+        .INITIAL_PHASE_ENABLE(1),
         .REALTIME_DETUNE_ENABLE(1),
         .ENGINE_COUNT      (OSC_ENGINE_COUNT),
         .SLOTS_PER_ENGINE  (SLOTS_PER_ENGINE)
@@ -1126,6 +1131,7 @@ module top #(
         .task_update_velocity      (osc_b_task_update_velocity),
         .task_update_enable        (osc_b_task_update_enable),
         .task_update_phase_reset   (osc_b_task_update_phase_reset),
+        .task_update_initial_phase(osc_b_task_update_initial_phase),
         .active_task_count         (osc_b_active_task_count),
         .sample_out                (osc_b_mix),
         .sample_valid              (osc_b_mix_valid),
@@ -1234,11 +1240,11 @@ module top #(
         .chorus_feedback  (chorus_feedback_target),
         .chorus_mix       (lfo_chorus_mix_target),
         .effect_mode     (effect_mode_target),
-        .delay_time      (delay_time_target),
-        .delay_feedback  (delay_feedback_target),
+        .delay_time      (lfo_delay_time_target),
+        .delay_feedback  (lfo_delay_feedback_target),
         .delay_mix       (lfo_delay_mix_target),
-        .reverb_size     (reverb_size_target),
-        .reverb_decay    (reverb_decay_target),
+        .reverb_size     (lfo_reverb_size_target),
+        .reverb_decay    (lfo_reverb_decay_target),
         .reverb_mix      (lfo_reverb_mix_target),
         .compressor_enable   (compressor_enable_target),
         .compressor_threshold(compressor_threshold_target),

@@ -83,6 +83,35 @@ module tb_top_dual_unison8;
             errors = errors + 1;
     end
 
+    integer phase_init_checks=0;
+    reg [7:0] phase_slot;
+    reg [31:0] phase_expected;
+    reg [31:0] first_b_initial;
+    integer b_phase_count=0;
+    always @(posedge sys_clk) begin
+        if (rst_n && dut.osc_a_task_update_valid && dut.osc_a_task_update_enable && dut.osc_a_task_update_phase_reset) begin
+            phase_slot=dut.osc_a_task_update_slot;
+            phase_expected=dut.osc_a_task_update_initial_phase;
+            if (phase_expected!==32'h40000000) begin
+                $display("ERROR: configured initial Phase"); errors=errors+1;
+            end
+            #1;
+            if ((phase_slot<32 ? dut.u_osc_a_tdm_bank.GEN_ENGINE[0].u_oscillator_tdm_core.phase_state[phase_slot%32] : dut.u_osc_a_tdm_bank.GEN_ENGINE[1].u_oscillator_tdm_core.phase_state[phase_slot%32]) !== phase_expected) begin
+                $display("ERROR: core initial Phase write"); errors=errors+1;
+            end
+            phase_init_checks=phase_init_checks+1;
+        end
+    end
+    always @(posedge sys_clk) begin
+        if (rst_n && dut.osc_b_task_update_valid && dut.osc_b_task_update_enable && dut.osc_b_task_update_phase_reset) begin
+            if (b_phase_count==0) first_b_initial=dut.osc_b_task_update_initial_phase;
+            else if (b_phase_count==1 && first_b_initial===dut.osc_b_task_update_initial_phase) begin
+                $display("ERROR: random phase members identical"); errors=errors+1;
+            end
+            b_phase_count=b_phase_count+1;
+        end
+    end
+
     task send_uart_byte;
         input [7:0] value;
         integer bit_number;
@@ -245,12 +274,18 @@ module tb_top_dual_unison8;
         end
         // 独立控制口接收高精度SysEx。
         send_control_byte(8'hF0); send_control_byte(8'h7D);
-        send_control_byte(8'd26); send_control_byte(8'd0);
+        send_control_byte(8'd48); send_control_byte(8'd0);
         send_control_byte(8'd5); send_control_byte(8'hF7);
         repeat (20) @(posedge sys_clk);
-        if (dut.u_lfo_modulation_router.shadow_route_index !== 3'd5) begin
+        if (dut.u_lfo_v2_engine.shadow_nodes[6:0] !== 7'd5) begin
             $display("ERROR: external SysEx parser"); errors = errors + 1;
         end
+
+        send_cc(7'd87, 7'd32); // A固定四分之一周期
+        send_cc(7'd88, 7'd0);
+        send_cc(7'd89, 7'd64); // B半周期+全范围随机偏移
+        send_cc(7'd90, 7'd127);
+        repeat (1000) @(posedge sys_clk);
 
         // 每发一个音符等待两组调度器空闲，避免测试UART吞掉事件。
         for (note_index = 0; note_index < 8; note_index = note_index + 1) begin
@@ -314,6 +349,9 @@ module tb_top_dual_unison8;
             errors = errors + 1;
         end
 
+        if (phase_init_checks!=64 || b_phase_count!=64) begin
+            $display("ERROR: missing Phase/Rand trigger checks"); errors=errors+1;
+        end
         if (errors == 0)
             $display("PASS: top dual oscillator, 8 voices x Unison=8, 64 tasks per bank");
         else

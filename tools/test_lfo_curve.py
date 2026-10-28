@@ -1,59 +1,50 @@
+import random
 import unittest
+from fractions import Fraction
+from lfo_curve import LfoCurve
+from lfo_v2_protocol import *
 
-from lfo_curve import (
-    LfoCurve,
-    MAX_CONTROL_POINTS,
-    MAX_MIDDLE_TIME,
-    MIN_MIDDLE_TIME,
-)
+class LfoV2Test(unittest.TestCase):
+    def test_fixed_nodes(self):
+        c=LfoCurve()
+        for n in range(7):
+            c.move_point(n, 0.123, 200)
+            self.assertEqual(c.points[n].time,n/6)
+            self.assertEqual(c.points[n].level,127)
+        self.assertEqual(c.evaluate(1),127)
+    def test_fraction_reference_and_monotonic_bounds(self):
+        rng=random.Random(728)
+        for points in list(PRESETS)+[tuple(rng.randrange(128) for _ in range(7)) for _ in range(25)]:
+            for phase in range(385):
+                self.assertEqual(value_q6(points,phase,True),points[min(phase//64,6)]*64)
+                if phase==384:
+                    self.assertEqual(value_q6(points,phase),points[6]*64)
+                    continue
+                s,t6=divmod(phase,64); t=Fraction(t6,64)
+                def mm(x,y):
+                    return (1 if x>0 else -1)*min(abs(x),abs(y)) if x*y>0 else 0
+                dm=points[s+1]-points[s]
+                m0=mm(points[s]-points[s-1],dm) if s else 0
+                m1=mm(dm,points[s+2]-points[s+1]) if s<5 else 0
+                # 独立Hermite基函数模型，不复写RTL的Horner表达式。
+                y=(2*t**3-3*t**2+1)*points[s]+(t**3-2*t**2+t)*m0+(-2*t**3+3*t**2)*points[s+1]+(t**3-t**2)*m1
+                self.assertEqual(value_q6(points,phase),int(y*64))
+                self.assertTrue(min(points[s:s+2])*64<=value_q6(points,phase)<=max(points[s:s+2])*64)
+    def test_protocol_and_signed_depth(self):
+        self.assertEqual(len(TARGET_NAMES),53)
+        self.assertEqual(sysex(96,pack_route(1,-64)),bytes.fromhex('F0 7D 60 03 40 F7'))
+        self.assertEqual(modulate(64,1,-127,127),0)
+        self.assertEqual(modulate(0,1,127,127),126)
+        self.assertEqual(modulate(20,0,127,127),20)
+        for source in range(4):
+            for depth in range(-127,128):
+                frame=sysex(125,pack_route(source,depth))
+                self.assertTrue(all(v<128 for v in frame[1:-1]))
+        with self.assertRaises(ValueError): pack_route(1,-128)
+    def test_full_sync(self):
+        fields=configuration_fields(list(PRESETS),[(2,False,False)]*3,[(0,0)]*53)
+        self.assertEqual(len(fields),77)
+        self.assertEqual(set(fields),set(range(48,72))|set(range(73,126)))
+        self.assertEqual((len(fields)+3+1)*6*10/31250,0.15552)
 
-
-class LfoCurveTest(unittest.TestCase):
-    def test_default_curve_and_loop_boundary(self) -> None:
-        curve = LfoCurve()
-        self.assertAlmostEqual(curve.evaluate(0.0), -1.0, places=6)
-        self.assertGreater(curve.evaluate(0.5), 0.99)
-        self.assertAlmostEqual(curve.points[-1].level, curve.points[0].level)
-
-    def test_point_limit(self) -> None:
-        curve = LfoCurve()
-        self.assertEqual(len(curve.points), MAX_CONTROL_POINTS)
-
-    def test_two_curve_directions(self) -> None:
-        curve = LfoCurve()
-        curve.points[0].time = 0.0
-        curve.points[0].level = -1.0
-        curve.points[1].time = 0.5
-        curve.points[1].level = 1.0
-
-        curve.points[0].curve = 0.0
-        self.assertAlmostEqual(curve.evaluate(0.25), 0.0, places=6)
-        curve.points[0].curve = 1.0
-        self.assertAlmostEqual(curve.evaluate(0.25), -0.375, places=6)
-        curve.points[0].curve = -1.0
-        self.assertAlmostEqual(curve.evaluate(0.25), 0.375, places=6)
-
-    def test_segment_endpoint_slopes_are_zero(self) -> None:
-        curve = LfoCurve()
-        epsilon = 1.0e-5
-        for curvature in (-1.0, 0.0, 1.0):
-            curve.points[0].curve = curvature
-            start_slope = (
-                curve.evaluate(epsilon) - curve.evaluate(0.0)
-            ) / epsilon
-            end_slope = (
-                curve.evaluate(0.5) - curve.evaluate(0.5 - epsilon)
-            ) / epsilon
-            self.assertAlmostEqual(start_slope, 0.0, places=3)
-            self.assertAlmostEqual(end_slope, 0.0, places=3)
-
-    def test_middle_time_is_hardware_safe(self) -> None:
-        curve = LfoCurve()
-        curve.move_point(1, 0.0, 0.5)
-        self.assertEqual(curve.points[1].time, MIN_MIDDLE_TIME)
-        curve.move_point(1, 1.0, 0.5)
-        self.assertEqual(curve.points[1].time, MAX_MIDDLE_TIME)
-
-
-if __name__ == "__main__":
-    unittest.main()
+if __name__=='__main__': unittest.main()

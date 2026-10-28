@@ -44,6 +44,9 @@ vlog -work work_top_midi \
     src/global_effects.v \
     src/i2s_tx.v \
     src/control_event_merge.v \
+    src/lfo_hermite_table.v \
+    src/lfo_target_router_v2.v \
+    src/lfo_v2_engine.v \
     src/top.v.v \
     sim/tb_top_midi_input.v
 
@@ -76,12 +79,11 @@ add wave sim:/tb_top_midi_input/dut/pan_target
 add wave sim:/tb_top_midi_input/dut/filter_mode_target
 add wave sim:/tb_top_midi_input/dut/filter_mode_active
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_target
-add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_manual_q8
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_cutoff_current_q8
 add wave sim:/tb_top_midi_input/dut/filter_cutoff_interpolation_busy
-add wave sim:/tb_top_midi_input/dut/filter_lfo_enabled
-add wave sim:/tb_top_midi_input/dut/filter_lfo_active_segment
-add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_lfo_segment_phase
+add wave sim:/tb_top_midi_input/dut/lfo_v2_config_applied
+add wave sim:/tb_top_midi_input/dut/lfo_v2_config_busy
+add wave -radix unsigned sim:/tb_top_midi_input/dut/lfo_v2_phase_indices
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_target
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_resonance_current
 add wave -radix unsigned sim:/tb_top_midi_input/dut/filter_mix_target

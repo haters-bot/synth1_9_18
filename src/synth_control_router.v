@@ -76,6 +76,7 @@ module synth_control_router #(
     output reg [6:0]  osc_a_wt_position_target,
     output reg [2:0]  osc_a_waveform_select,
     output reg [6:0]  osc_a_detune_amount,
+    output reg [6:0] osc_a_phase, osc_a_rand,
     output reg [3:0]  osc_a_unison_count,
     output reg [6:0]  osc_a_attack_control,
     output reg [6:0]  osc_a_decay_control,
@@ -90,6 +91,7 @@ module synth_control_router #(
     output reg [6:0]  osc_b_wt_position_target,
     output reg [2:0]  osc_b_waveform_select,
     output reg [6:0]  osc_b_detune_amount,
+    output reg [6:0] osc_b_phase, osc_b_rand,
     output reg [3:0]  osc_b_unison_count,
     output reg [6:0]  osc_b_attack_control,
     output reg [6:0]  osc_b_decay_control,
@@ -215,6 +217,7 @@ module synth_control_router #(
             note_event_note     <= 7'd0;
             note_event_velocity <= 7'd0;
             pan_target          <= 7'd64;
+            osc_a_phase<=0; osc_a_rand<=0; osc_b_phase<=0; osc_b_rand<=0;
             filter_mode         <= 3'd0;
             filter_cutoff       <= 7'd127;
             filter_resonance    <= 7'd0;
@@ -298,6 +301,10 @@ module synth_control_router #(
             if (raw_control_change_valid
                 && (raw_control_change_channel == CONTROL_CHANNEL)) begin
                 case (raw_control_change_number)
+                    7'd87: osc_a_phase<=raw_control_change_value;
+                    7'd88: osc_a_rand<=raw_control_change_value;
+                    7'd89: osc_b_phase<=raw_control_change_value;
+                    7'd90: osc_b_rand<=raw_control_change_value;
                     CC_PAN:
                         pan_target <= raw_control_change_value;
 
@@ -458,6 +465,10 @@ module synth_control_router #(
             if (raw_control_change_valid
                 && (raw_control_change_channel == PERFORMANCE_CHANNEL)) begin
                 case (raw_control_change_number)
+                    7'd87: osc_a_phase<=raw_control_change_value;
+                    7'd88: osc_a_rand<=raw_control_change_value;
+                    7'd89: osc_b_phase<=raw_control_change_value;
+                    7'd90: osc_b_rand<=raw_control_change_value;
                     MIDI_CC_MOD_WHEEL: begin
                         vibrato_depth <= raw_control_change_value;
                         vibrato_enable <= (raw_control_change_value != 7'd0);

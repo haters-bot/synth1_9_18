@@ -24,3 +24,7 @@ The repository contains synthesizable RTL, constraints, FIR configuration,
 simulation testbenches, the MIDI UART host tool, and project documentation.
 Generated implementation output and local simulator artifacts are intentionally
 excluded from version control.
+
+## LFO V2（2026-10-28）
+
+[接入与联调说明](docs/lfo_v2_integration.md)：3路七节点Hermite曲线、53固定绑定目标、Once/Stepped、双缓冲提交，以及双振荡器Phase/Rand。桌面调试工具已使用V2；触屏发送器需按说明同步。

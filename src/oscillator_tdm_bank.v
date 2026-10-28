@@ -14,6 +14,7 @@ module oscillator_tdm_bank #(
     parameter integer CORE_SUM_WIDTH      = 24,
     parameter integer BANK_SUM_WIDTH      = 32,
     parameter integer GAIN_SMOOTH_SHIFT   = 12,
+    parameter integer INITIAL_PHASE_ENABLE = 0,
     parameter integer REALTIME_DETUNE_ENABLE = 0,
     parameter integer ENVELOPE_UPDATE_DIV = 16
 )(
@@ -58,6 +59,7 @@ module oscillator_tdm_bank #(
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
+    input wire [31:0] task_update_initial_phase,
     // 8 个复音各使用 8 个 Unison 成员时共有 64 个任务，活动计数使用 7 位。
     input  wire [6:0]            active_task_count,
 
@@ -102,6 +104,7 @@ module oscillator_tdm_bank #(
                                      - ENGINE_BASE_SLOT;
 
             oscillator_tdm_core #(
+                .INITIAL_PHASE_ENABLE(INITIAL_PHASE_ENABLE),
                 .REALTIME_DETUNE_ENABLE(REALTIME_DETUNE_ENABLE),
                 .SLOTS_PER_ENGINE(SLOTS_PER_ENGINE),
                 .PARTIAL_SUM_WIDTH(CORE_SUM_WIDTH),
@@ -145,6 +148,7 @@ module oscillator_tdm_bank #(
                 .task_update_velocity(task_update_velocity),
                 .task_update_enable(task_update_enable),
                 .task_update_phase_reset(task_update_phase_reset),
+                .task_update_initial_phase(task_update_initial_phase),
                 .partial_sum      (
                     core_partial_sum_bus[engine_index*CORE_SUM_WIDTH
                                          +: CORE_SUM_WIDTH]),

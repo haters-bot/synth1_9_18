@@ -1,3 +1,5 @@
+> 2026-10-28更新：LFO已切换至[七节点Hermite／53目标V2协议](lfo_v2_integration.md)，新配置ID48..126。下文三点／8路由内容是旧版记录。新增静态CC87/88控制OSC A Phase/Rand，CC89/90控制OSC B Phase/Rand。控制口仍为C19，实体键盘口为E19。
+
 # MIDI演奏与合成参数控制协议
 
 ## 1. 设计目标

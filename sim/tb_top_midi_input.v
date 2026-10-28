@@ -383,20 +383,15 @@ module tb_top_midi_input;
         send_cc(7'd47, 7'd127);
         send_cc(7'd48, 7'd127);
 
-        // 高精度SysEx写入通用LFO和路由影子寄存器；commit后同时生效。
-        send_highres_parameter(7'd16, 14'd1);
-        send_highres_parameter(7'd26, 14'd0);
-        send_highres_parameter(7'd27, 14'd1);
-        send_highres_parameter(7'd28, 14'd8);
-        send_highres_parameter(7'd29, 14'd12288);
-        send_highres_parameter(7'd25, 14'd1);
-        repeat (3) @(posedge sys_clk);
-        if (!dut.filter_lfo_enabled
-            || !dut.u_lfo_modulation_router.active_enable[0]
-            || dut.u_lfo_modulation_router.active_destination[0] !== 4'd8
-            || dut.u_lfo_modulation_router.active_depth_q13[0]
-               !== 14'sd4096) begin
-            $display("ERROR: FPGA LFO route configuration was not committed");
+        // V2固定目标23为Cutoff，配置只在后台构表完成后生效。
+        send_highres_parameter(7'd96, 14'h140);
+        send_highres_parameter(7'd72, 14'd4);
+        send_highres_parameter(7'd126, 14'd0);
+        repeat (3500) @(posedge sys_clk);
+        if (dut.u_lfo_v2_engine.active_sources[46+:2] !== 2'd1
+            || dut.u_lfo_v2_engine.active_depths[184+:8] !== 8'd64
+            || dut.lfo_v2_config_error) begin
+            $display("ERROR: V2 LFO route configuration was not committed");
             errors = errors + 1;
         end
 

@@ -56,6 +56,9 @@ vlog -sv -work work_full_top \
     src/sd_card/sd_reader.sv \
     src/sd_card/sd_file_list_reader.sv \
     src/wavetable_storage_system.sv \
+    src/lfo_hermite_table.v \
+    src/lfo_target_router_v2.v \
+    src/lfo_v2_engine.v \
     src/top.v.v
 
 vsim -c -lib work_full_top top
