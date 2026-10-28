@@ -62,7 +62,11 @@ module global_reverb (
     reg [7:0] allpass_pointer_2;
     reg [9:0] allpass_fill_1;
     reg [8:0] allpass_fill_2;
-    reg signed [15:0] allpass_read_data;
+    // 两条全通延迟线必须使用各自独立的同步读数据寄存器。
+    // 如果两个存储器共用一个读数据寄存器并把读写混在主状态机中，
+    // GowinSynthesis 会把数组展开为触发器和选择器，无法映射到 BSRAM。
+    reg signed [15:0] allpass_read_data_1;
+    reg signed [15:0] allpass_read_data_2;
     reg allpass_read_valid;
     reg signed [15:0] allpass_1_output;
     reg signed [15:0] reverb_wet_sample;
@@ -135,7 +139,7 @@ module global_reverb (
     wire signed [15:0] comb_average = saturate_s19_to_s16(comb_sum >>> 2);
 
     wire signed [15:0] ap1_delayed = allpass_read_valid
-                                    ? allpass_read_data : 16'sd0;
+                                    ? allpass_read_data_1 : 16'sd0;
     wire signed [17:0] ap1_write_wide =
         $signed({{2{comb_average[15]}}, comb_average})
         + ($signed({{2{ap1_delayed[15]}}, ap1_delayed}) >>> 1);
@@ -143,7 +147,7 @@ module global_reverb (
         $signed({{2{ap1_delayed[15]}}, ap1_delayed})
         - ($signed({{2{comb_average[15]}}, comb_average}) >>> 1);
     wire signed [15:0] ap2_delayed = allpass_read_valid
-                                    ? allpass_read_data : 16'sd0;
+                                    ? allpass_read_data_2 : 16'sd0;
     wire signed [17:0] ap2_write_wide =
         $signed({{2{allpass_1_output[15]}}, allpass_1_output})
         + ($signed({{2{ap2_delayed[15]}}, ap2_delayed}) >>> 1);
@@ -266,6 +270,31 @@ module global_reverb (
             comb_memory_3[comb_pointer_3] <= comb_write_data;
     end
 
+    // 全通延迟线采用与梳状延迟线一致的同步 RAM 模板：每个数组拥有
+    // 独立的读数据寄存器，读周期和写周期由状态机保证互斥。
+    // 读数据寄存器不复位；allpass_read_valid 在历史数据有效前会屏蔽它。
+    always @(posedge clk) begin
+        if (state == STATE_AP1_READ)
+            allpass_read_data_1 <= allpass_memory_1[allpass_pointer_1];
+    end
+
+    always @(posedge clk) begin
+        if (state == STATE_AP1_PROCESS)
+            allpass_memory_1[allpass_pointer_1]
+                <= saturate_s18_to_s16(ap1_write_wide);
+    end
+
+    always @(posedge clk) begin
+        if (state == STATE_AP2_READ)
+            allpass_read_data_2 <= allpass_memory_2[allpass_pointer_2];
+    end
+
+    always @(posedge clk) begin
+        if (state == STATE_AP2_PROCESS)
+            allpass_memory_2[allpass_pointer_2]
+                <= saturate_s18_to_s16(ap2_write_wide);
+    end
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= STATE_IDLE;
@@ -295,7 +324,6 @@ module global_reverb (
             allpass_pointer_2 <= 8'd0;
             allpass_fill_1 <= 10'd0;
             allpass_fill_2 <= 9'd0;
-            allpass_read_data <= 16'sd0;
             allpass_read_valid <= 1'b0;
             allpass_1_output <= 16'sd0;
             reverb_wet_sample <= 16'sd0;
@@ -379,14 +407,11 @@ module global_reverb (
                 end
 
                 STATE_AP1_READ: begin
-                    allpass_read_data <= allpass_memory_1[allpass_pointer_1];
                     allpass_read_valid <= allpass_fill_1 >= 10'd347;
                     state <= STATE_AP1_PROCESS;
                 end
 
                 STATE_AP1_PROCESS: begin
-                    allpass_memory_1[allpass_pointer_1]
-                        <= saturate_s18_to_s16(ap1_write_wide);
                     allpass_1_output <= saturate_s18_to_s16(ap1_output_wide);
                     allpass_pointer_1 <= (allpass_pointer_1 == 9'd346)
                                        ? 9'd0 : allpass_pointer_1 + 9'd1;
@@ -396,14 +421,11 @@ module global_reverb (
                 end
 
                 STATE_AP2_READ: begin
-                    allpass_read_data <= allpass_memory_2[allpass_pointer_2];
                     allpass_read_valid <= allpass_fill_2 >= 9'd113;
                     state <= STATE_AP2_PROCESS;
                 end
 
                 STATE_AP2_PROCESS: begin
-                    allpass_memory_2[allpass_pointer_2]
-                        <= saturate_s18_to_s16(ap2_write_wide);
                     reverb_wet_sample <= saturate_s18_to_s16(ap2_output_wide);
                     allpass_pointer_2 <= (allpass_pointer_2 == 8'd112)
                                        ? 8'd0 : allpass_pointer_2 + 8'd1;
