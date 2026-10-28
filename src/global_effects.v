@@ -67,19 +67,16 @@ module global_effects (
     wire delay_reverb_valid;
     wire signed [15:0] delay_reverb_sample;
     wire delay_reverb_overrun;
-    wire compressor_ready;
-    wire compressor_valid;
-    wire signed [15:0] compressor_sample;
-    wire compressor_overrun;
-
     assign in_ready = !chain_busy
                     && distortion_ready
                     && phaser_ready
                     && chorus_ready
-                    && delay_reverb_ready
-                    && compressor_ready;
-    assign out_valid = compressor_valid;
-    assign sample_out = compressor_sample;
+                    && delay_reverb_ready;
+
+    // 暂时在综合层面移除压缩器，效果链由 Delay/Reverb 直接输出。
+    // 压缩器控制端口继续保留，便于后续接回流水线版本时保持协议兼容。
+    assign out_valid = delay_reverb_valid;
+    assign sample_out = delay_reverb_sample;
 
     global_distortion u_global_distortion (
         .clk(clk), .rst_n(rst_n),
@@ -125,21 +122,6 @@ module global_effects (
         .input_overrun(delay_reverb_overrun)
     );
 
-    global_compressor u_global_compressor (
-        .clk(clk), .rst_n(rst_n),
-        .in_valid(delay_reverb_valid), .sample_in(delay_reverb_sample),
-        .in_ready(compressor_ready),
-        .enable(compressor_enable),
-        .threshold_control(compressor_threshold),
-        .ratio_control(compressor_ratio),
-        .attack_control(compressor_attack),
-        .release_control(compressor_release),
-        .makeup_control(compressor_makeup),
-        .mix_control(compressor_mix),
-        .out_valid(compressor_valid), .sample_out(compressor_sample),
-        .input_overrun(compressor_overrun)
-    );
-
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             chain_busy <= 1'b0;
@@ -147,11 +129,11 @@ module global_effects (
         end else begin
             if (accept_input)
                 chain_busy <= 1'b1;
-            if (compressor_valid)
+            if (delay_reverb_valid)
                 chain_busy <= 1'b0;
             if ((in_valid && !in_ready)
                 || distortion_overrun || phaser_overrun || chorus_overrun
-                || delay_reverb_overrun || compressor_overrun)
+                || delay_reverb_overrun)
                 input_overrun <= 1'b1;
         end
     end

@@ -238,13 +238,15 @@ module tb_global_effects;
         end
         chorus_enable = 1'b0;
 
-        // 压缩器连续接收大信号后，稳态输出幅度应明显降低。
+        // 压缩器已从综合链中暂时移除，保留的控制端口不应改变输出。
         compressor_enable = 1'b1;
-        for (sample_index = 0; sample_index < 400;
-             sample_index = sample_index + 1)
-            process_sample(16'sd25000, captured_sample);
-        if (captured_sample >= 16'sd20000) begin
-            $display("ERROR: compressor steady output too high: %0d",
+        compressor_threshold = 7'd0;
+        compressor_ratio = 7'd127;
+        compressor_makeup = 7'd127;
+        compressor_mix = 7'd127;
+        process_sample(16'sd25000, captured_sample);
+        if (captured_sample !== 16'sd25000) begin
+            $display("ERROR: removed compressor still changed output: %0d",
                      captured_sample);
             errors = errors + 1;
         end
