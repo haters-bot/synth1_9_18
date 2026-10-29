@@ -148,3 +148,9 @@ Future entries should append a dated section and never rewrite prior verificatio
 - **修正**：`knob_spi_rx.v` 改为 `A=GPIO[k]`、`B=GPIO[16+k]`、`SW=GPIO[32+k]`，不再按三个连续 GPIO 交错读取。四区 UI 参数映射保持原定义。
 - **供电修正**：同一原理图把 Type-C VCC 网络标为 `3.3V-IN`，因此文档中的 5 V 入口说明已改为 3.3 V，禁止把 5 V 直接接入键盘板 VCC。用户已确认已改接 3.3 V。
 - **验证**：Gowin P&R Setup/Hold 违例 0，最差恢复余量 `+0.201 ns`；位流 SHA256 `37FB1A5409AF62F51B32BBC04146C125D09F7FB55320527128E22FC76D25E541`。新位流尚未部署。
+
+## 2026-10-29 — UI LFO V2 SysEx MIDI-safe packing fix
+
+- Root cause: the UI route payload placed `source` in bits `[15:14]` and emitted the value as ordinary 16-bit big-endian bytes. The audio board expects `source` in `[9:8]` and reconstructs a 14-bit MIDI-safe value from two 7-bit data bytes. This made a typical OSC A Level / LFO1 / +127 binding decode as `source=0`, while negative depths could emit status-valued bytes `0x80..0xFF` and abort SysEx parsing.
+- Fix: route values are now `{6'd0, source[1:0], depth[7:0]}` and every frame emits `{1'b0,value[13:7]}` followed by `{1'b0,value[6:0]}`. The protocol document now specifies the 14-bit representation explicitly.
+- Verification: ModelSim compiled the UI MIDI/LFO transmitter with zero errors and warnings. Existing Note/CC regression passed; the LFO regression passed initial 81-frame synchronization, negative depth, CC preemption, and the exact OSC A Level target 13 / ID 86 / LFO1 / +127 case as decoded value `0x017F`. Gowin synthesis, place-and-route, bitstream programming, and physical board acceptance were not run for this change.

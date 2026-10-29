@@ -95,15 +95,21 @@ module tb_lfo_sysex_tx;
 
     task check_frame;
         input [7:0] exp_id;
-        input [15:0] exp_value;
+        input [13:0] exp_value;
         input [127:0] tag;
+        reg [13:0] received_value;
         begin
-            if (b2 !== exp_id || {b3, b4} !== exp_value) begin
+            received_value = {b3[6:0], b4[6:0]};
+            if (b3[7] || b4[7]) begin
+                $display("[FAIL] %0s: non-MIDI data byte msb=%02h lsb=%02h",
+                         tag, b3, b4);
+                errors = errors + 1;
+            end else if (b2 !== exp_id || received_value !== exp_value) begin
                 $display("[FAIL] %0s: got id=%02h val=%04h expected id=%02h val=%04h",
-                         tag, b2, {b3, b4}, exp_id, exp_value);
+                         tag, b2, received_value, exp_id, exp_value);
                 errors = errors + 1;
             end else begin
-                $display("[PASS] %0s: id=%02h val=%04h", tag, b2, {b3, b4});
+                $display("[PASS] %0s: id=%02h val=%04h", tag, b2, received_value);
             end
         end
     endtask
@@ -126,7 +132,7 @@ module tb_lfo_sysex_tx;
         end
     endfunction
 
-    function [15:0] exp_val_of;
+    function [13:0] exp_val_of;
         input integer k;
         integer b, t;
         begin
@@ -141,7 +147,7 @@ module tb_lfo_sysex_tx;
             end
             else begin
                 t = k - 27;
-                exp_val_of = {exp_src[t], 6'd0, exp_dep[t]};
+                exp_val_of = {4'd0, exp_src[t], exp_dep[t]};
             end
         end
     endfunction
@@ -197,7 +203,7 @@ module tb_lfo_sysex_tx;
             if (k < 80)
                 check_frame(exp_id_of(k), exp_val_of(k), "T1 entry");
             else
-                check_frame(8'd126, 16'd0, "T1 commit");
+                check_frame(8'd126, 14'd0, "T1 commit");
         end
 
         // ------------------------------------------------------------------
@@ -208,9 +214,9 @@ module tb_lfo_sysex_tx;
         cfg_nodes[3*7 +: 7] = 7'd77;
         exp_point[3] = 7'd77;
         wait (sysex_req);
-        receive_frame; check_frame(8'd51, 16'd77, "T2 point");
-        receive_frame; check_frame(8'd72, 16'd0004, "T2 sync");
-        receive_frame; check_frame(8'd126, 16'd0, "T2 commit");
+        receive_frame; check_frame(8'd51, 14'd77, "T2 point");
+        receive_frame; check_frame(8'd72, 14'd0004, "T2 sync");
+        receive_frame; check_frame(8'd126, 14'd0, "T2 commit");
 
         // ------------------------------------------------------------------
         // T3: route 10 -> source 3, depth -127 -> frame(83) + commit only
@@ -221,8 +227,8 @@ module tb_lfo_sysex_tx;
         cfg_depths[10*8 +: 8] = 8'h81;              // -127
         exp_src[10] = 2'd3; exp_dep[10] = 8'h81;
         wait (sysex_req);
-        receive_frame; check_frame(8'd83, {2'd3, 6'd0, 8'h81}, "T3 route");
-        receive_frame; check_frame(8'd126, 16'd0, "T3 commit");
+        receive_frame; check_frame(8'd83, {4'd0, 2'd3, 8'h81}, "T3 route");
+        receive_frame; check_frame(8'd126, 14'd0, "T3 commit");
 
         // ------------------------------------------------------------------
         // T4: bank2 rate 0->5 -> mode(71) + sync(72, bank2) + commit
@@ -232,9 +238,9 @@ module tb_lfo_sysex_tx;
         cfg_rates[6 +: 3] = 3'd5;
         exp_rate[2] = 3'd5;
         wait (sysex_req);
-        receive_frame; check_frame(8'd71, 16'd5, "T4 mode");
-        receive_frame; check_frame(8'd72, 16'd0006, "T4 sync");
-        receive_frame; check_frame(8'd126, 16'd0, "T4 commit");
+        receive_frame; check_frame(8'd71, 14'd5, "T4 mode");
+        receive_frame; check_frame(8'd72, 14'd0006, "T4 sync");
+        receive_frame; check_frame(8'd126, 14'd0, "T4 commit");
 
         // ------------------------------------------------------------------
         // T5: CC preempts SysEx without corrupting either stream.
@@ -253,10 +259,10 @@ module tb_lfo_sysex_tx;
         exp_src[7] = 2'd2; exp_dep[7] = 8'd80;
         fork
             begin : rx_stream
-                receive_frame; check_frame(8'd53, 16'd123, "T5 point");
-                receive_frame; check_frame(8'd72, 16'd0004, "T5 sync");
-                receive_frame; check_frame(8'd80, {2'd2, 6'd0, 8'd80}, "T5 route");
-                receive_frame; check_frame(8'd126, 16'd0, "T5 commit");
+                receive_frame; check_frame(8'd53, 14'd123, "T5 point");
+                receive_frame; check_frame(8'd72, 14'd0004, "T5 sync");
+                receive_frame; check_frame(8'd80, {4'd0, 2'd2, 8'd80}, "T5 route");
+                receive_frame; check_frame(8'd126, 14'd0, "T5 commit");
             end
             begin : cc_injector
                 wait (sysex_req);
@@ -272,6 +278,19 @@ module tb_lfo_sysex_tx;
             errors = errors + 1;
         end else
             $display("[PASS] T5 CC preempted once");
+
+        // ------------------------------------------------------------------
+        // T6: exact board-use case. OSC A Level is target 13 / ID 86.
+        // LFO1 at +127 is value 0x017F, carried as MIDI bytes 0x02,0x7F.
+        // ------------------------------------------------------------------
+        $display("[INFO] T6: OSC A Level route");
+        @(posedge clk);
+        cfg_sources[13*2 +: 2] = 2'd1;
+        cfg_depths[13*8 +: 8] = 8'd127;
+        exp_src[13] = 2'd1; exp_dep[13] = 8'd127;
+        wait (sysex_req);
+        receive_frame; check_frame(8'd86, 14'h017F, "T6 OSC A Level route");
+        receive_frame; check_frame(8'd126, 14'd0, "T6 commit");
 
         // ------------------------------------------------------------------
         if (errors == 0) $display("[DONE] ALL TESTS PASSED");

@@ -32,7 +32,7 @@ module lfo_sysex_tx #(
     // Note/CC event lands on the same cycle; tx_accept pulses on success)
     input  wire        tx_accept,
     output reg         sysex_req,
-    output reg  [47:0] sysex_msgs,   // {F0,7D,id | msb,lsb,F7} two 24-bit words
+    output reg  [47:0] sysex_msgs,   // {F0,7D,id | value[13:7],value[6:0],F7}
     output wire        busy
 );
     // Entry layout of one snapshot batch (scan order):
@@ -131,7 +131,9 @@ module lfo_sysex_tx #(
         entry_value = 16'd0;
         if (scan >= 7'd27) begin
             entry_id    = ID_ROUTE0 + route_idx;
-            entry_value = {sh_sources[route_idx*2 +: 2], 6'd0,
+            // 14-bit payload layout: source occupies value[9:8], while the
+            // signed depth keeps its raw two's-complement pattern in [7:0].
+            entry_value = {6'd0, sh_sources[route_idx*2 +: 2],
                            sh_depths [route_idx*8 +: 8]};
         end else if (scan >= 7'd24) begin
             entry_id    = ID_SYNC;
@@ -205,7 +207,8 @@ module lfo_sysex_tx #(
                         state <= S_COMMIT;
                     end else if (dirty[scan]) begin
                         sysex_msgs <= {8'hF0, 8'h7D, entry_id,
-                                       entry_value[15:8], entry_value[7:0], 8'hF7};
+                                       1'b0, entry_value[13:7],
+                                       1'b0, entry_value[6:0], 8'hF7};
                         sysex_req  <= 1'b1;
                         if (tx_accept) begin
                             dirty[scan] <= 1'b0;

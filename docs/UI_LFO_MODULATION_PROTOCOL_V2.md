@@ -87,7 +87,7 @@ UI 侧每个可调旋钮都是一个潜在调制目标，共 **53 个**（`mod_t
 F0 7D <parameter_id> <value_msb> <value_lsb> F7
 ```
 
-`parameter_id` 8bit；`value` 16bit 大端（msb 在前）。**新 ID 段 48–126，与旧段 16–46 无冲突。**
+`parameter_id`与两个数据字节都必须保持MIDI数据字节格式，即最高位为0。`value`是14位无符号数，发送时拆为`(value >> 7) & 0x7F`和`value & 0x7F`。不能按普通16位大端拆分，否则负深度会产生`0x80..0xFF`状态字节并破坏SysEx。**新 ID 段48–126，与旧段16–46无冲突。**
 
 ### 2.1 曲线点（ID 48–68）
 
