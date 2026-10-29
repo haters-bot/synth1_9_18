@@ -17,6 +17,7 @@ module global_phaser (
 );
 
     reg busy;
+    reg signed [15:0] wet_registered;
     reg [2:0] stage_index;
     reg [23:0] lfo_phase;
     reg signed [15:0] x_state [0:3];
@@ -69,7 +70,7 @@ module global_phaser (
     wire signed [15:0] stage_output =
         saturate_s19_to_s16(stage_output_wide);
     wire signed [16:0] wet_dry_difference =
-        $signed({stage_output[15], stage_output})
+        $signed({wet_registered[15], wet_registered})
         - $signed({dry_sample_latched[15], dry_sample_latched});
     wire signed [24:0] mix_product =
         wet_dry_difference * $signed({1'b0, mix_latched});
@@ -109,6 +110,7 @@ module global_phaser (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             busy <= 1'b0;
+            wet_registered <= 0;
             stage_index <= 3'd0;
             lfo_phase <= 24'd0;
             chain_sample <= 16'sd0;
@@ -155,21 +157,23 @@ module global_phaser (
                 else if (mix_current > mix_control)
                     mix_current <= mix_current - 7'd1;
             end else if (busy) begin
-                x_state[stage_index[1:0]] <= chain_sample;
-                y_state[stage_index[1:0]] <= stage_output;
-                if (stage_index == 3'd3) begin
-                    feedback_state <= stage_output;
+                if (stage_index == 3'd4) begin
+                    // 最后一级全通与干湿混合分开，避免串联乘法器。
                     if (!enable_latched || mix_latched == 7'd0)
                         sample_out <= dry_sample_latched;
                     else if (mix_latched == 7'd127)
-                        sample_out <= stage_output;
-                    else
-                        sample_out <= saturate_s26_to_s16(mixed_wide);
-                    out_valid <= 1'b1;
-                    busy <= 1'b0;
+                        sample_out <= wet_registered;
+                    else sample_out <= saturate_s26_to_s16(mixed_wide);
+                    out_valid <= 1'b1; busy <= 1'b0;
                 end else begin
+                    x_state[stage_index[1:0]] <= chain_sample;
+                    y_state[stage_index[1:0]] <= stage_output;
                     chain_sample <= stage_output;
                     stage_index <= stage_index + 3'd1;
+                    if (stage_index == 3'd3) begin
+                        feedback_state <= stage_output;
+                        wet_registered <= stage_output;
+                    end
                 end
             end
         end

@@ -37,6 +37,9 @@ module tb_oscillator_tdm_bank;
     wire debug_slot_commit;
 
     integer errors;
+    time last_launch_time;
+    time accepted_time;
+    integer bank_latency;
     integer expected_slot;
     integer commit_count;
     integer valid_count;
@@ -81,6 +84,15 @@ module tb_oscillator_tdm_bank;
         .task_update_velocity      (task_update_velocity),
         .task_update_enable        (task_update_enable),
         .task_update_phase_reset   (task_update_phase_reset),
+        .task_update_initial_phase (32'd0),
+        .task_update_base_step     (32'd0),
+        .task_update_detune_unit   (35'd0),
+        .task_update_detune_magnitude(3'd0),
+        .task_update_detune_negative(1'b0),
+        .detune_amount            (7'd0),
+        .glide_override_enable    (1'b0),
+        .glide_override_base_step (32'd0),
+        .vibrato_ratio_delta_q16   (13'sd0),
         .active_task_count         (active_task_count),
         .sample_out                (sample_out),
         .sample_valid              (sample_valid),
@@ -97,6 +109,7 @@ module tb_oscillator_tdm_bank;
         begin
             @(negedge clk);
             start_tick = 1'b1;
+            last_launch_time = $time;
             @(negedge clk);
             start_tick = 1'b0;
         end
@@ -120,6 +133,7 @@ module tb_oscillator_tdm_bank;
     endtask
 
     always @(posedge clk) begin
+        if (start_tick && !debug_busy) accepted_time = $time;
         #1;
 
         if (debug_slot_commit) begin
@@ -134,6 +148,9 @@ module tb_oscillator_tdm_bank;
         end
 
         if (sample_valid) begin
+            bank_latency = ($time - accepted_time) / 20;
+            if (bank_latency >= TICK_PERIOD_CLOCKS)
+                $fatal(1, "Bank exceeded sample deadline: %0d", bank_latency);
             valid_count = valid_count + 1;
             if (sample_out !== 16'sd0)
                 saw_nonzero_sample = 1'b1;
@@ -229,14 +246,20 @@ module tb_oscillator_tdm_bank;
         end
         wait (sample_valid);
 
-        // 相邻768 kHz采样请求约间隔65个50 MHz时钟。每次32槽位调度完成后
-        // 再等待剩余时钟，以验证实际请求速率下不会发生调度超时。
+        // 连续32批严格每65拍启动一次，同时检查bank归一化输出的截止时间。
         for (enabled_schedule_count = 0;
              enabled_schedule_count < ENABLED_SCHEDULES;
              enabled_schedule_count = enabled_schedule_count + 1) begin
-            repeat (TICK_PERIOD_CLOCKS - SLOTS_PER_ENGINE - 2)
-                @(posedge clk);
-            launch_internal_sample();
+            // 按两次启动时间计数，不能用旧流水线深度估算剩余等待。
+            @(negedge clk);
+            while (($time - last_launch_time) < TICK_PERIOD_CLOCKS * 20)
+                @(negedge clk);
+            if (($time - last_launch_time) != TICK_PERIOD_CLOCKS * 20)
+                $fatal(1, "Test did not maintain 65-clock start interval");
+            start_tick = 1'b1;
+            last_launch_time = $time;
+            @(negedge clk);
+            start_tick = 1'b0;
             wait (sample_valid);
         end
 
@@ -335,6 +358,8 @@ module tb_oscillator_tdm_bank;
             $display("ERROR: unexpected schedule overrun");
             errors = errors + 1;
         end
+
+        $display("Bank completion latency: %0d clocks", bank_latency);
 
         // 错误路径检查：在第一次调度仍忙碌时再次发起采样请求。
         // 第二个请求会被有意拒绝，粘滞 overrun 标志必须反映该请求已丢失。

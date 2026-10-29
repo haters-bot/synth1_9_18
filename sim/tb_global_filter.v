@@ -103,7 +103,8 @@ module tb_global_filter;
         mix_control = 7'd0;
         cutoff_control_q8 = {7'd0, 8'd0};
         process_sample(16'sd0);
-        if (latency_cycles != 16) begin
+        // 干湿乘积独立寄存后，Comb路径增加一拍。
+        if (latency_cycles != 17) begin
             $display("ERROR: Catmull Comb latency mismatch: %0d",
                      latency_cycles);
             errors = errors + 1;

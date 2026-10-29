@@ -1,4 +1,4 @@
-// 96 kHz单声道Chorus。4096点循环缓冲、三拍线性插值读出。
+// 96 kHz单声道Chorus。4096点循环缓冲、分拍线性插值与反馈运算。
 module global_chorus (
     input  wire               clk,
     input  wire               rst_n,
@@ -19,6 +19,8 @@ module global_chorus (
     localparam [1:0] STATE_IDLE = 2'd0;
     localparam [1:0] STATE_READ_SECOND = 2'd1;
     localparam [1:0] STATE_PROCESS = 2'd2;
+    localparam [1:0] STATE_INTERPOLATE = 2'd3;
+    reg signed [15:0] wet_sample;
 
     (* syn_ramstyle = "block_ram" *)
     reg signed [15:0] delay_memory [0:4095];
@@ -75,7 +77,7 @@ module global_chorus (
     wire signed [15:0] interpolated_sample =
         (fraction_latched == 8'd0)
         ? read_sample_0 : saturate_s18_to_s16(interpolated_wide);
-    wire signed [15:0] wet_sample = read_valid_latched
+    wire signed [15:0] wet_interpolated = read_valid_latched
                                    ? interpolated_sample : 16'sd0;
     wire signed [23:0] feedback_product =
         wet_sample * $signed({1'b0, feedback_latched});
@@ -123,6 +125,7 @@ module global_chorus (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= STATE_IDLE;
+            wet_sample <= 0;
             write_pointer <= 12'd0;
             samples_written <= 13'd0;
             lfo_phase <= 24'd0;
@@ -174,9 +177,14 @@ module global_chorus (
 
                 STATE_READ_SECOND: begin
                     read_sample_1 <= delay_memory[second_read_address];
-                    state <= STATE_PROCESS;
+                    state <= STATE_INTERPOLATE;
                 end
 
+                // 插值结果独立保存，反馈仍只在每个音频样本写回一次。
+                STATE_INTERPOLATE: begin
+                    wet_sample <= wet_interpolated;
+                    state <= STATE_PROCESS;
+                end
                 STATE_PROCESS: begin
                     delay_memory[write_pointer]
                         <= saturate_s25_to_s16(write_wide);

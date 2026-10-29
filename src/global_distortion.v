@@ -15,35 +15,52 @@ module global_distortion (
     output reg                input_overrun
 );
 
+    // 每个样本独占状态机；寄存器边界切断多个乘法器串联。
+    localparam [2:0] STATE_IDLE = 3'd0;
+    localparam [2:0] STATE_GAIN = 3'd1;
+    localparam [2:0] STATE_DRIVE = 3'd2;
+    localparam [2:0] STATE_SHAPE = 3'd3;
+    localparam [2:0] STATE_TONE_PRODUCT = 3'd4;
+    localparam [2:0] STATE_TONE_STATE = 3'd5;
+    localparam [2:0] STATE_MIX_PRODUCT = 3'd6;
+    localparam [2:0] STATE_OUTPUT = 3'd7;
+    reg [2:0] state;
+    reg signed [15:0] dry_latched, shaped_latched, wet_latched;
+    reg enable_latched;
+    reg [1:0] type_latched;
+    reg [6:0] drive_latched, tone_latched, mix_latched;
+    reg [11:0] gain_latched;
+    reg signed [27:0] drive_registered;
+    reg signed [24:0] tone_registered, mix_registered;
     reg signed [15:0] tone_state;
 
-    wire [11:0] drive_gain_q8 = 12'd256 + drive_control * 5'd14;
+    wire [11:0] drive_gain_q8 = 12'd256 + drive_latched * 5'd14;
     wire signed [27:0] drive_product =
-        $signed(sample_in) * $signed({1'b0, drive_gain_q8});
-    wire signed [27:0] driven_wide = drive_product >>> 8;
+        $signed(dry_latched) * $signed({1'b0, gain_latched});
+    wire signed [27:0] driven_wide = drive_registered >>> 8;
     wire signed [15:0] shaped_sample = shape_sample(
-        driven_wide, distortion_type
+        driven_wide, type_latched
     );
-    wire [7:0] tone_coefficient = {1'b0, tone_control} + 8'd1;
+    wire [7:0] tone_coefficient = {1'b0, tone_latched} + 8'd1;
     wire signed [16:0] tone_difference =
-        $signed({shaped_sample[15], shaped_sample})
+        $signed({shaped_latched[15], shaped_latched})
         - $signed({tone_state[15], tone_state});
     wire signed [24:0] tone_product =
         tone_difference * $signed({1'b0, tone_coefficient});
     wire signed [17:0] tone_next_wide =
         $signed({{2{tone_state[15]}}, tone_state})
-        + ($signed(tone_product) >>> 7);
+        + ($signed(tone_registered) >>> 7);
     wire signed [15:0] tone_next = saturate_s18_to_s16(tone_next_wide);
     wire signed [16:0] wet_dry_difference =
-        $signed({tone_next[15], tone_next})
-        - $signed({sample_in[15], sample_in});
+        $signed({wet_latched[15], wet_latched})
+        - $signed({dry_latched[15], dry_latched});
     wire signed [24:0] mix_product =
-        wet_dry_difference * $signed({1'b0, mix_control});
+        wet_dry_difference * $signed({1'b0, mix_latched});
     wire signed [25:0] mixed_wide =
-        $signed({{10{sample_in[15]}}, sample_in})
-        + ($signed(mix_product) >>> 7);
+        $signed({{10{dry_latched[15]}}, dry_latched})
+        + ($signed(mix_registered) >>> 7);
 
-    assign in_ready = 1'b1;
+    assign in_ready = (state == STATE_IDLE);
 
     function signed [15:0] saturate_s18_to_s16;
         input signed [17:0] value;
@@ -120,23 +137,61 @@ module global_distortion (
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            tone_state    <= 16'sd0;
-            out_valid     <= 1'b0;
-            sample_out    <= 16'sd0;
-            input_overrun <= 1'b0;
+            state <= STATE_IDLE;
+            dry_latched <= 0; shaped_latched <= 0; wet_latched <= 0;
+            enable_latched <= 0; type_latched <= 0;
+            drive_latched <= 0; tone_latched <= 0; mix_latched <= 0;
+            gain_latched <= 0; drive_registered <= 0;
+            tone_registered <= 0; mix_registered <= 0;
+            tone_state <= 0; out_valid <= 0; sample_out <= 0;
+            input_overrun <= 0;
         end else begin
-            out_valid <= 1'b0;
-            if (in_valid) begin
-                tone_state <= tone_next;
-                if (!enable || mix_control == 7'd0)
-                    sample_out <= sample_in;
-                else if (mix_control == 7'd127)
-                    sample_out <= tone_next;
-                else
-                    sample_out <= saturate_s26_to_s16(mixed_wide);
-                out_valid <= 1'b1;
-            end
+            out_valid <= 0;
+            if (in_valid && !in_ready) input_overrun <= 1;
+            case (state)
+                STATE_IDLE: if (in_valid) begin
+                    dry_latched <= sample_in;
+                    enable_latched <= enable; type_latched <= distortion_type;
+                    drive_latched <= drive_control; tone_latched <= tone_control;
+                    mix_latched <= mix_control;
+                    state <= STATE_GAIN;
+                end
+                STATE_GAIN: begin
+                    gain_latched <= drive_gain_q8;
+                    state <= STATE_DRIVE;
+                end
+                STATE_DRIVE: begin
+                    drive_registered <= drive_product;
+                    state <= STATE_SHAPE;
+                end
+                STATE_SHAPE: begin
+                    shaped_latched <= shaped_sample;
+                    state <= STATE_TONE_PRODUCT;
+                end
+                STATE_TONE_PRODUCT: begin
+                    tone_registered <= tone_product;
+                    state <= STATE_TONE_STATE;
+                end
+                STATE_TONE_STATE: begin
+                    // 即使旁路也保持原来的音色滤波状态递推。
+                    tone_state <= tone_next;
+                    wet_latched <= tone_next;
+                    state <= STATE_MIX_PRODUCT;
+                end
+                STATE_MIX_PRODUCT: begin
+                    mix_registered <= mix_product;
+                    state <= STATE_OUTPUT;
+                end
+                STATE_OUTPUT: begin
+                    if (!enable_latched || mix_latched == 0)
+                        sample_out <= dry_latched;
+                    else if (mix_latched == 127) sample_out <= wet_latched;
+                    else sample_out <= saturate_s26_to_s16(mixed_wide);
+                    out_valid <= 1'b1;
+                    state <= STATE_IDLE;
+                end
+                default: state <= STATE_IDLE;
+            endcase
         end
     end
-
 endmodule

@@ -22,6 +22,10 @@ module global_filter(
     localparam [2:0] FILTER_COMB_NEGATIVE = 3'd6;
 
     reg busy;
+    // 先保存乘法结果，再完成干湿求和，端点仍逐位旁路。
+    reg mix_pending;
+    reg signed [23:0] mix_registered;
+    reg signed [15:0] wet_registered;
     reg selected_comb_latched;
     reg signed [15:0] dry_sample_latched;
     reg [6:0] mix_latched;
@@ -64,7 +68,7 @@ module global_filter(
     assign mix_product = wet_dry_difference * $signed({1'b0, mix_latched});
     assign mixed_sample_wide =
         $signed({{2{dry_sample_latched[15]}}, dry_sample_latched})
-        + ($signed(mix_product) >>> 7);
+        + ($signed(mix_registered) >>> 7);
 
     global_svf_filter u_global_svf_filter (
         .clk              (clk),
@@ -109,6 +113,7 @@ module global_filter(
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             busy                    <= 1'b0;
+            mix_pending <= 0; mix_registered <= 0; wet_registered <= 0;
             selected_comb_latched   <= 1'b0;
             dry_sample_latched      <= 16'sd0;
             mix_latched             <= 7'd127;
@@ -117,6 +122,7 @@ module global_filter(
             input_overrun           <= 1'b0;
         end else begin
             out_valid <= 1'b0;
+            mix_pending <= 1'b0;
 
             if (in_valid && !in_ready)
                 input_overrun <= 1'b1;
@@ -130,12 +136,17 @@ module global_filter(
                 mix_latched           <= mix_control;
             end
 
-            if (selected_output_valid) begin
+            if (selected_output_valid && busy) begin
+                mix_registered <= mix_product;
+                wet_registered <= selected_wet_sample;
+                mix_pending <= 1'b1;
+            end
+            if (mix_pending) begin
                 // Mix=0和127单独处理，确保两个端点逐位精确。
                 if (mix_latched == 7'd0) begin
                     sample_out <= dry_sample_latched;
                 end else if (mix_latched == 7'd127) begin
-                    sample_out <= selected_wet_sample;
+                    sample_out <= wet_registered;
                 end else begin
                     sample_out <= saturate_s18_to_s16(mixed_sample_wide);
                 end

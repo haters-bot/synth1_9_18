@@ -1,12 +1,7 @@
-// 一个物理波表振荡器由多个逻辑振荡器槽位共享。
-//
-// 同步波表ROM需要一拍读取延迟，因此调度分成两个并行阶段：
-//   发出阶段：每拍读取一个槽位状态，并向波表ROM提交地址；
-//   提交阶段：下一拍取得波表数据，更新该槽位并累加采样。
-//
-// 流水线填满后仍然每拍处理一个槽位。SLOTS_PER_ENGINE=8时，
-// 一次内部采样从start_tick到partial_valid需要10拍左右，远小于
-// 50 MHz系统时钟下两个768 kHz采样脉冲之间约65拍的预算。
+// 一个物理引擎每拍接收一个槽位，八个寄存器级分别承担：
+// 读槽位、Warp操作数、Warp乘积、ROM地址、ROM返回、插值样本、增益乘积、累加提交。
+// 每级携带槽位编号和取消标志；同槽位更新使旧任务失效，避免覆盖新音符。
+// 32槽位的核心提交在start_tick后39拍完成，需由仿真检查整条bank的65拍预算。
 module oscillator_tdm_core #(
     parameter integer SLOTS_PER_ENGINE = 4,
     parameter integer PARTIAL_SUM_WIDTH = 24,
@@ -123,8 +118,7 @@ module oscillator_tdm_core #(
     reg [15:0] envelope_divider;
     reg        envelope_update_active;
 
-    // 地址请求级先截断槽位状态选择和相位变形形成的长组合路径。
-    // 下一拍再把该上下文送入原有提交级，并同时向同步波表发出读请求。
+    // ROM地址级：Warp已完成；当前上下文与这一拍发出的同步读取对应。
     reg        request_valid;
     reg        request_cancel;
     reg [7:0]  request_slot;
@@ -141,7 +135,7 @@ module oscillator_tdm_core #(
     reg [31:0] request_envelope_phase;
     reg [15:0] request_release_start_level;
 
-    // 波表返回数据所对应的提交级槽位上下文。
+    // ROM返回级：帧间插值在本级完成，下一拍保存完整样本。
     reg        pipe_valid;
     reg        pipe_cancel;
     reg [7:0]  pipe_slot;
@@ -157,6 +151,95 @@ module oscillator_tdm_core #(
     reg [2:0]  pipe_waveform_select;
     reg [31:0] pipe_envelope_phase;
     reg [15:0] pipe_release_start_level;
+
+
+    // 读槽位 → Warp准备 → Warp乘法 → 地址 → ROM返回 → 样本 → 提交。
+    reg  read_valid;
+    reg  read_cancel;
+    reg [7:0] read_slot;
+    reg [31:0] read_phase;
+    reg [7:0] read_wave_address;
+    reg [31:0] read_phase_step;
+    reg  read_enable;
+    reg  read_gate;
+    reg [2:0] read_envelope_stage;
+    reg [15:0] read_envelope_level;
+    reg [15:0] read_velocity_envelope_level;
+    reg [6:0] read_velocity;
+    reg [2:0] read_waveform_select;
+    reg [31:0] read_envelope_phase;
+    reg [15:0] read_release_start_level;
+    reg  prepare_valid;
+    reg  prepare_cancel;
+    reg [7:0] prepare_slot;
+    reg [31:0] prepare_phase;
+    reg [31:0] prepare_phase_step;
+    reg  prepare_enable;
+    reg  prepare_gate;
+    reg [2:0] prepare_envelope_stage;
+    reg [15:0] prepare_envelope_level;
+    reg [15:0] prepare_velocity_envelope_level;
+    reg [6:0] prepare_velocity;
+    reg [2:0] prepare_waveform_select;
+    reg [31:0] prepare_envelope_phase;
+    reg [15:0] prepare_release_start_level;
+    reg  multiply_valid;
+    reg  multiply_cancel;
+    reg [7:0] multiply_slot;
+    reg [31:0] multiply_phase;
+    reg [31:0] multiply_phase_step;
+    reg  multiply_enable;
+    reg  multiply_gate;
+    reg [2:0] multiply_envelope_stage;
+    reg [15:0] multiply_envelope_level;
+    reg [15:0] multiply_velocity_envelope_level;
+    reg [6:0] multiply_velocity;
+    reg [2:0] multiply_waveform_select;
+    reg [31:0] multiply_envelope_phase;
+    reg [15:0] multiply_release_start_level;
+    reg  sample_valid;
+    reg  sample_cancel;
+    reg [7:0] sample_slot;
+    reg [31:0] sample_phase;
+    reg [31:0] sample_phase_step;
+    reg  sample_enable;
+    reg  sample_gate;
+    reg [2:0] sample_envelope_stage;
+    reg [15:0] sample_envelope_level;
+    reg [15:0] sample_velocity_envelope_level;
+    reg  commit_valid;
+    reg  commit_cancel;
+    reg [7:0] commit_slot;
+    reg [31:0] commit_phase;
+    reg [31:0] commit_phase_step;
+    reg  commit_enable;
+    reg  commit_gate;
+    reg [2:0] commit_envelope_stage;
+    reg [15:0] commit_envelope_level;
+    reg [34:0] read_detune_unit;
+    reg [31:0] read_base_step;
+    reg read_detune_negative;
+    reg prepare_detune_negative;
+    reg multiply_detune_negative;
+    reg [41:0] prepare_detune_product;
+    reg signed [45:0] prepare_vibrato_product;
+    reg [41:0] multiply_detune_product;
+    reg signed [45:0] multiply_vibrato_product;
+    reg signed [15:0] sample_wave;
+    reg signed [33:0] commit_envelope_product;
+    reg [15:0] sample_velocity_scaled_envelope;
+    reg [31:0] sample_envelope_phase_next;
+    reg  sample_envelope_phase_complete;
+    reg [15:0] sample_envelope_phase_fraction;
+    reg [15:0] sample_segment_multiplicand;
+    reg [15:0] sample_segment_factor;
+
+    reg [15:0] commit_velocity_scaled_envelope;
+    reg [31:0] commit_envelope_phase_next;
+    reg  commit_envelope_phase_complete;
+    reg [15:0] commit_envelope_phase_fraction;
+    reg [15:0] commit_decay_level_next;
+    reg [15:0] commit_release_level_next;
 
     wire [31:0] issue_phase;
     wire [7:0] issue_raw_wave_address;
@@ -253,8 +336,9 @@ module oscillator_tdm_core #(
     assign issue_phase = phase_state[issue_slot];
     assign issue_raw_wave_address = issue_phase[31:24];
 
-    wavetable_phase_warp u_wavetable_phase_warp (
-        .raw_address   (issue_raw_wave_address),
+    wavetable_phase_warp_pipeline u_wavetable_phase_warp (
+        .clk(clk), .rst_n(rst_n),
+        .raw_address   (read_wave_address),
         .warp_mode     (warp_mode_batch),
         .warp_amount   (warp_amount_batch),
         .warped_address(issue_warped_wave_address)
@@ -301,8 +385,7 @@ module oscillator_tdm_core #(
                                      ? external_wave_sample
                                      : acid_wave_sample;
 
-    // 旧有四种波形保持组合读取，但地址改为流水线中的待提交相位，
-    // 从而与同步Acid波表的数据在同一提交拍对齐。
+    // 基础波形使用ROM返回级地址，与Acid/外部波表返回数据对齐。
     sine_lut u_shared_sine_lut (
         .addr(pipe_wave_address),
         .data(sine_wave_sample)
@@ -342,12 +425,12 @@ module oscillator_tdm_core #(
         : velocity_rounded[22:7];
 
     assign current_wave_extended
-        = $signed({current_wave_sample[15], current_wave_sample});
+        = $signed({sample_wave[15], sample_wave});
     assign current_envelope_gain
-        = $signed({1'b0, pipe_velocity_envelope_level});
+        = $signed({1'b0, sample_velocity_envelope_level});
     assign envelope_product = $signed(current_wave_extended)
                             * $signed(current_envelope_gain);
-    assign envelope_rounded = envelope_product + 34'sd32768;
+    assign envelope_rounded = commit_envelope_product + 34'sd32768;
     assign envelope_scaled = envelope_rounded >>> 16;
     assign enveloped_wave_sample = envelope_scaled[15:0];
 
@@ -383,13 +466,13 @@ module oscillator_tdm_core #(
         end
     end
 
-    assign segment_product = segment_multiplicand * segment_factor;
+    assign segment_product = sample_segment_multiplicand * sample_segment_factor;
     assign decay_level_next = 16'hFFFF - segment_product[31:16];
     assign release_level_next = segment_product[31:16];
 
-    assign commit_enabled = pipe_valid && pipe_enable && !pipe_cancel
-                          && ((pipe_waveform_select != WAVE_ACID)
-                              || selected_wavetable_valid);
+    assign commit_enabled = commit_valid && commit_enable && !commit_cancel
+                          && !clear_phase
+                          && !(task_update_valid && task_update_slot == commit_slot);
     assign extended_sample = commit_enabled
         ? {{(PARTIAL_SUM_WIDTH-16){enveloped_wave_sample[15]}},
            enveloped_wave_sample}
@@ -398,6 +481,92 @@ module oscillator_tdm_core #(
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            read_valid <= 0;
+            read_cancel <= 0;
+            read_slot <= 0;
+            read_phase <= 0;
+            read_wave_address <= 0;
+            read_phase_step <= 0;
+            read_enable <= 0;
+            read_gate <= 0;
+            read_envelope_stage <= 0;
+            read_envelope_level <= 0;
+            read_velocity_envelope_level <= 0;
+            read_velocity <= 0;
+            read_waveform_select <= 0;
+            read_envelope_phase <= 0;
+            read_release_start_level <= 0;
+            prepare_valid <= 0;
+            prepare_cancel <= 0;
+            prepare_slot <= 0;
+            prepare_phase <= 0;
+            prepare_phase_step <= 0;
+            prepare_enable <= 0;
+            prepare_gate <= 0;
+            prepare_envelope_stage <= 0;
+            prepare_envelope_level <= 0;
+            prepare_velocity_envelope_level <= 0;
+            prepare_velocity <= 0;
+            prepare_waveform_select <= 0;
+            prepare_envelope_phase <= 0;
+            prepare_release_start_level <= 0;
+            multiply_valid <= 0;
+            multiply_cancel <= 0;
+            multiply_slot <= 0;
+            multiply_phase <= 0;
+            multiply_phase_step <= 0;
+            multiply_enable <= 0;
+            multiply_gate <= 0;
+            multiply_envelope_stage <= 0;
+            multiply_envelope_level <= 0;
+            multiply_velocity_envelope_level <= 0;
+            multiply_velocity <= 0;
+            multiply_waveform_select <= 0;
+            multiply_envelope_phase <= 0;
+            multiply_release_start_level <= 0;
+            sample_valid <= 0;
+            sample_cancel <= 0;
+            sample_slot <= 0;
+            sample_phase <= 0;
+            sample_phase_step <= 0;
+            sample_enable <= 0;
+            sample_gate <= 0;
+            sample_envelope_stage <= 0;
+            sample_envelope_level <= 0;
+            sample_velocity_envelope_level <= 0;
+            commit_valid <= 0;
+            commit_cancel <= 0;
+            commit_slot <= 0;
+            commit_phase <= 0;
+            commit_phase_step <= 0;
+            commit_enable <= 0;
+            commit_gate <= 0;
+            commit_envelope_stage <= 0;
+            commit_envelope_level <= 0;
+            read_detune_unit <= 0;
+            read_base_step <= 0;
+            read_detune_negative <= 0;
+            prepare_detune_negative <= 0;
+            multiply_detune_negative <= 0;
+            prepare_detune_product <= 0;
+            prepare_vibrato_product <= 0;
+            multiply_detune_product <= 0;
+            multiply_vibrato_product <= 0;
+            sample_wave <= 0;
+            commit_envelope_product <= 0;
+            sample_velocity_scaled_envelope <= 0;
+            sample_envelope_phase_next <= 0;
+            sample_envelope_phase_complete <= 0;
+            sample_envelope_phase_fraction <= 0;
+            sample_segment_multiplicand <= 0;
+            sample_segment_factor <= 0;
+
+            commit_velocity_scaled_envelope <= 0;
+            commit_envelope_phase_next <= 0;
+            commit_envelope_phase_complete <= 0;
+            commit_envelope_phase_fraction <= 0;
+            commit_decay_level_next <= 0;
+            commit_release_level_next <= 0;
             issue_slot        <= 8'd0;
             issue_active      <= 1'b0;
             waveform_select_batch <= 3'd2;
@@ -493,6 +662,13 @@ module oscillator_tdm_core #(
             if (!busy) begin
                 request_valid <= 1'b0;
                 pipe_valid <= 1'b0;
+                read_valid <= 0;
+                // 读槽位 → Warp操作数级。
+                prepare_valid <= 0;
+                // Warp操作数 → 乘积级。
+                multiply_valid <= 0;
+                sample_valid <= 0;
+                commit_valid <= 0;
                 if (start_tick) begin
                     busy             <= 1'b1;
                     issue_active     <= 1'b1;
@@ -526,11 +702,11 @@ module oscillator_tdm_core #(
                     end
                 end
             end else begin
-                // 请求级每拍向提交级推进一次。同步波表在同一拍读取请求级地址，
+                // 地址级每拍向ROM返回级推进一次。波表在同一拍读取请求级地址，
                 // 因而其返回数据会与这里复制的槽位上下文保持对齐。
                 pipe_valid <= request_valid;
                 if (request_valid) begin
-                    pipe_cancel <= request_cancel
+                    pipe_cancel <= request_cancel || clear_phase
                                 || (task_update_valid
                                     && (task_update_slot == request_slot));
                     pipe_slot <= request_slot;
@@ -554,134 +730,220 @@ module oscillator_tdm_core #(
                         <= request_release_start_level;
                 end
 
-                // 没有新槽位发出时，请求有效信号自然排空流水线尾部。
-                request_valid <= 1'b0;
+                // 每拍推进上下文，暂停发出后valid自然排空；绝不等待整批槽位。
+                read_valid <= 0;
+                prepare_valid <= read_valid;
+                prepare_cancel <= read_cancel || clear_phase || (task_update_valid && task_update_slot == read_slot);
+                prepare_slot <= read_slot;
+                prepare_phase <= read_phase;
+                prepare_phase_step <= read_phase_step;
+                prepare_enable <= read_enable;
+                prepare_gate <= read_gate;
+                prepare_envelope_stage <= read_envelope_stage;
+                prepare_envelope_level <= read_envelope_level;
+                prepare_velocity_envelope_level <= read_velocity_envelope_level;
+                prepare_velocity <= read_velocity;
+                prepare_waveform_select <= read_waveform_select;
+                prepare_envelope_phase <= read_envelope_phase;
+                prepare_release_start_level <= read_release_start_level;
+                multiply_valid <= prepare_valid;
+                multiply_cancel <= prepare_cancel || clear_phase || (task_update_valid && task_update_slot == prepare_slot);
+                multiply_slot <= prepare_slot;
+                multiply_phase <= prepare_phase;
+                multiply_phase_step <= prepare_phase_step;
+                multiply_enable <= prepare_enable;
+                multiply_gate <= prepare_gate;
+                multiply_envelope_stage <= prepare_envelope_stage;
+                multiply_envelope_level <= prepare_envelope_level;
+                multiply_velocity_envelope_level <= prepare_velocity_envelope_level;
+                multiply_velocity <= prepare_velocity;
+                multiply_waveform_select <= prepare_waveform_select;
+                multiply_envelope_phase <= prepare_envelope_phase;
+                multiply_release_start_level <= prepare_release_start_level;
+                // Warp乘积 → ROM地址级。
+                request_valid <= multiply_valid;
+                request_cancel <= multiply_cancel || clear_phase || (task_update_valid && task_update_slot == multiply_slot);
+                request_slot <= multiply_slot;
+                request_phase <= multiply_phase;
+                request_wave_address <= issue_warped_wave_address;
+                request_phase_step <= multiply_phase_step;
+                request_enable <= multiply_enable;
+                request_gate <= multiply_gate;
+                request_envelope_stage <= multiply_envelope_stage;
+                request_envelope_level <= multiply_envelope_level;
+                request_velocity_envelope_level <= multiply_velocity_envelope_level;
+                request_velocity <= multiply_velocity;
+                request_waveform_select <= multiply_waveform_select;
+                request_envelope_phase <= multiply_envelope_phase;
+                request_release_start_level <= multiply_release_start_level;
+                // ROM返回/插值 → 样本寄存器。
+                sample_valid <= pipe_valid;
+                sample_cancel <= pipe_cancel || clear_phase || (task_update_valid && task_update_slot == pipe_slot);
+                sample_slot <= pipe_slot;
+                sample_phase <= pipe_phase;
+                sample_phase_step <= pipe_phase_step;
+                sample_enable <= pipe_enable && ((pipe_waveform_select != WAVE_ACID) || selected_wavetable_valid);
+                sample_gate <= pipe_gate;
+                sample_envelope_stage <= pipe_envelope_stage;
+                sample_envelope_level <= pipe_envelope_level;
+                sample_velocity_envelope_level <= pipe_velocity_envelope_level;
+                // 样本 → 增益乘积/提交上下文。
+                commit_valid <= sample_valid;
+                commit_cancel <= sample_cancel || clear_phase || (task_update_valid && task_update_slot == sample_slot);
+                commit_slot <= sample_slot;
+                commit_phase <= sample_phase;
+                commit_phase_step <= sample_phase_step;
+                commit_enable <= sample_enable;
+                commit_gate <= sample_gate;
+                commit_envelope_stage <= sample_envelope_stage;
+                commit_envelope_level <= sample_envelope_level;
+                prepare_detune_negative <= read_detune_negative;
+                multiply_detune_negative <= prepare_detune_negative;
+                prepare_detune_product <= read_detune_unit * detune_batch;
+                prepare_vibrato_product <= $signed({1'b0, read_base_step}) * $signed(vibrato_ratio_delta_batch);
+                multiply_detune_product <= prepare_detune_product;
+                multiply_vibrato_product <= prepare_vibrato_product;
+                request_detune_product <= multiply_detune_product;
+                request_vibrato_product <= multiply_vibrato_product;
+                request_detune_negative <= multiply_detune_negative;
+                sample_wave <= current_wave_sample;
+                commit_envelope_product <= envelope_product;
+                sample_velocity_scaled_envelope <= velocity_scaled_envelope;
+                commit_velocity_scaled_envelope <= sample_velocity_scaled_envelope;
+                sample_envelope_phase_next <= envelope_phase_next;
+                commit_envelope_phase_next <= sample_envelope_phase_next;
+                sample_envelope_phase_complete <= envelope_phase_complete;
+                commit_envelope_phase_complete <= sample_envelope_phase_complete;
+                sample_envelope_phase_fraction <= envelope_phase_fraction;
+                commit_envelope_phase_fraction <= sample_envelope_phase_fraction;
+                sample_segment_multiplicand <= segment_multiplicand;
+                sample_segment_factor <= segment_factor;
+                commit_decay_level_next <= decay_level_next;
+                commit_release_level_next <= release_level_next;
 
-                // 提交上一拍发出的槽位。
-                if (pipe_valid) begin
-                    debug_slot        <= pipe_slot;
+
+                // 提交已完成全部计算的槽位。失效任务仍提交序号，但不写状态、不贡献混音。
+                if (commit_valid) begin
+                    debug_slot        <= commit_slot;
                     debug_slot_commit <= 1'b1;
 
                     if (commit_enabled && !clear_phase)
-                        phase_state[pipe_slot]
-                            <= pipe_phase + pipe_phase_step;
+                        phase_state[commit_slot]
+                            <= commit_phase + commit_phase_step;
 
                     if (commit_enabled && envelope_update_active) begin
-                        velocity_envelope_level[pipe_slot]
-                            <= velocity_scaled_envelope;
-                        case (pipe_envelope_stage)
+                        velocity_envelope_level[commit_slot]
+                            <= commit_velocity_scaled_envelope;
+                        case (commit_envelope_stage)
                             ENV_ATTACK: begin
-                                if (!pipe_gate) begin
-                                    envelope_stage[pipe_slot] <= ENV_RELEASE;
-                                    envelope_phase[pipe_slot] <= 32'd0;
-                                    release_start_level[pipe_slot]
-                                        <= pipe_envelope_level;
-                                end else if (envelope_phase_complete) begin
-                                    envelope_level[pipe_slot] <= 16'hFFFF;
-                                    envelope_stage[pipe_slot] <= ENV_DECAY;
-                                    envelope_phase[pipe_slot] <= 32'd0;
+                                if (!commit_gate) begin
+                                    envelope_stage[commit_slot] <= ENV_RELEASE;
+                                    envelope_phase[commit_slot] <= 32'd0;
+                                    release_start_level[commit_slot]
+                                        <= commit_envelope_level;
+                                end else if (commit_envelope_phase_complete) begin
+                                    envelope_level[commit_slot] <= 16'hFFFF;
+                                    envelope_stage[commit_slot] <= ENV_DECAY;
+                                    envelope_phase[commit_slot] <= 32'd0;
                                 end else begin
-                                    envelope_level[pipe_slot]
-                                        <= envelope_phase_fraction;
-                                    envelope_phase[pipe_slot]
-                                        <= envelope_phase_next;
+                                    envelope_level[commit_slot]
+                                        <= commit_envelope_phase_fraction;
+                                    envelope_phase[commit_slot]
+                                        <= commit_envelope_phase_next;
                                 end
                             end
 
                             ENV_DECAY: begin
-                                if (!pipe_gate) begin
-                                    envelope_stage[pipe_slot] <= ENV_RELEASE;
-                                    envelope_phase[pipe_slot] <= 32'd0;
-                                    release_start_level[pipe_slot]
-                                        <= pipe_envelope_level;
-                                end else if (envelope_phase_complete) begin
-                                    envelope_level[pipe_slot]
+                                if (!commit_gate) begin
+                                    envelope_stage[commit_slot] <= ENV_RELEASE;
+                                    envelope_phase[commit_slot] <= 32'd0;
+                                    release_start_level[commit_slot]
+                                        <= commit_envelope_level;
+                                end else if (commit_envelope_phase_complete) begin
+                                    envelope_level[commit_slot]
                                         <= sustain_level_batch;
-                                    envelope_stage[pipe_slot] <= ENV_SUSTAIN;
-                                    envelope_phase[pipe_slot] <= 32'd0;
+                                    envelope_stage[commit_slot] <= ENV_SUSTAIN;
+                                    envelope_phase[commit_slot] <= 32'd0;
                                 end else begin
-                                    envelope_level[pipe_slot]
-                                        <= decay_level_next;
-                                    envelope_phase[pipe_slot]
-                                        <= envelope_phase_next;
+                                    envelope_level[commit_slot]
+                                        <= commit_decay_level_next;
+                                    envelope_phase[commit_slot]
+                                        <= commit_envelope_phase_next;
                                 end
                             end
 
                             ENV_SUSTAIN: begin
-                                if (!pipe_gate) begin
-                                    envelope_stage[pipe_slot] <= ENV_RELEASE;
-                                    envelope_phase[pipe_slot] <= 32'd0;
-                                    release_start_level[pipe_slot]
-                                        <= pipe_envelope_level;
+                                if (!commit_gate) begin
+                                    envelope_stage[commit_slot] <= ENV_RELEASE;
+                                    envelope_phase[commit_slot] <= 32'd0;
+                                    release_start_level[commit_slot]
+                                        <= commit_envelope_level;
                                 end else begin
-                                    envelope_level[pipe_slot]
+                                    envelope_level[commit_slot]
                                         <= sustain_level_batch;
                                 end
                             end
 
                             ENV_RELEASE: begin
-                                if (envelope_phase_complete) begin
-                                    envelope_level[pipe_slot] <= 16'd0;
-                                    envelope_stage[pipe_slot] <= ENV_IDLE;
-                                    envelope_phase[pipe_slot] <= 32'd0;
-                                    enable_state[pipe_slot] <= 1'b0;
+                                if (commit_envelope_phase_complete) begin
+                                    envelope_level[commit_slot] <= 16'd0;
+                                    envelope_stage[commit_slot] <= ENV_IDLE;
+                                    envelope_phase[commit_slot] <= 32'd0;
+                                    enable_state[commit_slot] <= 1'b0;
                                     task_idle_valid <= 1'b1;
-                                    task_idle_slot  <= pipe_slot;
+                                    task_idle_slot  <= commit_slot;
                                 end else begin
-                                    envelope_level[pipe_slot]
-                                        <= release_level_next;
-                                    envelope_phase[pipe_slot]
-                                        <= envelope_phase_next;
+                                    envelope_level[commit_slot]
+                                        <= commit_release_level_next;
+                                    envelope_phase[commit_slot]
+                                        <= commit_envelope_phase_next;
                                 end
                             end
 
                             default: begin
-                                envelope_level[pipe_slot] <= 16'd0;
-                                envelope_stage[pipe_slot] <= ENV_IDLE;
-                                envelope_phase[pipe_slot] <= 32'd0;
-                                enable_state[pipe_slot] <= 1'b0;
+                                envelope_level[commit_slot] <= 16'd0;
+                                envelope_stage[commit_slot] <= ENV_IDLE;
+                                envelope_phase[commit_slot] <= 32'd0;
+                                enable_state[commit_slot] <= 1'b0;
                             end
                         endcase
                     end
 
-                    if (pipe_slot == (SLOTS_PER_ENGINE-1)) begin
+                    if (commit_slot == (SLOTS_PER_ENGINE-1)) begin
                         partial_sum     <= sum_with_current_slot;
                         partial_valid   <= 1'b1;
                         mix_accumulator <= {PARTIAL_SUM_WIDTH{1'b0}};
-                        pipe_valid      <= 1'b0;
+                        commit_valid      <= 1'b0;
                         busy            <= 1'b0;
                     end else begin
                         mix_accumulator <= sum_with_current_slot;
                     end
                 end
 
-                // 与提交并行，向ROM发出下一个槽位。最后一个槽位发出后，
-                // 再留一拍只用于提交流水线尾部。
+                // 与提交并行，只读取下一个槽位。最后一个读出后，等待所有在途级排空。
                 if (issue_active) begin
-                    request_valid  <= 1'b1;
-                    request_cancel <= task_update_valid
-                                   && (task_update_slot == issue_slot);
-                    request_slot   <= issue_slot;
-                    request_phase  <= phase_state[issue_slot];
-                    request_wave_address <= issue_warped_wave_address;
-                    request_phase_step <= REALTIME_DETUNE_ENABLE
+                    read_valid  <= 1'b1;
+                    read_cancel <= clear_phase || (task_update_valid
+                                   && (task_update_slot == issue_slot));
+                    read_slot   <= issue_slot;
+                    read_phase  <= phase_state[issue_slot];
+                    read_wave_address <= issue_raw_wave_address;
+                    read_phase_step <= REALTIME_DETUNE_ENABLE
                         ? issue_live_base_step : phase_step_state[issue_slot];
-                    request_detune_product
-                        <= issue_live_detune_unit * detune_batch;
-                    request_vibrato_product
-                        <= $signed({1'b0, issue_live_base_step})
-                         * $signed(vibrato_ratio_delta_batch);
-                    request_detune_negative <= detune_negative_state[issue_slot];
-                    request_enable <= enable_state[issue_slot];
-                    request_gate   <= gate_state[issue_slot];
-                    request_envelope_stage <= envelope_stage[issue_slot];
-                    request_envelope_level <= envelope_level[issue_slot];
-                    request_velocity_envelope_level
+                    read_detune_unit <= issue_live_detune_unit;
+                    read_base_step <= issue_live_base_step;
+
+                    read_detune_negative <= detune_negative_state[issue_slot];
+                    read_enable <= enable_state[issue_slot];
+                    read_gate   <= gate_state[issue_slot];
+                    read_envelope_stage <= envelope_stage[issue_slot];
+                    read_envelope_level <= envelope_level[issue_slot];
+                    read_velocity_envelope_level
                         <= velocity_envelope_level[issue_slot];
-                    request_velocity <= velocity_state[issue_slot];
-                    request_waveform_select <= waveform_select_batch;
-                    request_envelope_phase <= envelope_phase[issue_slot];
-                    request_release_start_level
+                    read_velocity <= velocity_state[issue_slot];
+                    read_waveform_select <= waveform_select_batch;
+                    read_envelope_phase <= envelope_phase[issue_slot];
+                    read_release_start_level
                         <= release_start_level[issue_slot];
 
                     if (issue_slot == (SLOTS_PER_ENGINE-1)) begin

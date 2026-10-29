@@ -1,12 +1,64 @@
-// 波表读取地址变换。原始32位相位累加器保持不变，因此Warp不会改变基音。
-// 所有需要乘法的模式共用一个有符号乘法器，避免模式数量增加后线性消耗DSP。
+// 组合兼容接口与两级流水接口共用同一套变形公式。
 module wavetable_phase_warp(
-    input  wire [7:0] raw_address,
-    input  wire [3:0] warp_mode,
-    input  wire [6:0] warp_amount,
-    output reg  [7:0] warped_address
+    input wire [7:0] raw_address,
+    input wire [3:0] warp_mode,
+    input wire [6:0] warp_amount,
+    output wire [7:0] warped_address
 );
+    wire signed [9:0] a;
+    wire signed [8:0] b;
+    wire [7:0] target, mask;
+    wire signed [18:0] product = a * b;
+    wavetable_warp_prepare u_prepare(raw_address, warp_mode, warp_amount, a, b, target, mask);
+    wavetable_warp_finish u_finish(raw_address, warp_mode, warp_amount, target, mask, product, warped_address);
+endmodule
 
+// 接收原始地址后，第一级保存操作数，第二级保存乘积；每拍可接收一个地址。
+// 槽位valid、取消标志由TDM核心以相同级数推进。
+module wavetable_phase_warp_pipeline(
+    input wire clk, rst_n,
+    input wire [7:0] raw_address,
+    input wire [3:0] warp_mode,
+    input wire [6:0] warp_amount,
+    output wire [7:0] warped_address
+);
+    wire signed [9:0] a;
+    wire signed [8:0] b;
+    wire [7:0] target, mask;
+    reg signed [9:0] a1;
+    reg signed [8:0] b1;
+    reg signed [18:0] product2;
+    reg [7:0] raw1, raw2, target1, target2, mask1, mask2;
+    reg [3:0] mode1, mode2;
+    reg [6:0] amount1, amount2;
+    wavetable_warp_prepare u_prepare(raw_address, warp_mode, warp_amount, a, b, target, mask);
+    wavetable_warp_finish u_finish(raw2, mode2, amount2, target2, mask2, product2, warped_address);
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            a1 <= 0; b1 <= 0; product2 <= 0;
+            raw1 <= 0; raw2 <= 0; target1 <= 0; target2 <= 0;
+            mask1 <= 0; mask2 <= 0; mode1 <= 0; mode2 <= 0;
+            amount1 <= 0; amount2 <= 0;
+        end else begin
+            a1 <= a; b1 <= b;
+            raw1 <= raw_address; target1 <= target; mask1 <= mask;
+            mode1 <= warp_mode; amount1 <= warp_amount;
+            product2 <= a1 * b1;
+            raw2 <= raw1; target2 <= target1; mask2 <= mask1;
+            mode2 <= mode1; amount2 <= amount1;
+        end
+    end
+endmodule
+
+module wavetable_warp_prepare(
+    input wire [7:0] raw_address,
+    input wire [3:0] warp_mode,
+    input wire [6:0] warp_amount,
+    output reg signed [9:0] multiplier_a,
+    output reg signed [8:0] multiplier_b,
+    output reg [7:0] bend_target,
+    output reg [7:0] quantize_mask
+);
     localparam [3:0] WARP_OFF          = 4'd0;
     localparam [3:0] WARP_PWM          = 4'd1;
     localparam [3:0] WARP_SYNC         = 4'd2;
@@ -21,21 +73,8 @@ module wavetable_phase_warp(
     localparam [3:0] WARP_QUANTIZE     = 4'd11;
 
     wire [7:0] pwm_distance;
-    wire [14:0] warp_amount_extended;
-    wire [14:0] sync_depth_scaled;
+    wire [14:0] warp_amount_extended, sync_depth_scaled;
     wire [7:0] sync_factor_q4;
-
-    reg  [7:0] bend_target;
-    reg signed [9:0] multiplier_a;
-    reg signed [8:0] multiplier_b;
-    wire signed [18:0] shared_product;
-    wire signed [18:0] bend_scaled_delta;
-    wire signed [10:0] bend_address_sum;
-    wire [7:0] pwm_offset;
-    wire [8:0] pwm_address_sum;
-
-    reg [7:0] quantize_mask;
-
     assign pwm_distance = raw_address[7]
                         ? (8'hFF - raw_address)
                         : raw_address;
@@ -152,14 +191,6 @@ module wavetable_phase_warp(
         end
     end
 
-    assign shared_product = multiplier_a * multiplier_b;
-    assign pwm_offset = shared_product[14:7];
-    assign pwm_address_sum = {1'b0, raw_address}
-                           + {1'b0, pwm_offset};
-    assign bend_scaled_delta = shared_product >>> 7;
-    assign bend_address_sum = $signed({3'b000, raw_address})
-                            + bend_scaled_delta[10:0];
-
     // Quantize逐步清除地址低位；最大深度只保留最高位，得到两级波形。
     always @(*) begin
         case (warp_amount[6:4])
@@ -173,6 +204,40 @@ module wavetable_phase_warp(
             default: quantize_mask = 8'h80;
         endcase
     end
+
+endmodule
+
+module wavetable_warp_finish(
+    input wire [7:0] raw_address,
+    input wire [3:0] warp_mode,
+    input wire [6:0] warp_amount,
+    input wire [7:0] bend_target, quantize_mask,
+    input wire signed [18:0] shared_product,
+    output reg [7:0] warped_address
+);
+    localparam [3:0] WARP_OFF          = 4'd0;
+    localparam [3:0] WARP_PWM          = 4'd1;
+    localparam [3:0] WARP_SYNC         = 4'd2;
+    localparam [3:0] WARP_BEND_PLUS    = 4'd3;
+    localparam [3:0] WARP_BEND_MINUS   = 4'd4;
+    localparam [3:0] WARP_BEND_BOTH    = 4'd5;
+    localparam [3:0] WARP_ASYM_PLUS    = 4'd6;
+    localparam [3:0] WARP_ASYM_MINUS   = 4'd7;
+    localparam [3:0] WARP_ASYM_BOTH    = 4'd8;
+    localparam [3:0] WARP_FLIP         = 4'd9;
+    localparam [3:0] WARP_MIRROR       = 4'd10;
+    localparam [3:0] WARP_QUANTIZE     = 4'd11;
+
+    wire signed [18:0] bend_scaled_delta;
+    wire signed [10:0] bend_address_sum;
+    wire [7:0] pwm_offset;
+    wire [8:0] pwm_address_sum;
+    assign pwm_offset = shared_product[14:7];
+    assign pwm_address_sum = {1'b0, raw_address}
+                           + {1'b0, pwm_offset};
+    assign bend_scaled_delta = shared_product >>> 7;
+    assign bend_address_sum = $signed({3'b000, raw_address})
+                            + bend_scaled_delta[10:0];
 
     always @(*) begin
         case (warp_mode)

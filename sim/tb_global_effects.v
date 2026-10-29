@@ -42,6 +42,8 @@ module tb_global_effects;
     wire input_overrun;
 
     integer errors;
+    integer latency_cycles;
+    integer max_latency_cycles;
     integer sample_index;
     integer reverb_nonzero_count;
     reg signed [15:0] captured_sample;
@@ -88,8 +90,15 @@ module tb_global_effects;
             in_valid = 1'b1;
             @(negedge clk);
             in_valid = 1'b0;
-            while (!out_valid)
+            latency_cycles = 0;
+            while (!out_valid && latency_cycles < 520) begin
                 @(posedge clk);
+                #1;
+                latency_cycles = latency_cycles + 1;
+            end
+            if (!out_valid) $fatal(1, "Effects chain exceeded 96 kHz budget");
+            if (latency_cycles > max_latency_cycles)
+                max_latency_cycles = latency_cycles;
             #1 result = sample_out;
         end
     endtask
@@ -131,6 +140,7 @@ module tb_global_effects;
         compressor_makeup = 7'd0;
         compressor_mix = 7'd127;
         errors = 0;
+        max_latency_cycles = 0;
         reverb_nonzero_count = 0;
 
         repeat (5) @(posedge clk);
@@ -256,6 +266,7 @@ module tb_global_effects;
             errors = errors + 1;
         end
 
+        $display("Effects chain maximum latency: %0d clocks", max_latency_cycles);
         if (errors == 0)
             $display("PASS: complete global effects chain");
         else

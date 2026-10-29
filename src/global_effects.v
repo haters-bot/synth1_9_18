@@ -1,4 +1,4 @@
-// 96 kHz全局效果链：Distortion -> Phaser -> Chorus -> Delay/Reverb -> Compressor。
+// 96 kHz全局效果链：Distortion -> Phaser -> Chorus -> Delay/Reverb。
 // busy覆盖整条链，避免上游在下游尚未完成时接受下一份样本。
 module global_effects (
     input  wire               clk,
