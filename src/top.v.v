@@ -78,14 +78,34 @@ module top #(
     reg                 oscillator_mix_valid;
     wire                oscillator_schedule_overrun;
     wire signed [15:0]  fir_input_sample;
+    wire signed [15:0]  osc_a_fir_input_sample;
+    wire signed [15:0]  osc_b_fir_input_sample;
+    wire signed [15:0]  osc_a_fir_filtered_sample;
+    wire signed [15:0]  osc_b_fir_filtered_sample;
+    wire signed [16:0]  fir_filtered_sum;
     wire signed [15:0]  fir_filtered_sample;
+    wire                osc_a_fir_input_ready;
+    wire                osc_b_fir_input_ready;
+    wire                osc_a_fir_output_valid;
+    wire                osc_b_fir_output_valid;
+    wire                osc_a_fir_input_overrun;
+    wire                osc_b_fir_input_overrun;
+    wire                stereo_pan_input_ready;
+    wire                stereo_pan_output_valid;
+    wire signed [15:0]  stereo_mid_sample;
+    wire signed [15:0]  stereo_side_sample;
+    reg  signed [15:0]  stereo_side_latched;
+    wire                stereo_pan_input_overrun;
+    wire                stereo_chain_input_ready;
     wire signed [15:0]  global_filtered_sample;
     wire signed [15:0]  effect_processed_sample;
-    reg  signed [15:0]  master_output_sample;
-    wire signed [25:0]  master_scaled_product;
-    wire signed [26:0]  master_scaled_product_extended;
-    wire signed [26:0]  master_scaled_shifted;
-    wire                master_output_clip_now;
+    wire signed [15:0]  master_output_left;
+    wire signed [15:0]  master_output_right;
+    wire signed [15:0]  master_output_sample;
+    wire                stereo_output_input_ready;
+    wire                stereo_output_valid;
+    wire                stereo_output_clip_now;
+    wire                stereo_output_input_overrun;
     wire                filter_output_limit_now;
     reg                 oscillator_mix_clip;
     reg                 filter_output_limit;
@@ -235,6 +255,7 @@ module top #(
     wire [31:0] osc_a_release_phase_step;
     wire        osc_a_enabled;
     wire [6:0]  osc_a_level;
+    wire [6:0]  osc_a_pan_target;
     wire [3:0]  osc_a_wavetable_index;
     wire [3:0]  osc_a_warp_mode;
     reg  [3:0]  osc_a_warp_mode_active;
@@ -257,6 +278,7 @@ module top #(
     wire [31:0] osc_b_release_phase_step;
     wire        osc_b_enabled;
     wire [6:0]  osc_b_level;
+    wire [6:0]  osc_b_pan_target;
     wire [3:0]  osc_b_wavetable_index;
     wire [3:0]  osc_b_warp_mode;
     reg  [3:0]  osc_b_warp_mode_active;
@@ -270,6 +292,8 @@ module top #(
     wire [6:0] lfo_osc_b_warp_target;
     wire [6:0] lfo_osc_b_level_target;
     wire [6:0] lfo_pan_target;
+    wire [6:0] lfo_osc_a_pan_target;
+    wire [6:0] lfo_osc_b_pan_target;
     wire [6:0] lfo_filter_resonance_target;
     wire [6:0] lfo_filter_mix_target;
 
@@ -308,7 +332,7 @@ module top #(
     wire cache_a_ready;
     wire cache_b_ready;
 
-    // 两个DAC并行输出同一个96 kHz单声道样本。板载NS4263低电平使能。
+    // 两个DAC并行输出同一组96 kHz立体声样本。板载NS4263低电平使能。
     assign PA_EN    = 1'b0;
     assign MAX_SD   = 1'b1;
     assign MAX_GAIN = 1'b1;
@@ -734,7 +758,8 @@ module top #(
     assign lfo_osc_a_wt_target=lfo_v2_mod[70+:7];
     assign lfo_v2_base[77+:7]=osc_a_warp_amount_target;
     assign lfo_osc_a_warp_target=lfo_v2_mod[77+:7];
-    assign lfo_v2_base[84+:7]=7'd0; // 目标12：预留
+    assign lfo_v2_base[84+:7]=osc_a_pan_target;
+    assign lfo_osc_a_pan_target=lfo_v2_mod[84+:7];
     assign lfo_v2_base[91+:7]=osc_a_level;
     assign lfo_osc_a_level_target=lfo_v2_mod[91+:7];
     assign lfo_v2_base[98+:7]=7'd0; // 目标14：预留
@@ -752,7 +777,8 @@ module top #(
     assign lfo_osc_b_wt_target=lfo_v2_mod[133+:7];
     assign lfo_v2_base[140+:7]=osc_b_warp_amount_target;
     assign lfo_osc_b_warp_target=lfo_v2_mod[140+:7];
-    assign lfo_v2_base[147+:7]=7'd0; // 目标21：预留
+    assign lfo_v2_base[147+:7]=osc_b_pan_target;
+    assign lfo_osc_b_pan_target=lfo_v2_mod[147+:7];
     assign lfo_v2_base[154+:7]=osc_b_level;
     assign lfo_osc_b_level_target=lfo_v2_mod[154+:7];
     wire [6:0] lfo_filter_cutoff_target;
@@ -908,6 +934,7 @@ module top #(
         .osc_a_warp_mode           (osc_a_warp_mode),
         .osc_a_warp_amount         (osc_a_warp_amount_target),
         .osc_a_level               (osc_a_level),
+        .osc_a_pan                 (osc_a_pan_target),
         .osc_a_wavetable_index     (osc_a_wavetable_index),
         .osc_b_wt_position_target  (osc_b_wt_position_target),
         .osc_b_waveform_select     (osc_b_waveform_select),
@@ -922,6 +949,7 @@ module top #(
         .osc_b_warp_mode           (osc_b_warp_mode),
         .osc_b_warp_amount         (osc_b_warp_amount_target),
         .osc_b_level               (osc_b_level),
+        .osc_b_pan                 (osc_b_pan_target),
         .osc_b_wavetable_index     (osc_b_wavetable_index)
     );
 
@@ -1188,27 +1216,94 @@ module top #(
         end
     endfunction
 
+    function signed [15:0] saturate_s17_to_s16;
+        input signed [16:0] value;
+        begin
+            if (value > 17'sd32767)
+                saturate_s17_to_s16 = 16'sh7FFF;
+            else if (value < -17'sd32768)
+                saturate_s17_to_s16 = 16'sh8000;
+            else
+                saturate_s17_to_s16 = value[15:0];
+        end
+    endfunction
+
     assign oscillator_mix = saturate_mix_q8(oscillator_scaled_sum);
     assign oscillator_schedule_overrun =
         osc_a_schedule_overrun || osc_b_schedule_overrun;
     assign fir_input_sample = oscillator_mix;
 
-    fir_decimator_8x_wrapper u_fir_decimator_8x_wrapper (
+    // A/B分别降采样后再做声像混合。这样保持每个振荡器的独立分量，
+    // 同时继续复用原有单声道全局滤波和效果链。
+    assign osc_a_fir_input_sample = saturate_mix_q8(
+        {osc_a_scaled_product[25], osc_a_scaled_product});
+    assign osc_b_fir_input_sample = saturate_mix_q8(
+        {osc_b_scaled_product[25], osc_b_scaled_product});
+    assign fir_input_ready = osc_a_fir_input_ready && osc_b_fir_input_ready;
+    assign fir_output_valid = osc_a_fir_output_valid && osc_b_fir_output_valid;
+    assign fir_input_overrun = osc_a_fir_input_overrun
+                             || osc_b_fir_input_overrun
+                             || (osc_a_fir_output_valid
+                                 != osc_b_fir_output_valid);
+    assign fir_filtered_sum =
+        $signed({osc_a_fir_filtered_sample[15], osc_a_fir_filtered_sample})
+      + $signed({osc_b_fir_filtered_sample[15], osc_b_fir_filtered_sample});
+    assign fir_filtered_sample = saturate_s17_to_s16(fir_filtered_sum);
+
+    fir_decimator_8x_wrapper u_osc_a_fir_decimator_8x_wrapper (
         .clk          (clk_sys),
         .rst_n        (rst_n_sys),
         .in_valid     (oscillator_mix_valid),
-        .sample_in    (fir_input_sample),
-        .in_ready     (fir_input_ready),
-        .out_valid    (fir_output_valid),
-        .sample_out   (fir_filtered_sample),
-        .input_overrun(fir_input_overrun)
+        .sample_in    (osc_a_fir_input_sample),
+        .in_ready     (osc_a_fir_input_ready),
+        .out_valid    (osc_a_fir_output_valid),
+        .sample_out   (osc_a_fir_filtered_sample),
+        .input_overrun(osc_a_fir_input_overrun)
     );
+
+    fir_decimator_8x_wrapper u_osc_b_fir_decimator_8x_wrapper (
+        .clk          (clk_sys),
+        .rst_n        (rst_n_sys),
+        .in_valid     (oscillator_mix_valid),
+        .sample_in    (osc_b_fir_input_sample),
+        .in_ready     (osc_b_fir_input_ready),
+        .out_valid    (osc_b_fir_output_valid),
+        .sample_out   (osc_b_fir_filtered_sample),
+        .input_overrun(osc_b_fir_input_overrun)
+    );
+
+    assign stereo_chain_input_ready = global_filter_input_ready
+                                    && global_effects_input_ready;
+
+    stereo_pan_mixer u_stereo_pan_mixer (
+        .clk          (clk_sys),
+        .rst_n        (rst_n_sys),
+        .in_valid     (fir_output_valid),
+        .sample_a     (osc_a_fir_filtered_sample),
+        .sample_b     (osc_b_fir_filtered_sample),
+        .pan_a        (lfo_osc_a_pan_target),
+        .pan_b        (lfo_osc_b_pan_target),
+        .in_ready     (stereo_pan_input_ready),
+        .out_valid    (stereo_pan_output_valid),
+        .mid_sample   (stereo_mid_sample),
+        .side_sample  (stereo_side_sample),
+        .out_ready    (stereo_chain_input_ready),
+        .input_overrun(stereo_pan_input_overrun)
+    );
+
+    always @(posedge clk_sys or negedge rst_n_sys) begin
+        if (!rst_n_sys)
+            stereo_side_latched <= 16'sd0;
+        else if (stereo_pan_output_valid && stereo_chain_input_ready)
+            stereo_side_latched <= stereo_side_sample;
+    end
 
     global_filter u_global_filter (
         .clk              (clk_sys),
         .rst_n            (rst_n_sys),
-        .in_valid         (fir_output_valid),
-        .sample_in        (fir_filtered_sample),
+        .in_valid         (stereo_pan_output_valid
+                           && global_effects_input_ready),
+        .sample_in        (stereo_mid_sample),
         .in_ready         (global_filter_input_ready),
         .filter_mode      (filter_mode_active),
         .cutoff_control_q8(filter_cutoff_current_q8),
@@ -1261,15 +1356,26 @@ module top #(
         .input_overrun   (global_effects_input_overrun)
     );
 
-    // Master Level位于全局滤波器和效果器之后。Q1.8乘法结果先保持宽位，再在一个
-    // 50 MHz周期内完成饱和和寄存；该延迟远小于一个96 kHz采样周期。
-    assign master_scaled_product =
-        $signed(effect_processed_sample) * $signed({1'b0, master_gain_q8});
-    assign master_scaled_product_extended = {master_scaled_product[25],
-                                              master_scaled_product};
-    assign master_scaled_shifted = master_scaled_product_extended >>> 8;
-    assign master_output_clip_now = (master_scaled_shifted > 32767)
-                                  || (master_scaled_shifted < -32768);
+    // 全局处理链只处理Mid，输出端与当前样本的Side重构左右声道。
+    // Master Level和全局Pan继续使用单个共享乘法器分时处理。
+    stereo_output_stage u_stereo_output_stage (
+        .clk          (clk_sys),
+        .rst_n        (rst_n_sys),
+        .in_valid     (global_effects_output_valid),
+        .processed_mid(effect_processed_sample),
+        .side_sample  (stereo_side_latched),
+        .master_gain_q8(master_gain_q8),
+        .global_pan   (lfo_pan_target),
+        .in_ready     (stereo_output_input_ready),
+        .out_valid    (stereo_output_valid),
+        .left_sample  (master_output_left),
+        .right_sample (master_output_right),
+        .clip_pulse   (stereo_output_clip_now),
+        .input_overrun(stereo_output_input_overrun)
+    );
+
+    // 保留旧调试信号名，中心声像时它等于原单声道输出。
+    assign master_output_sample = master_output_left;
     // 现有滤波器接口已经在内部压回16位。端点命中可用于发现可能的
     // 滤波器饱和；后续若需要精确峰值限制器，再单独扩宽滤波器接口。
     assign filter_output_limit_now = (global_filtered_sample == 16'sh7FFF)
@@ -1277,27 +1383,25 @@ module top #(
 
     always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
-            master_output_sample <= 16'sd0;
             oscillator_mix_clip  <= 1'b0;
             filter_output_limit  <= 1'b0;
             master_output_clip   <= 1'b0;
             audio_clip_count     <= 32'd0;
         end else begin
             if (global_effects_output_valid) begin
-                master_output_sample
-                    <= saturate_mix_q8(master_scaled_product_extended);
                 if (filter_output_limit_now)
                     filter_output_limit <= 1'b1;
-                if (master_output_clip_now)
-                    master_output_clip <= 1'b1;
             end
+
+            if (stereo_output_clip_now)
+                master_output_clip <= 1'b1;
 
             if (oscillator_mix_valid && oscillator_mix_clip_now)
                 oscillator_mix_clip <= 1'b1;
 
             if ((oscillator_mix_valid && oscillator_mix_clip_now)
-                || (global_effects_output_valid
-                    && (filter_output_limit_now || master_output_clip_now)))
+                || (global_effects_output_valid && filter_output_limit_now)
+                || stereo_output_clip_now)
                 audio_clip_count <= audio_clip_count + 32'd1;
         end
     end
@@ -1305,7 +1409,8 @@ module top #(
     i2s_tx u_max98357a_i2s_tx (
         .sys_clk        (clk_sys),
         .rst_n          (rst_n_sys),
-        .sample_data    (master_output_sample),
+        .left_sample_data (master_output_left),
+        .right_sample_data(master_output_right),
         .bclk           (MAX_BCLK),
         .lrck           (MAX_LRC),
         .sdata          (MAX_DIN),
@@ -1319,7 +1424,8 @@ module top #(
     pt8211_tx u_onboard_pt8211_tx (
         .sys_clk        (clk_sys),
         .rst_n          (rst_n_sys),
-        .sample_data    (master_output_sample),
+        .left_sample_data (master_output_left),
+        .right_sample_data(master_output_right),
         .bck            (HP_BCK),
         .ws             (HP_WS),
         .din            (HP_DIN),

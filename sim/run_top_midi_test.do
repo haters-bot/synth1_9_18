@@ -44,6 +44,8 @@ vlog -work work_top_midi \
     src/global_effects.v \
     src/i2s_tx.v \
     src/pt8211_tx.v \
+    src/stereo_pan_mixer.v \
+    src/stereo_output_stage.v \
     src/control_event_merge.v \
     src/lfo_hermite_table.v \
     src/lfo_target_router_v2.v \
@@ -111,6 +113,8 @@ add wave sim:/tb_top_midi_input/dut/osc_a_enabled
 add wave sim:/tb_top_midi_input/dut/osc_b_enabled
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_a_level
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_b_level
+add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_a_pan_target
+add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_b_pan_target
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_a_mix_gain_q8
 add wave -radix unsigned sim:/tb_top_midi_input/dut/osc_b_mix_gain_q8
 add wave sim:/tb_top_midi_input/dut/osc_a_task_update_valid
@@ -123,6 +127,8 @@ add wave sim:/tb_top_midi_input/dut/osc_a_mix
 add wave sim:/tb_top_midi_input/dut/osc_b_mix
 add wave sim:/tb_top_midi_input/dut/oscillator_mix
 add wave sim:/tb_top_midi_input/dut/master_output_sample
+add wave sim:/tb_top_midi_input/dut/master_output_left
+add wave sim:/tb_top_midi_input/dut/master_output_right
 add wave sim:/tb_top_midi_input/dut/oscillator_mix_clip
 add wave sim:/tb_top_midi_input/dut/filter_output_limit
 add wave sim:/tb_top_midi_input/dut/master_output_clip

@@ -46,6 +46,8 @@ vlog -sv -work work_full_top \
     src/global_effects.v \
     src/i2s_tx.v \
     src/pt8211_tx.v \
+    src/stereo_pan_mixer.v \
+    src/stereo_output_stage.v \
     src/control_event_merge.v \
     src/async_fifo.v \
     src/sd_wavetable_loader.v \

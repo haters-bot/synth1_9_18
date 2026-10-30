@@ -145,6 +145,8 @@ BF 14 55    通道16，OSC A的CC20，WT Position=85
 | 演奏音高 | Vibrato Depth | 16 | 84 | 0～127，最大约正负100 cent | 0 |
 | 演奏音高 | Portamento Enable | 16 | 85 | 0=关闭，1～127=开启 | 关闭 |
 | 演奏音高 | Portamento Time | 16 | 86 | 0～127，见下文 | 80 |
+| OSC A | Pan | 16 | 91 | 0=左、64=中央、127=右 | 64 |
+| OSC B | Pan | 16 | 92 | 0=左、64=中央、127=右 | 64 |
 
 两组`Unison`都把0限制为1，把大于8的数值限制为8。A/B的Detune、Unison、
 波形、WT Position和ADSR寄存器彼此独立；同一个Note事件会同时送到两个调度器。
@@ -383,14 +385,22 @@ Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通�
 | 75 | Compressor Enable | 0 |
 | 76～81 | Threshold、Ratio、Attack、Release、Makeup、Mix | 96、64、20、80、0、127 |
 
-## 11. Pan的当前边界
+## 11. Pan与立体声数据通路
 
-协议层已经保存`pan_target[6:0]`，默认值64表示中央。当前`i2s_tx`仍把同一份单声道
-样本复制到左右声道，因此CC10暂时不会改变音频。
+`CC10`控制全局Pan，`CC91`和`CC92`分别控制OSC A与OSC B的Pan。三者都使用
+`0=左、64=中央、127=右`。当前采用中心不衰减的线性平衡律，因此全部保持64时，
+左右声道都与改造前的单声道幅度一致。
 
-接入立体声混音时建议先使用平滑后的左右增益，再分别送入I2S左右声道。参数目标值
-不能直接跳变，否则乘法增益的突变可能产生咔哒声。MAX98357A是单声道功放，实际听到
-左声道、右声道或混合结果还取决于模块的声道选择配置。
+OSC A/B先分别经过8抽1 FIR，再由一个共享乘法器依次计算四个左右增益。随后转换为
+`Mid=(L+R)/2`和`Side=(L-R)/2`：Mid继续进入原有全局滤波器和效果器，Side只保存
+当前样本，效果器输出后用`L=Mid+Side`、`R=Mid-Side`重构。全局Pan和Master Level
+在重构后由第二个共享乘法器处理。这样只增加一份FIR和两个小状态机，没有复制SVF、
+梳状滤波、Distortion、Phaser、Chorus、Delay或Reverb。
+
+这一阶段的资源取舍是：全局滤波器和效果器只处理Mid，Side保持干声。中央声像时
+Side为0，处理结果与原单声道链一致；A/B明显分离时，Side中的声像能够保留，但全局
+效果不会完整处理Side。后续若要实现真正的立体声效果器，需要为左右声道保存独立状态，
+不能简单把同一个有状态模块交替喂入左右样本。
 
 ## 12. 上位机应用方法
 
@@ -398,7 +408,7 @@ Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通�
 
 - “演奏通道”只影响Note On和Note Off，正常测试保持通道1；
 - OSC A/B及全局参数固定通过通道16发送；
-- 连接串口后自动发送Pan、Master Level以及OSC A/B各自的Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
+- 连接串口后自动发送全局Pan、Master Level以及OSC A/B各自的Pan、Enable、Level、Waveform、Warp、WT Position、Detune、Unison和ADSR；
 - 音色预设下拉框可一次载入并发送完整参数组合；当前包含使用DDR波表8的合成钢琴和使用DDR波表9的合成提琴，切换预设时会关闭旧LFO路由，避免残留调制影响新音色；
 - 全局滤波器面板通过CC42～45控制模式、Cutoff、Resonance和Mix；
 - 全局效果器面板通过CC51～57控制Delay和Reverb，通过CC58～81独立控制Distortion、
@@ -409,13 +419,15 @@ Delay使用32768点循环缓冲，范围约5.0～335.7 ms。Reverb由4条低通�
 - 参数滑块在释放鼠标时发送一次，避免测试阶段用大量连续CC占满31250 bit/s链路。
 
 原来由Python每5 ms发送CC39或CC41的临时Warp LFO已经删除。现在曲线与路由只在
-配置变化时发送一次，运行时不占用串口带宽，也不受桌面定时器抖动影响。Pan路由目前
-只生成控制值；由于音频链路仍为单声道复制，暂时没有可听的左右声像变化。
+配置变化时发送一次，运行时不占用串口带宽，也不受桌面定时器抖动影响。OSC A/B的
+Pan目标已经接入音频链，LFO目标12和21可以分别调制两路声像。
 
 外部控制单片机发送示例：
 
 ```text
 BF 0A 40    Pan居中
+BF 5B 00    OSC A硬左（CC91）
+BF 5C 7F    OSC B硬右（CC92）
 BF 14 60    WT Position=96
 BF 15 00    选择正弦波
 BF 15 7F    选择Acid波表
@@ -474,7 +486,7 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
   Note Off，因此测试流程不受影响。
 - 调度器忙时没有输入FIFO。单个31250 bit/s串口的消息间隔远大于调度器处理时间，
   当前不会形成压力；增加双UART后必须加入事件FIFO。
-- Pan目前停在参数寄存器边界，等待立体声混音数据通路。
+- 全局效果链当前只处理Mid，Side保留干声；真正的双声道效果器状态尚未实现。
 - 当前只有Acid多帧波表响应WT Position，四个基本波形没有帧轴。
 - 当前CC值为7位。大量波表帧或精细自动化可在后续升级为14位CC或NRPN。
 
@@ -483,7 +495,7 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 顶层仿真覆盖以下行为：
 
 1. 通道1的CC不能修改合成参数；
-2. 通道16的CC10、20～57正确进入对应的全局、OSC A和OSC B寄存器；
+2. 通道16的CC10、20～57、91和92正确进入对应的全局、OSC A和OSC B寄存器；
 3. 通道16的Note On不能进入声部调度器；
 4. 通道1的Note On/Off、力度和Running Status保持原有行为；
 5. MIDI实时字节穿插不会破坏解析状态；
@@ -501,6 +513,8 @@ MIDI键盘 -> 31250 bit/s UART A -> MIDI解析器A -> 音符事件FIFO
 16. CC48控制滤波器后的Master Level，0～127映射为0～1.0，并在96 kHz边界平滑。
 17. CC51～57能独立配置效果模式、Delay和Reverb参数；旁路逐位保持输入。
 18. 最短Delay在第480个96 kHz历史样本返回冲激；Reverb冲激响应产生非零尾音。
+19. OSC A/B硬左硬右能生成可逆的Mid/Side，全局Pan能独立衰减左右输出；I2S与PT8211
+    都按各自格式发送不同的左右16位样本。
 
 本次只执行RTL编译与ModelSim功能仿真，没有运行Gowin综合和布局布线。
 

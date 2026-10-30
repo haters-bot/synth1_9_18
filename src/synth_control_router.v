@@ -86,6 +86,7 @@ module synth_control_router #(
     output reg [3:0]  osc_a_warp_mode,
     output reg [6:0]  osc_a_warp_amount,
     output reg [6:0]  osc_a_level,
+    output reg [6:0]  osc_a_pan,
     output reg [3:0]  osc_a_wavetable_index,
 
     output reg [6:0]  osc_b_wt_position_target,
@@ -101,6 +102,7 @@ module synth_control_router #(
     output reg [3:0]  osc_b_warp_mode,
     output reg [6:0]  osc_b_warp_amount,
     output reg [6:0]  osc_b_level,
+    output reg [6:0]  osc_b_pan,
     output reg [3:0]  osc_b_wavetable_index
 );
 
@@ -174,6 +176,8 @@ module synth_control_router #(
     localparam [6:0] CC_VIBRATO_DEPTH      = 7'd84;
     localparam [6:0] CC_PORTAMENTO_ENABLE  = 7'd85;
     localparam [6:0] CC_PORTAMENTO_TIME    = 7'd86;
+    localparam [6:0] CC_A_PAN              = 7'd91;
+    localparam [6:0] CC_B_PAN              = 7'd92;
 
     localparam [6:0] MIDI_CC_MOD_WHEEL       = 7'd1;
     localparam [6:0] MIDI_CC_PORTAMENTO_TIME = 7'd5;
@@ -272,6 +276,7 @@ module synth_control_router #(
             osc_a_warp_mode          <= 4'd0;
             osc_a_warp_amount        <= 7'd0;
             osc_a_level              <= 7'd127;
+            osc_a_pan                <= 7'd64;
             osc_a_wavetable_index    <= 4'd0;
 
             osc_b_wt_position_target <= 7'd0;
@@ -286,6 +291,7 @@ module synth_control_router #(
             osc_b_warp_mode          <= 4'd0;
             osc_b_warp_amount        <= 7'd0;
             osc_b_level              <= 7'd127;
+            osc_b_pan                <= 7'd64;
             osc_b_wavetable_index    <= 4'd0;
         end else begin
             note_event_valid <= 1'b0;
@@ -453,6 +459,10 @@ module synth_control_router #(
                             <= (raw_control_change_value != 7'd0);
                     CC_PORTAMENTO_TIME:
                         portamento_time <= raw_control_change_value;
+                    CC_A_PAN:
+                        osc_a_pan <= raw_control_change_value;
+                    CC_B_PAN:
+                        osc_b_pan <= raw_control_change_value;
                     default: begin
                         // 未映射的CC由当前版本忽略。
                     end

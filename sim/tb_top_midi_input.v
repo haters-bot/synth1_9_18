@@ -225,21 +225,31 @@ module tb_top_midi_input;
         input [8:0] gain_q8;
         input signed [15:0] expected_output;
         begin
+            while (!dut.stereo_output_input_ready)
+                @(posedge sys_clk);
             force dut.effect_processed_sample = filter_sample;
             force dut.global_effects_output_valid = 1'b1;
             force dut.global_filtered_sample = filter_sample;
             force dut.master_gain_q8 = gain_q8;
+            force dut.stereo_side_latched = 16'sd0;
+            force dut.lfo_pan_target = 7'd64;
             @(posedge sys_clk);
             #1;
-            if (dut.master_output_sample !== expected_output) begin
+            release dut.global_effects_output_valid;
+            while (!dut.stereo_output_valid)
+                @(posedge sys_clk);
+            #1;
+            if (dut.master_output_left !== expected_output
+                || dut.master_output_right !== expected_output) begin
                 $display("ERROR: master gain got %0d, expected %0d",
                          dut.master_output_sample, expected_output);
                 errors = errors + 1;
             end
             release dut.effect_processed_sample;
-            release dut.global_effects_output_valid;
             release dut.global_filtered_sample;
             release dut.master_gain_q8;
+            release dut.stereo_side_latched;
+            release dut.lfo_pan_target;
             @(posedge sys_clk);
         end
     endtask
@@ -332,6 +342,9 @@ module tb_top_midi_input;
         send_cc(7'd48, 7'd96);
         send_cc(7'd49, 7'd3);
         send_cc(7'd50, 7'd7);
+        send_cc(7'd10, 7'd23);
+        send_cc(7'd91, 7'd0);
+        send_cc(7'd92, 7'd127);
 
         repeat (3) @(posedge sys_clk);
         if (dut.osc_a_wt_position_target !== 7'd85
@@ -373,13 +386,21 @@ module tb_top_midi_input;
             || dut.osc_b_mix_gain_target_q8 !== 9'd30
             || dut.master_gain_target_q8 !== 9'd194
             || dut.osc_a_wavetable_index !== 4'd3
-            || dut.osc_b_wavetable_index !== 4'd7) begin
+             || dut.osc_b_wavetable_index !== 4'd7
+             || dut.pan_target !== 7'd23
+             || dut.osc_a_pan_target !== 7'd0
+             || dut.osc_b_pan_target !== 7'd127) begin
             $display("ERROR: global filter controls were not routed");
             errors = errors + 1;
         end
 
         // Master乘法保持宽位并在最后压回16位；0.5增益应精确减半。
         expect_master_output(16'sd16000, 9'd128, 16'sd8000);
+
+        // 后续音频回归使用中心声像。
+        send_cc(7'd10, 7'd64);
+        send_cc(7'd91, 7'd64);
+        send_cc(7'd92, 7'd64);
 
         // 后续音符调度回归保持效果器旁路，避免Delay/Reverb尾音干扰静音判定。
         send_cc(7'd51, 7'd0);

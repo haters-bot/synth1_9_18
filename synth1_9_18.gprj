@@ -60,6 +60,8 @@
         <File path="src/sd_wavetable_loader.v" type="file.verilog" enable="1"/>
         <File path="src/sine_lut.v" type="file.verilog" enable="1"/>
         <File path="src/square_lut.v" type="file.verilog" enable="1"/>
+        <File path="src/stereo_output_stage.v" type="file.verilog" enable="1"/>
+        <File path="src/stereo_pan_mixer.v" type="file.verilog" enable="1"/>
         <File path="src/synth_control_router.v" type="file.verilog" enable="1"/>
         <File path="src/sys_clock_manager.v" type="file.verilog" enable="1"/>
         <File path="src/top.v.v" type="file.verilog" enable="1"/>

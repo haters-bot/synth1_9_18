@@ -5,7 +5,8 @@ module tb_dual_audio_output;
 
     reg sys_clk;
     reg rst_n;
-    reg signed [15:0] sample_data;
+    reg signed [15:0] left_sample_data;
+    reg signed [15:0] right_sample_data;
 
     wire max_bclk;
     wire max_lrck;
@@ -22,14 +23,18 @@ module tb_dual_audio_output;
     integer bit_index;
 
     i2s_tx u_i2s_tx (
-        .sys_clk(sys_clk), .rst_n(rst_n), .sample_data(sample_data),
+        .sys_clk(sys_clk), .rst_n(rst_n),
+        .left_sample_data(left_sample_data),
+        .right_sample_data(right_sample_data),
         .bclk(max_bclk), .lrck(max_lrck), .sdata(max_din),
         .sample_tick(max_sample_tick),
         .oversample_tick(max_oversample_tick)
     );
 
     pt8211_tx u_pt8211_tx (
-        .sys_clk(sys_clk), .rst_n(rst_n), .sample_data(sample_data),
+        .sys_clk(sys_clk), .rst_n(rst_n),
+        .left_sample_data(left_sample_data),
+        .right_sample_data(right_sample_data),
         .bck(hp_bck), .ws(hp_ws), .din(hp_din),
         .sample_tick(hp_sample_tick),
         .oversample_tick(hp_oversample_tick)
@@ -53,7 +58,8 @@ module tb_dual_audio_output;
     initial begin
         sys_clk = 1'b0;
         rst_n = 1'b0;
-        sample_data = 16'shA55A;
+        left_sample_data = 16'shA55A;
+        right_sample_data = 16'sh3CC3;
         errors = 0;
 
         repeat (4) @(posedge sys_clk);
@@ -68,17 +74,17 @@ module tb_dual_audio_output;
         for (bit_index = 15; bit_index >= 0; bit_index = bit_index - 1) begin
             @(posedge hp_bck);
             #1;
-            if (hp_ws !== 1'b0 || hp_din !== sample_data[bit_index]) begin
+            if (hp_ws !== 1'b0 || hp_din !== right_sample_data[bit_index]) begin
                 $display("ERROR: PT8211 right bit %0d", bit_index);
                 errors = errors + 1;
             end
         end
 
-        // 单声道样本复制到左声道，WS高电平时发送同一份数据。
+        // WS高电平发送独立左声道数据。
         for (bit_index = 15; bit_index >= 0; bit_index = bit_index - 1) begin
             @(posedge hp_bck);
             #1;
-            if (hp_ws !== 1'b1 || hp_din !== sample_data[bit_index]) begin
+            if (hp_ws !== 1'b1 || hp_din !== left_sample_data[bit_index]) begin
                 $display("ERROR: PT8211 left bit %0d", bit_index);
                 errors = errors + 1;
             end

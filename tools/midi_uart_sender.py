@@ -92,6 +92,7 @@ OSC_A_CC = {
     "sustain": 26,
     "release": 27,
     "level": 46,
+    "pan": 91,
     "wavetable_index": 49,
     "phase": 87, "rand": 88,
 }
@@ -108,6 +109,7 @@ OSC_B_CC = {
     "sustain": 34,
     "release": 35,
     "level": 47,
+    "pan": 92,
     "wavetable_index": 50,
     "phase": 89, "rand": 90,
 }
@@ -408,6 +410,7 @@ class MidiUartSender:
                 "sustain": tk.IntVar(value=89),
                 "release": tk.IntVar(value=67),
                 "level": tk.IntVar(value=127),
+                "pan": tk.IntVar(value=64),
             }
         self.status = tk.StringVar(value="未连接")
 
@@ -972,6 +975,7 @@ class MidiUartSender:
             ("Rand（随机相位）", "rand", 0, 127),
             ("Unison", "unison", 1, 8),
             ("Level", "level", 0, 127),
+            ("Pan", "pan", 0, 127),
             ("Attack", "attack", 0, 127),
             ("Decay", "decay", 0, 127),
             ("Sustain", "sustain", 0, 127),
@@ -1200,6 +1204,7 @@ class MidiUartSender:
             controls = self.osc_controls[osc_name]
             controls["phase"].set(0)
             controls["rand"].set(0)
+            controls["pan"].set(64)
             for control_name, value in values.items():
                 controls[control_name].set(value)
 
@@ -1388,6 +1393,7 @@ class MidiUartSender:
                 "phase", "rand",
                 "unison",
                 "level",
+                "pan",
                 "attack",
                 "decay",
                 "sustain",

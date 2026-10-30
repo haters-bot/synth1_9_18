@@ -4,7 +4,8 @@ module tb_i2s_tx;
 
     reg sys_clk;
     reg rst_n;
-    reg signed [15:0] sample_data;
+    reg signed [15:0] left_sample_data;
+    reg signed [15:0] right_sample_data;
 
     wire bclk;
     wire lrck;
@@ -18,7 +19,8 @@ module tb_i2s_tx;
     i2s_tx dut (
         .sys_clk        (sys_clk),
         .rst_n          (rst_n),
-        .sample_data    (sample_data),
+        .left_sample_data (left_sample_data),
+        .right_sample_data(right_sample_data),
         .bclk           (bclk),
         .lrck           (lrck),
         .sdata          (sdata),
@@ -31,7 +33,8 @@ module tb_i2s_tx;
     initial begin
         sys_clk     = 1'b0;
         rst_n       = 1'b0;
-        sample_data = 16'shA55A;
+        left_sample_data  = 16'shA55A;
+        right_sample_data = 16'sh3CC3;
         errors      = 0;
 
         repeat (4) @(posedge sys_clk);
@@ -45,7 +48,7 @@ module tb_i2s_tx;
         // LRCK切换到左声道后的第一个BCLK仍承载上一右声道的LSB。
         @(posedge bclk);
         #1;
-        if ((lrck !== 1'b0) || (sdata !== sample_data[0])) begin
+        if ((lrck !== 1'b0) || (sdata !== right_sample_data[0])) begin
             $display("ERROR: I2S left-channel delay bit is incorrect");
             errors = errors + 1;
         end
@@ -54,9 +57,9 @@ module tb_i2s_tx;
         for (bit_index = 15; bit_index >= 0; bit_index = bit_index - 1) begin
             @(posedge bclk);
             #1;
-            if (sdata !== sample_data[bit_index]) begin
+            if (sdata !== left_sample_data[bit_index]) begin
                 $display("ERROR: left bit %0d expected %0b got %0b",
-                         bit_index, sample_data[bit_index], sdata);
+                         bit_index, left_sample_data[bit_index], sdata);
                 errors = errors + 1;
             end
 
@@ -66,13 +69,13 @@ module tb_i2s_tx;
             end
         end
 
-        // 右声道同样按照MSB到LSB发送，数据与左声道相同。
+        // 右声道按照MSB到LSB发送独立数据。
         for (bit_index = 15; bit_index >= 0; bit_index = bit_index - 1) begin
             @(posedge bclk);
             #1;
-            if (sdata !== sample_data[bit_index]) begin
+            if (sdata !== right_sample_data[bit_index]) begin
                 $display("ERROR: right bit %0d expected %0b got %0b",
-                         bit_index, sample_data[bit_index], sdata);
+                         bit_index, right_sample_data[bit_index], sdata);
                 errors = errors + 1;
             end
 

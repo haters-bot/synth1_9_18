@@ -13,7 +13,8 @@
 module pt8211_tx(
     input  wire               sys_clk,
     input  wire               rst_n,
-    input  wire signed [15:0] sample_data,
+    input  wire signed [15:0] left_sample_data,
+    input  wire signed [15:0] right_sample_data,
     output wire               bck,
     output reg                ws,
     output reg                din,
@@ -61,13 +62,13 @@ module pt8211_tx(
                     oversample_tick <= 1'b1;
 
                 if (bit_count == 5'd0) begin
-                    // Start right channel and capture one mono sample for
-                    // both channels. Use sample_data directly for the first
-                    // bit because the sample registers update on this edge.
+                    // Start right channel and capture the next stereo frame.
+                    // Use right_sample_data directly for the first bit because
+                    // the sample registers update on this edge.
                     ws           <= 1'b0;
-                    din          <= sample_data[15];
-                    left_sample  <= sample_data;
-                    right_sample <= sample_data;
+                    din          <= right_sample_data[15];
+                    left_sample  <= left_sample_data;
+                    right_sample <= right_sample_data;
                     sample_tick  <= 1'b1;
                     bit_count    <= 5'd1;
                 end else if (bit_count < 5'd16) begin

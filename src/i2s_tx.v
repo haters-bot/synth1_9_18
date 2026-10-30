@@ -11,7 +11,8 @@
 module i2s_tx(
     input  wire               sys_clk,
     input  wire               rst_n,
-    input  wire signed [15:0] sample_data,
+    input  wire signed [15:0] left_sample_data,
+    input  wire signed [15:0] right_sample_data,
     output wire               bclk,
     output reg                lrck,
     output reg                sdata,
@@ -67,8 +68,8 @@ module i2s_tx(
                     lrck       <= 1'b0;
                     sdata      <= right_reg[0];
                     bit_count  <= 5'd1;
-                    left_reg   <= sample_data;
-                    right_reg  <= sample_data;
+                    left_reg   <= left_sample_data;
+                    right_reg  <= right_sample_data;
                     sample_tick <= 1'b1;
                 end else if (bit_count == 5'd16) begin
                     lrck      <= 1'b1;
