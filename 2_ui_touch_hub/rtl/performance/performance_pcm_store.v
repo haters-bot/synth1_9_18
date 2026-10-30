@@ -173,15 +173,16 @@ module performance_pcm_store #(
         end
     end
 
-    localparam [3:0] M_IDLE=0,M_VALIDATE=1,M_REQUEST=2,M_RESPONSE=3,M_CALCULATE=4,M_FAULT=5;
+    localparam [3:0] M_IDLE=0,M_VALIDATE=1,M_REQUEST=2,M_RESPONSE=3,M_CALCULATE=4,M_FAULT=5,M_COMPLETE=6;
     reg [3:0] mem_state;
     reg session,session_error,last_good;
     reg [28:0] memory_base,last_base;
     reg [31:0] memory_limit,committed,last_frames;
     localparam integer WATCHDOG_BITS=(RESPONSE_TIMEOUT<=1) ? 1 : $clog2(RESPONSE_TIMEOUT);
     reg [WATCHDOG_BITS-1:0] watchdog;
-    reg [3:0] pending_frames;
     reg [31:0] pending_read_index;
+    reg completion_error;
+    reg [31:0] completion_read_data;
     reg [1:0] pending_kind;
     reg [3:0] pending_command_frames;
     reg [28:0] pending_command_addr;
@@ -202,11 +203,24 @@ module performance_pcm_store #(
         if(!mem_rst_n)begin
             mem_state<=M_IDLE;session<=0;session_error<=0;poisoned<=0;last_good<=0;
             memory_base<=0;last_base<=0;memory_limit<=0;committed<=0;last_frames<=0;watchdog<=0;
-            pending_frames<=0;pending_read_index<=0;pending_kind<=0;pending_command_frames<=0;
+            pending_read_index<=0;completion_error<=0;completion_read_data<=0;
+            pending_kind<=0;pending_command_frames<=0;
             pending_command_addr<=0;pending_command_mask<=0;pending_command_data<=0;
             expected_command_addr<=0;pending_end_frame<=0;
             req_write<=0;req_addr<=0;req_wdata<=0;req_wmask<=0;return_valid<=0;return_data<=0;
         end else begin
+            // These payloads settle before req_valid and cannot change while a
+            // transaction is outstanding. Avoid a shared state-decode enable
+            // spanning the wide request bus and the completion/status logic.
+            req_wdata<=pending_command_data;
+            req_wmask<=pending_command_mask;
+            // Capture the response payload independently of request acceptance.
+            // M_COMPLETE consumes the sample from the response-fire edge. This
+            // also supports a backend returning a response on the request edge
+            // without sending its high-fanout ready/valid path into counters,
+            // read selection and the response FIFO in that same cycle.
+            completion_error<=rsp_error || (rsp_write!=req_write);
+            completion_read_data<=rsp_rdata[pending_read_index[2:0]*32+:32];
             // A lost calibration invalidates the previous recording even if
             // the port was idle and later becomes ready again.
             if(!init_done)begin last_good<=0;if(session)session_error<=1;end
@@ -279,26 +293,28 @@ module performance_pcm_store #(
                 session_error<=1;return_valid<=1;
                 return_data<={R_FAULT,1'b1,committed,32'd0};
             end
+            if(mem_state==M_COMPLETE)begin
+                mem_state<=M_IDLE;
+                if(req_write)begin
+                    if(completion_error)begin
+                        session_error<=1;return_valid<=1;return_data<={R_FAULT,1'b1,committed,32'd0};
+                    end else committed<=pending_end_frame[31:0];
+                end else begin
+                    return_valid<=1;
+                    return_data<={R_READ,completion_error,pending_read_index,completion_read_data};
+                end
+            end
             // Payload staging is deliberately independent of command-valid
             // logic; req_valid remains low unless M_VALIDATE accepts it.
             if(mem_state==M_VALIDATE)begin
                 req_write<=pending_kind==T_DATA;
                 req_addr<=pending_kind==T_READ ? last_base+{pending_command_data[28:3],3'd0} : pending_command_addr;
-                req_wdata<=pending_kind==T_DATA ? pending_command_data : 256'd0;
-                req_wmask<=pending_kind==T_DATA ? pending_command_mask : 32'hffffffff;
-                pending_frames<=pending_command_frames;
             end
             if(request_fire)mem_state<=M_RESPONSE;
             if(response_fire)begin
-                mem_state<=M_IDLE;
-                if(req_write)begin
-                    if(rsp_error || !rsp_write)begin
-                        session_error<=1;return_valid<=1;return_data<={R_FAULT,1'b1,committed,32'd0};
-                    end else committed<=committed+pending_frames;
-                end else begin
-                    return_valid<=1;
-                    return_data<={R_READ,(rsp_error || rsp_write),pending_read_index,rsp_rdata[pending_read_index[2:0]*32+:32]};
-                end
+                // Accept before checking timeout, including on the final legal
+                // watchdog edge. Completion is no longer transaction-active.
+                mem_state<=M_COMPLETE;
             end else if(transaction_failed)begin
                 // A late response cannot be safely associated with a retry.
                 // Quarantine this memory port until a coordinated reset.

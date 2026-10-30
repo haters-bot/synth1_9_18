@@ -13,9 +13,11 @@ wire [31:0] req_wmask;
 reg model_rsp_valid=0,model_rsp_write=0,model_rsp_error=0;
 reg [255:0] model_rsp_rdata=0;
 reg immediate=0;
+reg fail_read=0,wrong_response_kind=0;
+integer error_write=-1,write_requests=0;
 wire rsp_valid=immediate ? req_valid && req_ready : model_rsp_valid;
-wire rsp_write=immediate ? req_write : model_rsp_write;
-wire rsp_error=immediate ? 1'b0 : model_rsp_error;
+wire rsp_write=immediate ? (req_write ^ wrong_response_kind) : model_rsp_write;
+wire rsp_error=immediate ? (req_write ? write_requests==error_write : fail_read) : model_rsp_error;
 reg [255:0] memory[0:2047];
 wire [255:0] rsp_rdata=immediate ? memory[req_addr>>3] : model_rsp_rdata;
 performance_pcm_store #(.FIFO_ADDR_BITS(2),.RESPONSE_TIMEOUT(500)) dut(.*);
@@ -29,10 +31,9 @@ reg [28:0] pending_addr=0;
 reg [255:0] pending_data=0;
 reg [31:0] pending_mask=0;
 reg [31:0] random_state=32'h91a523c7;
-integer delay_cycles=0,stall_cycles=0,error_write=-1,write_requests=0,requests=0;
+integer delay_cycles=0,stall_cycles=0,requests=0;
 integer byte_index,initialize;
 reg suppress_response=0;
-reg fail_read=0,wrong_response_kind=0;
 initial for(initialize=0;initialize<2048;initialize=initialize+1)
  memory[initialize]={8{32'hdeadbeef}};
 always @(negedge mem_clk)begin
@@ -59,7 +60,7 @@ always @(posedge mem_clk)begin
    requests<=requests+1;
    if(req_write)write_requests<=write_requests+1;
    if(immediate)begin
-    if(req_write)for(byte_index=0;byte_index<32;byte_index=byte_index+1)
+    if(req_write && !rsp_error)for(byte_index=0;byte_index<32;byte_index=byte_index+1)
      if(!req_wmask[byte_index])memory[req_addr>>3][byte_index*8+:8]<=req_wdata[byte_index*8+:8];
    end else begin
     model_pending<=1;pending_write<=req_write;pending_addr<=req_addr;
@@ -195,7 +196,28 @@ initial begin
  if(stored_frames!=80 || storage_error)$fatal(1,"CDC stall lost PCM");
  for(i=0;i<80;i=i+1)read_one(i,0);
  // Same-cycle request/response is legal on both reads and writes.
- immediate=1;record_and_check(19);immediate=0;
+ immediate=1;record_and_check(19);
+ fail_read=1;read_one(3,1);fail_read=0;
+ wrong_response_kind=1;read_one(5,1);wrong_response_kind=0;read_one(5,0);
+ error_write=write_requests;begin_record(100);
+ for(i=0;i<8;i=i+1)send(i);
+ finish=1;step;finish=0;wait_done;
+ if(!storage_error || stored_frames!=0)$fatal(1,"Immediate write error reported as success");
+ read_one(0,1);error_write=-1;immediate=0;
+ record_and_check(19);
+ // A response on the final watchdog edge must win over timeout. Its extra
+ // completion cycle must neither quarantine the port nor lose the write.
+ suppress_response=1;begin_record(9);for(i=0;i<8;i=i+1)send(i);
+ finish=1;step;finish=0;
+ @(negedge mem_clk);
+ while(dut.watchdog<498)@(negedge mem_clk);
+ if(!model_pending || !dut.transaction_active)$fatal(1,"Late-response setup missed active request");
+ delay_cycles=0;suppress_response=0;wait_done;
+ if(storage_error || stored_frames!=8 || !backend_available)$fatal(1,"Final-edge response lost to timeout");
+ for(i=0;i<8;i=i+1)read_one(i,0);
+ // Reset after accepting a response but before publishing its completion.
+ immediate=1;begin_record(100);for(i=0;i<8;i=i+1)send(i);
+ wait(dut.mem_state==dut.M_COMPLETE);reset_all;record_and_check(13);
  fail_read=1;read_one(3,1);fail_read=0;read_one(3,0);
  wrong_response_kind=1;read_one(5,1);wrong_response_kind=0;read_one(5,0);
  // Calibration loss invalidates stored metadata even between transactions.
@@ -229,7 +251,7 @@ initial begin
  stall_cycles=100;begin_record(100);for(i=0;i<8;i=i+1)send(i);
  repeat(12)step;init_done=0;wait_done;
  if(!storage_error || backend_available)$fatal(1,"DDR calibration loss not reported");
- $display("PASS: PCM DDR transport clocks=%0d/%0d, all tail masks, 2053-frame readback, FIFO wrap/stall, capacity, errors, timeout quarantine and reset",SRC_HALF,MEM_HALF);
+ $display("PASS: PCM DDR transport clocks=%0d/%0d, all tail masks, 2053-frame readback, FIFO wrap/stall, capacity, immediate/error/final-watchdog responses, completion reset and timeout quarantine",SRC_HALF,MEM_HALF);
  $finish;
 end
 initial begin #30000000;$fatal(1,"PCM store watchdog");end
