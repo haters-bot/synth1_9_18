@@ -1,5 +1,7 @@
 # UI Touch Hub 当前交接入口
 
+> **2026-10-30 21:42 ZCode 断电重烧完成，板上恢复为已验收同版位流。** 用户报告板卡断电（SRAM 配置丢失），已用同一保留位流 `E:/gaoyun_builds/R16A_build_20261030_201520/impl/pnr/2_ui_touch_hub.fs` 重新执行唯一一次 SRAM operation2：写前重读审计 timing_closed=true、双端 SHA256 一致 `4BA5FD918FAAE9B52CE3099B33F8E23453F90FAF722606736F0C74D6199B3525`，PROGRAMMER_EXIT=0、User Code `0x00001521`（与20:44首烧一致）、Status `0x00026230`、26.3s。部署目录 `impl/deploy_runs/20261030_214138_R16_stereo_hc07_F14_F16_reburn_after_powerloss`。位流文件断电前后哈希逐位一致，未重新编译（主机未断电文件无损）；Flash 未动、无重试。显示验收沿用户此前"没事，正常的"结论（同一位流）；preview.jpg 仍朝天花板仅留档。
+
 > **2026-10-30 GitHub检查点：用户已授权提交并推送当前版本。** 分支 `integration/dual-138k-uart-phase1`；版本范围为当前已审计/烧录且显示正常的UI源码、安卓壳、网页、测试与协作文档，摘要见 [R16发布检查点](doc/RELEASE_R16_STEREO_HC07_2026-10-30.md)。不纳入实现输出、APK/签名密钥、仿真库、抓拍或临时分析；旧音频构建脚本改动留在本地。此前“不推送”条目为用户本次授权前的历史约束。
 
 > **2026-10-30 用户现场确认新版UI显示正常。** 对20:43 SRAM部署，用户回复“没事，正常的”，已记入部署目录hardware_acceptance.json；摄像头朝天花板的局限不再影响显示验收结论。用户准备验证手机→MIDI→灯屏→实体演奏→I²S录音→手机回传链路；提供C大调4秒音阶与90BPM《小星星》单旋律测试MIDI，位于 `E:/gaoyun_builds/midi_examples_20261030/`，均已用生产JS解析器核对。实体键盘最低音仍待核对，当前固件60起，曲谱只指引不自动发声；蓝牙/灯带/录音回传尚未宣称实物验收。
@@ -618,3 +620,6 @@ R15H 归档比特流 SHA256：`911054F05264B88D565FBF4FC6A600751E93848057080B9A1
 - 最新测试：metrics_tests_20261027_215958_053975；i2s_tests_20261027_215850_217355；spectral_tests_20261027_211752_887973；knob_integration_20261027_211825_465226；navigation_20261027_211943；video_alignment_20261027_212213_225013。
 - 工程机ssh gaoyun hostname已验证可达；目前未烧录任何升级位流，板上仍190826旋钮稳定版。待当前构建完成必须audit_build五类全通过，再tools/deploy_verified.py --label R16_I2S_SIX_WINDOW_UPGRADE --fs <该构建>/impl/pnr/2_ui_touch_hub.fs（默认SRAMoperation2）。SSH烧录超时禁止自动重试，Flash暂停。
 - 详细定义、误差、抽取波形6kHz混叠边界、失败时序与测量限制见doc/I2S_SIX_WINDOW_UPGRADE_2026-10-27.md。现场需要用户确认六窗随真实声音变化且旋钮仍正常；不可把仿真或摄像头静帧当作音频响应证明。
+
+> **2026-10-30 23:3x 接续（Bene）:** 修复 `sim/tb_performance_cue.v` 与 `ui_top_renderer` 的实例失配（新增 `performance_mode` / `performance_local_mode_valid` / `performance_local_mode` 端口），并把测试台事件音改写为 `PERFORMANCE_BASE_NOTE(7'd29)` 同参化的 7'd29 以保持键位映射（避免 BASE_NOTE 默认 60 时的越界/映射偏差）。回归通过：`impl/performance_cue_20261030_232624_787123` PASS（1000 个曲谱时钟位置、精确 MIDI 键、暂停冻结、Note-Off 不提示、停止清空）。源码仅改该测试台，未动 RTL；本轮无 Gowin、无烧录、无推送。后续接续：跟弹模式必须等实体琴键输入（新需求，尚未实现——需把 `performance_key_state` 的实体 MIDI 键态接到引导提示通路，而不是仅触摸/遥控播放）。
+

@@ -2,7 +2,7 @@
 // merely that a gateway wrote bytes. Only the last control reply is cached;
 // READ retries are idempotent offset reads and regenerate their audio packets.
 module performance_phone_session #(
- parameter MAX_EVENTS=16384,BASE_NOTE=60,KEY_COUNT=32
+ parameter MAX_EVENTS=16384,BASE_NOTE=29,KEY_COUNT=32
 )(
  input wire clk,rst_n,tick_1ms,packet_valid,
  input wire [7:0] packet_type,packet_sequence,
@@ -118,6 +118,10 @@ module performance_phone_session #(
        if(length!=0 || !loaded || uploading || score_error)begin status<=3;state<=COMPOSE;end
        else state<=FORWARD;
       end
+      8'h23:begin
+       if(length!=1 || payload[1:0]>2)begin status<=1;state<=COMPOSE;end
+       else state<=FORWARD;
+      end
       8'h21,8'h22,8'h41:begin
        if(length!=0)begin status<=1;state<=COMPOSE;end else state<=FORWARD;
       end
@@ -168,7 +172,7 @@ module performance_phone_session #(
      // Keep the page's link indicator alive for queries and offline export.
      if(kind==1 || kind==2 || kind==8'h43)begin command_valid<=1;command_type<=1;command_length<=0;end
      cache_reply[7:0]<=status;cache_reply[15:8]<=kind;
-     cache_reply[23:16]<={1'b0,audio_link_up,export_busy,fast_baud,loaded,backend_available,record_busy,record_active};
+       cache_reply[23:16]<={1'b0,audio_link_up,export_busy,fast_baud,loaded,backend_available,record_busy,record_active};
      cache_reply[31:24]<={4'd0,record_status};cache_reply[63:32]<=stored_frames;
      cache_reply[79:64]<=received;cache_reply[87:80]<=BASE_NOTE;cache_reply[95:88]<=KEY_COUNT;
      cache_reply[127:96]<=32'd96000;cache_reply[159:128]<=generation;cache_reply[175:160]<=MAX_EVENTS;

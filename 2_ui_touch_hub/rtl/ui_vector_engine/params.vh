@@ -93,6 +93,11 @@
 `define PARAM_ID_ENV1_DECAY   8'h42 // CC75
 `define PARAM_ID_ENV1_SUSTAIN 8'h43 // CC76
 `define PARAM_ID_ENV1_RELEASE 8'h44 // CC72
+`define PARAM_ID_ENV2_ATTACK  8'h58 // CC32
+`define PARAM_ID_ENV2_HOLD    8'h59 // local only
+`define PARAM_ID_ENV2_DECAY   8'h5A // CC33
+`define PARAM_ID_ENV2_SUSTAIN 8'h5B // CC34
+`define PARAM_ID_ENV2_RELEASE 8'h5C // CC35
 
 // FX Matrix / Voicing
 `define PARAM_ID_FX_REVERB    8'h50

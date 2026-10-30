@@ -1,7 +1,7 @@
 // Maps scheduled MIDI events and local piano touches to key/guide masks.
 module performance_key_state #(
     parameter integer KEY_COUNT = 32,
-    parameter integer BASE_NOTE = 60
+    parameter integer BASE_NOTE = 29
 )(
     input  wire                    clk,
     input  wire                    rst_n,

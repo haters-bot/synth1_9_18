@@ -39,6 +39,7 @@ label { color: var(--muted); display: grid; gap: 7px; }
 .song-line span { color: var(--muted); }
 .progress-track { height: 8px; border-radius: 99px; background: #203346; margin-top: 15px; overflow: hidden; }
 .progress { height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--amber)); transition: width .15s linear; }
+.progress-label { min-height: 1.2em; margin-top: 4px; color: var(--muted); font-size: .8rem; }
 .guide-card { padding-bottom: 14px; }
 .stats { color: var(--muted); }
 .piano { height: clamp(210px, 31vw, 300px); display: grid; grid-template-columns: repeat(32,minmax(30px,1fr)); overflow-x:auto; max-width:100%; gap: 4px; align-items: stretch; margin-top: 18px; padding: 8px; border-radius: 14px; background: #0a131d; border: 1px solid #22394c; }

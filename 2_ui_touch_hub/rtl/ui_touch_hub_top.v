@@ -23,7 +23,7 @@ module ui_touch_hub_top #(
     // Disable the separate WS2812 output only for diagnostics.
     parameter PERFORMANCE_LED_ENABLE=1,
     // Provisional until the physical keyboard's lowest MIDI note is captured.
-    parameter integer PERFORMANCE_BASE_NOTE=60,
+    parameter integer PERFORMANCE_BASE_NOTE=29,
     parameter integer PERFORMANCE_MAX_EVENTS=16384
 )(
     input  wire        clk,             // 板载 50MHz 有源晶振 (V22)
@@ -71,6 +71,8 @@ module ui_touch_hub_top #(
     input  wire        phone_uart_rx, // F16 / J13 pin32, module TXD -> FPGA
     // Dedicated phone response UART, F14 / J13 pin29, FPGA -> module RXD.
     output wire        phone_uart_tx,
+    // Physical MIDI keyboard stream mirrored from audio-board E19; F15 / J13 pin34.
+    input  wire        keyboard_uart_rx,
 
     // 板载状态指示灯
     output wire [1:0]  led,             // T18: PLL Lock, R18: Heartbeat
@@ -583,6 +585,17 @@ module ui_touch_hub_top #(
     wire [6:0] phone_command_length;
     wire [511:0] phone_command_payload;
     wire performance_score_error,performance_score_running;
+    wire keyboard_byte_valid,keyboard_framing_error;
+    wire [7:0] keyboard_byte;
+    wire keyboard_note_valid,keyboard_note_on;
+    wire [6:0] keyboard_note_number,keyboard_note_velocity;
+    performance_uart_rx #(.CLK_FREQ(50000000),.BAUD(31250)) u_keyboard_uart_rx(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.uart_rx(keyboard_uart_rx),
+        .byte_valid(keyboard_byte_valid),.byte_data(keyboard_byte),.framing_error(keyboard_framing_error));
+    keyboard_midi_parser u_keyboard_midi_parser(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.byte_data(keyboard_byte),.byte_valid(keyboard_byte_valid),
+        .note_event_valid(keyboard_note_valid),.note_event_on(keyboard_note_on),
+        .note_event_note(keyboard_note_number),.note_event_velocity(keyboard_note_velocity));
     performance_phone_transport u_phone_transport(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),.uart_rx(phone_uart_rx),
         .hold_lock(phone_export_busy),.fast_baud(phone_fast_baud),.locked(phone_locked),
@@ -606,6 +619,9 @@ module ui_touch_hub_top #(
     wire performance_record_start_accepted,performance_record_start_rejected;
     wire [3:0] performance_record_status;
     wire performance_local_play,performance_local_pause,performance_local_stop,performance_local_record;
+    wire [1:0] performance_mode;
+    wire performance_local_mode_valid;
+    wire [1:0] performance_local_mode;
     performance_touch_controls u_performance_touch_controls(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.page_active(performance_page_active),
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
@@ -618,6 +634,7 @@ module ui_touch_hub_top #(
         .local_play(performance_local_play && performance_song_loaded && !phone_upload_active),.local_pause_toggle(performance_local_pause),
         .local_stop(performance_local_stop),.local_record_toggle(performance_local_record && !phone_export_busy &&
             !(performance_packet_valid && performance_packet_type==8'h43)),
+        .local_mode_valid(performance_local_mode_valid),.local_mode(performance_local_mode),
         .record_start_accepted(performance_record_start_accepted),.record_start_rejected(performance_record_start_rejected),
         .record_active(performance_record_active),.record_busy(performance_record_busy),.record_done(performance_record_done),
         .clear_events(performance_clear_events),.event_push(performance_event_push),
@@ -629,7 +646,7 @@ module ui_touch_hub_top #(
         .manual_note(performance_remote_note),.manual_velocity(performance_remote_velocity),
         .song_duration_ms(performance_duration_ms),.song_loaded(performance_song_loaded),
         .gateway_up(performance_gateway_up),.recording(performance_recording),
-        .protocol_error(performance_protocol_error));
+        .protocol_error(performance_protocol_error),.performance_mode(performance_mode));
 
     localparam [28:0] PERFORMANCE_DDR_BASE = 29'd0;
     localparam [28:0] PERFORMANCE_DDR_REGION_END = 29'd268435456;
@@ -746,11 +763,15 @@ module ui_touch_hub_top #(
         .performance_event_note(performance_event_note),.performance_event_velocity(performance_event_velocity),
         .performance_event_on(performance_event_on),.performance_start(performance_start),
         .performance_stop(performance_stop),.performance_pause(performance_pause),
+        .performance_mode(performance_mode),
+        .performance_local_mode_valid(performance_local_mode_valid),.performance_local_mode(performance_local_mode),
         .performance_duration_ms(performance_duration_ms),.performance_gateway_up_in(performance_gateway_up),
         .performance_recording_in(performance_record_active),.performance_record_status_in(performance_record_status),
         .performance_remote_note_valid(performance_remote_note_valid),
         .performance_remote_note_on(performance_remote_note_on),.performance_remote_note(performance_remote_note),
         .performance_remote_velocity(performance_remote_velocity),
+        .performance_physical_note_valid(keyboard_note_valid),.performance_physical_note_on(keyboard_note_on),
+        .performance_physical_note(keyboard_note_number),.performance_physical_velocity(keyboard_note_velocity),
         .ui_touch_valid(ui_touch_valid), .ui_touch_down(ui_touch_down),
         .ui_touch_x(ui_touch_x), .ui_touch_y(ui_touch_y),
         .touch_diag_coords (touch_diag_coords),

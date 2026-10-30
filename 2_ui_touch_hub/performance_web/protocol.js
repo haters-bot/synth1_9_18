@@ -1,7 +1,7 @@
 (function (root) {
   "use strict";
   const TYPES = Object.freeze({HELLO:1, STATUS:2, CLEAR:16, BEGIN:17, EVENTS:18, END:19,
-    PLAY:32, PAUSE:33, STOP:34, NOTE:48, RECORD_START:64, RECORD_STOP:65, READ:67, ACK:112, AUDIO:113});
+    PLAY:32, PAUSE:33, STOP:34, MODE:35, NOTE:48, RECORD_START:64, RECORD_STOP:65, READ:67, ACK:112, AUDIO:113});
   const u16 = n => Uint8Array.of(n & 255, n >>> 8 & 255);
   const u32 = n => Uint8Array.of(n & 255, n >>> 8 & 255, n >>> 16 & 255, n >>> 24 & 255);
   function join(...parts) {

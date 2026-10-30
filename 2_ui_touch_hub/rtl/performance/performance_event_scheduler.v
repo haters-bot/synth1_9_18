@@ -15,6 +15,9 @@ module performance_event_scheduler #(
     input  wire        start,
     input  wire        stop,
     input  wire        pause,
+    // In follow mode a correct physical key advances one score event while
+    // the millisecond clock remains frozen.
+    input  wire        follow_step,
     output reg         running,
     output reg         event_valid,
     output reg         event_on_out,
@@ -125,8 +128,8 @@ module performance_event_scheduler #(
                     current_record <= ram_record;
                     current_record_valid <= 1'b1;
                     next_note_reg <= ram_record[14:8];
-                end else if (!pause &&
-                    (current_record[46:15] <= song_time_ms)) begin
+                end else if ((!pause || follow_step) &&
+                    (follow_step || current_record[46:15] <= song_time_ms)) begin
                     event_valid        <= 1'b1;
                     event_on_out       <= current_record[0];
                     event_note_out     <= current_record[14:8];

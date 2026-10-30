@@ -12,7 +12,7 @@
 `include "font_3x5.vh"
 
 module ui_top_renderer #(
-    parameter integer PERFORMANCE_BASE_NOTE = 60,
+    parameter integer PERFORMANCE_BASE_NOTE = 29,
     parameter integer PERFORMANCE_KEY_COUNT = 32,
     parameter integer PERFORMANCE_LED_COUNT = 24,
     parameter integer PERFORMANCE_MAX_EVENTS = 16384,
@@ -109,6 +109,9 @@ module ui_top_renderer #(
     input wire        performance_start,
     input wire        performance_stop,
     input wire        performance_pause,
+    input wire [1:0]  performance_mode,
+    output reg        performance_local_mode_valid,
+    output reg [1:0]  performance_local_mode,
     input wire [31:0] performance_duration_ms,
     input wire        performance_gateway_up_in,
     input wire        performance_recording_in,
@@ -118,6 +121,10 @@ module ui_top_renderer #(
     input wire        performance_remote_note_on,
     input wire [6:0]  performance_remote_note,
     input wire [6:0]  performance_remote_velocity,
+    input wire        performance_physical_note_valid,
+    input wire        performance_physical_note_on,
+    input wire [6:0]  performance_physical_note,
+    input wire [6:0]  performance_physical_velocity,
     output wire binding_capture,
     output wire navigation_capture,
     output wire [63:0] user_knob_steps,
@@ -192,6 +199,7 @@ module ui_top_renderer #(
     localparam integer PERFORMANCE_KEY_BITS = (PERFORMANCE_KEY_COUNT <= 2) ? 1 : $clog2(PERFORMANCE_KEY_COUNT);
     localparam integer PERFORMANCE_KEY_WIDTH = 1280 / PERFORMANCE_KEY_COUNT;
     wire [PERFORMANCE_KEY_COUNT-1:0] performance_active_keys;
+    wire [PERFORMANCE_KEY_COUNT-1:0] performance_nonphysical_keys;
     wire [PERFORMANCE_KEY_COUNT-1:0] performance_guide_keys;
     wire [PERFORMANCE_LED_COUNT-1:0] performance_led_active_keys;
     wire [PERFORMANCE_LED_COUNT-1:0] performance_led_guide_keys;
@@ -214,6 +222,17 @@ module ui_top_renderer #(
         (performance_remote_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
     wire [PERFORMANCE_KEY_BITS-1:0] performance_remote_key =
         performance_remote_note - PERFORMANCE_BASE_NOTE;
+    wire performance_physical_key_valid = performance_physical_note_valid &&
+        (performance_physical_note >= PERFORMANCE_BASE_NOTE) &&
+        (performance_physical_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
+    wire [PERFORMANCE_KEY_BITS-1:0] performance_physical_key =
+        performance_physical_note - PERFORMANCE_BASE_NOTE;
+    reg [PERFORMANCE_KEY_COUNT-1:0] performance_physical_keys;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n)performance_physical_keys<={PERFORMANCE_KEY_COUNT{1'b0}};
+        else if(performance_physical_key_valid)
+            performance_physical_keys[performance_physical_key]<=performance_physical_note_on;
+    end
     reg         performance_touch_prev;
     reg [PERFORMANCE_KEY_BITS-1:0] performance_touch_key;
     reg         performance_touch_press_pending;
@@ -225,6 +244,26 @@ module ui_top_renderer #(
     wire [PERFORMANCE_KEY_BITS-1:0] performance_touch_key_index =
         (ui_touch_x >= 14'd1280) ? PERFORMANCE_KEY_COUNT-1 : performance_touch_key_unclamped[PERFORMANCE_KEY_BITS-1:0];
     wire performance_touch_packet = navigation_view==3'd2 && ui_touch_valid;
+    reg performance_mode_touch_latched;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n)begin
+            performance_mode_touch_latched<=0;
+            performance_local_mode_valid<=0;
+            performance_local_mode<=2'd2;
+        end else begin
+            performance_local_mode_valid<=0;
+            if(ui_touch_valid && !ui_touch_down)performance_mode_touch_latched<=0;
+            else if(navigation_view==3'd2 && ui_touch_valid && ui_touch_down &&
+                    ui_touch_y>=14'd136 && ui_touch_y<14'd168 &&
+                    ui_touch_x>=14'd300 && ui_touch_x<14'd820 && !performance_mode_touch_latched)begin
+                performance_mode_touch_latched<=1;
+                performance_local_mode_valid<=1;
+                if(ui_touch_x<14'd468)performance_local_mode<=2'd0;
+                else if(ui_touch_x<14'd644)performance_local_mode<=2'd1;
+                else performance_local_mode<=2'd2;
+            end
+        end
+    end
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n)begin
             performance_touch_prev<=1'b0;performance_touch_key<={PERFORMANCE_KEY_BITS{1'b0}};
@@ -288,7 +327,7 @@ module ui_top_renderer #(
         .clear_events(performance_clear_events),.event_push(performance_event_push),
         .event_time_ms(performance_event_time_ms),.event_note(performance_event_note),
         .event_velocity(performance_event_velocity),.event_on(performance_event_on),
-        .start(performance_start),.stop(performance_stop),.pause(performance_pause),
+        .start(performance_start),.stop(performance_stop),.pause(performance_pause || (performance_mode == 2'd1)),
         .running(performance_running),.event_valid(performance_scheduled_valid),
         .event_on_out(performance_scheduled_on),.event_note_out(performance_scheduled_note),
         .event_velocity_out(performance_scheduled_velocity),.song_time_ms(performance_song_time_ms),
@@ -323,6 +362,7 @@ module ui_top_renderer #(
         (performance_scheduler_next_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
     assign performance_next_key = performance_next_key_valid ?
         performance_scheduler_next_note - PERFORMANCE_BASE_NOTE : 6'd0;
+    assign performance_active_keys=performance_nonphysical_keys | performance_physical_keys;
     performance_key_state #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_performance_keys(
         .clk(clk),.rst_n(rst_n),.event_valid(performance_scheduled_valid),.event_on(performance_scheduled_on),
         .clear_scheduled(performance_stop || (performance_clear_events && !performance_running) || performance_start),
@@ -330,10 +370,10 @@ module ui_top_renderer #(
         .manual_down(performance_manual_down),.manual_key(performance_manual_key),
         .remote_valid(performance_remote_note_valid && performance_remote_key_valid),
         .remote_down(performance_remote_note_on),.remote_key(performance_remote_key),
-        .active_keys(performance_active_keys),.guide_keys(performance_guide_keys));
+        .active_keys(performance_nonphysical_keys),.guide_keys(performance_guide_keys));
     performance_note_arbiter u_performance_note_arbiter(
         .clk(clk),.rst_n(rst_n),
-        .score_valid(PERFORMANCE_SCORE_AUDIO_ENABLE && performance_scheduled_valid),.score_on(performance_scheduled_on),
+        .score_valid((PERFORMANCE_SCORE_AUDIO_ENABLE || performance_mode == 2'd0) && performance_scheduled_valid),.score_on(performance_scheduled_on),
         .score_note(performance_scheduled_note),.score_velocity(performance_scheduled_velocity),
         .remote_valid(performance_remote_note_valid),.remote_on(performance_remote_note_on),
         .remote_note(performance_remote_note),.remote_velocity(performance_remote_velocity),
@@ -439,7 +479,7 @@ module ui_top_renderer #(
         .audio_xy_valid(audio_xy_valid),.audio_xy_available(audio_xy_available),
         .performance_active_keys(performance_active_keys),.performance_guide_keys(performance_guide_keys),
         .performance_progress(performance_progress),.performance_running(performance_running),
-        .performance_paused(performance_pause),
+        .performance_paused(performance_pause || (performance_mode == 2'd1)),
         .performance_gateway_up(performance_gateway_up_in),.performance_recording(performance_recording_in),.performance_record_status(performance_status_for_display),
         .performance_next_key(performance_next_key),.performance_next_key_valid(performance_next_key_valid),.performance_next_key_y(performance_next_key_y),
         .out_hit(navigation_hit),.out_rgb(navigation_rgb));

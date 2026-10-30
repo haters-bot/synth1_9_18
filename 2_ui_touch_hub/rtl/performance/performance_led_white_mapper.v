@@ -3,7 +3,7 @@
 module performance_led_white_mapper #(
     parameter integer KEY_COUNT = 32,
     parameter integer LED_COUNT = 24,
-    parameter integer BASE_NOTE = 60
+    parameter integer BASE_NOTE = 29
 )(
     input  wire [KEY_COUNT-1:0] active_keys,
     input  wire [KEY_COUNT-1:0] guide_keys,

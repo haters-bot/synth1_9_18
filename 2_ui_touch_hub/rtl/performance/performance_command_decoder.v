@@ -16,6 +16,8 @@ module performance_command_decoder #(
     input  wire                    local_pause_toggle,
     input  wire                    local_stop,
     input  wire                    local_record_toggle,
+    input  wire                    local_mode_valid,
+    input  wire [1:0]              local_mode,
     input  wire                    record_start_accepted,
     input  wire                    record_start_rejected,
     input  wire                    record_active,
@@ -40,6 +42,7 @@ module performance_command_decoder #(
     output reg                     song_loaded,
     output reg                     gateway_up,
     output reg                     recording,
+    output reg [1:0]               performance_mode,
     output reg                     protocol_error
 );
     localparam [7:0] TYPE_HELLO        = 8'h01;
@@ -53,6 +56,7 @@ module performance_command_decoder #(
     localparam [7:0] TYPE_MANUAL_NOTE  = 8'h30;
     localparam [7:0] TYPE_RECORD_START = 8'h40;
     localparam [7:0] TYPE_RECORD_STOP  = 8'h41;
+    localparam [7:0] TYPE_MODE         = 8'h23;
 
     reg [MAX_PAYLOAD*8-1:0] batch_payload;
     reg [3:0] batch_index;
@@ -82,6 +86,7 @@ module performance_command_decoder #(
             song_loaded       <= 1'b0;
             gateway_up        <= 1'b0;
             recording         <= 1'b0;
+            performance_mode  <= 2'd2;
             protocol_error    <= 1'b0;
             batch_payload     <= {(MAX_PAYLOAD*8){1'b0}};
             batch_index       <= 4'd0;
@@ -179,6 +184,12 @@ module performance_command_decoder #(
                             stop_pulse  <= 1'b1;
                         end else protocol_error <= 1'b1;
                     end
+                    TYPE_MODE: begin
+                        if (packet_length == 1 && packet_payload[1:0] <= 2'd2) begin
+                            performance_mode <= packet_payload[1:0];
+                            if (packet_payload[1:0] == 2'd1) pause_state <= 1'b1;
+                        end else protocol_error <= 1'b1;
+                    end
                     TYPE_MANUAL_NOTE: begin
                         if (packet_length >= 3) begin
                             manual_note     <= packet_payload[6:0];
@@ -218,6 +229,10 @@ module performance_command_decoder #(
                     recording <= 1'b1;
                     record_start_pulse <= 1'b1;
                 end else protocol_error <= 1'b1;
+            end
+            if(local_mode_valid && local_mode<=2'd2) begin
+                performance_mode<=local_mode;
+                if(local_mode==2'd1)pause_state<=1'b1;
             end
         end
     end

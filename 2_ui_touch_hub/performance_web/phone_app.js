@@ -15,7 +15,7 @@
   badge("gatewayStatus",`板卡已应答 · ${s.fast?115200:9600} baud`);
   badge("songStatus",s.loaded?`板卡已载入 ${s.events} 事件`:"板卡曲谱未就绪");
  }
- function piano(base=60){
+ function piano(base=29){
   $("piano").replaceChildren();
   for(let i=0;i<32;i++) {
    const note=base+i,key=document.createElement("button");
@@ -99,6 +99,7 @@
   if(!result.loaded || result.events!==song.events.length)throw Error("板卡曲谱计数不匹配");
   log(`板卡确认 ${result.events} 事件完整载入。点击播放开始灯带／屏幕指引，声音由实体琴键演奏。`);
  });
+ $("modeSelect").onchange=()=>work(async()=>{await client().request(T.MODE,Uint8Array.of(Number($("modeSelect").value)));log("板卡已确认演奏模式");});
  for(const [id,type] of [["playButton",T.PLAY],["pauseButton",T.PAUSE],["stopButton",T.STOP]])
   $(id).onclick=()=>work(async()=>{await client().request(type);log("板卡已确认控制指令");});
  $("recordButton").onclick=()=>work(async()=>{
@@ -114,6 +115,8 @@
   if(s.sampleRate!==96000)throw Error("当前导出固件只支持 96k I²S 源");
   const name=`fpga_take_${s.generation}_8k_${channels}ch.wav`,parts=[];
   let saved=0;
+  $("progress").style.width="0%";
+  $("progressLabel").textContent=`准备读取 ${frames} 帧…`;
   if(native){
    state.saving=true;
    await new Promise((resolve,reject)=>{state.saveWait={resolve,reject};native.beginSave(name,frames,channels);});
@@ -123,15 +126,19 @@
    for(let at=0;at<frames;at+=1024){
     const n=Math.min(1024,frames-at);
     const result=await c.request(T.READ,P.join(P.u32(at),P.u16(n),Uint8Array.of(channels)),{offset:at,count:n,channels,generation:s.generation});
+    if(result.pcm.length!==n*channels*2)throw Error(`板卡 PCM 长度错误：应为 ${n*channels*2}，实际 ${result.pcm.length}`);
     if(native)await nativeWrite(result.pcm);else parts.push(result.pcm);
     saved+=n;$("progress").style.width=`${saved/frames*100}%`;
+    $("progressLabel").textContent=`已回传 ${saved}/${frames} 帧`;
     const remaining=Math.max(0,(Date.now()-started)/1000*(frames-saved)/saved);
     log(`下载 ${saved}/${frames} 帧 · 8kHz/${channels}声道 · 预计剩余 ${Math.ceil(remaining)} 秒。串口回传慢于原始演奏。`);
    }
+   if(saved!==frames)throw Error(`录音回传未完成：${saved}/${frames} 帧`);
    if(native)await new Promise((resolve,reject)=>{state.writeWait={resolve,reject};native.finishSave();});
    else {
     const url=URL.createObjectURL(new Blob(parts,{type:"audio/wav"})),link=document.createElement("a");link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
    }
+   $("progressLabel").textContent=`完成 ${saved}/${frames} 帧`;
    log(`录音已保存：${name}。来源为板卡 DDR 中的 I²S PCM，127抽头低通后 96k→8k；末尾不足12帧舍弃。`);
   }catch(e){if(native)native.cancelSave();throw e;}
   finally {state.saving=false;}

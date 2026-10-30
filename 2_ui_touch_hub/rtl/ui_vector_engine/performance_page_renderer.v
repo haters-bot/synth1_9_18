@@ -2,7 +2,7 @@
 // independent semitone columns; key pitch class is based on BASE_NOTE.
 module performance_page_renderer #(
     parameter integer KEY_COUNT = 32,
-    parameter integer BASE_NOTE = 60
+    parameter integer BASE_NOTE = 29
 )(
     input  wire [13:0] in_x,
     input  wire [13:0] in_y,
@@ -10,7 +10,7 @@ module performance_page_renderer #(
     input  wire [KEY_COUNT-1:0] guide_keys,
     input  wire [15:0] song_progress,
     input  wire        song_running,
-    input  wire        song_paused,
+  input  wire        song_paused,
     input  wire        gateway_up,
     input  wire        recording,
     input  wire [3:0]  record_status,

@@ -118,9 +118,11 @@ module param_merger (
     reg  event_spi_param_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg [7:0] event_spi_param_id /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg [6:0] event_spi_param_val /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [1:0] event_spi_env_tab;
     reg  event_touch_delta_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg [7:0] event_touch_selected_id /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg signed [7:0] event_touch_delta_val /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [1:0] event_touch_env_tab;
     reg  event_curve_update_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg  event_curve_update_filter /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg [1:0] event_curve_update_tab /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
@@ -134,9 +136,11 @@ module param_merger (
             event_spi_param_valid<=0;
             event_spi_param_id<=0;
             event_spi_param_val<=0;
+            event_spi_env_tab<=0;
             event_touch_delta_valid<=0;
             event_touch_selected_id<=0;
             event_touch_delta_val<=0;
+            event_touch_env_tab<=0;
             event_curve_update_valid<=0;
             event_curve_update_filter<=0;
             event_curve_update_tab<=0;
@@ -147,10 +151,12 @@ module param_merger (
             event_btn_tap_action<=0;
         end else begin
             event_spi_param_valid<=spi_param_valid;
-            event_spi_param_id<=spi_param_id;
+            event_spi_param_id<=((spi_param_id>=`PARAM_ID_ENV1_ATTACK && spi_param_id<=`PARAM_ID_ENV1_RELEASE && val_env_tab==2'd1) ? (spi_param_id+8'h18) : spi_param_id);
+            event_spi_env_tab<=val_env_tab;
             event_spi_param_val<=spi_param_val;
             event_touch_delta_valid<=touch_delta_valid;
-            event_touch_selected_id<=touch_selected_id;
+            event_touch_selected_id<=((touch_selected_id>=`PARAM_ID_ENV1_ATTACK && touch_selected_id<=`PARAM_ID_ENV1_RELEASE && val_env_tab==2'd1) ? (touch_selected_id+8'h18) : touch_selected_id);
+            event_touch_env_tab<=val_env_tab;
             event_touch_delta_val<=touch_delta_val;
             event_curve_update_valid<=curve_update_valid;
             event_curve_update_filter<=curve_update_filter;
@@ -203,7 +209,8 @@ module param_merger (
     reg [4:0] curve_mask;
     reg [34:0] curve_values;
     // Bits: cutoff, resonance, ENV1 A/H/D/S/R. Coalesce at UART speed.
-    reg [6:0] curve_midi_pending;
+    // Filter cutoff/resonance, ENV1 A/D/S/R, ENV2 A/D/S/R. Hold is local.
+    reg [10:0] curve_midi_pending;
     integer env_i;
 
     always @(posedge clk or negedge rst_n) begin
@@ -530,11 +537,16 @@ module param_merger (
                     `PARAM_ID_FLT_FAT:      val_flt_fat      <= event_spi_param_val;
                     `PARAM_ID_FLT_MIX:      val_flt_mix      <= event_spi_param_val;
 
-                    `PARAM_ID_ENV1_ATTACK:  env_a[val_env_tab]   <= event_spi_param_val;
-                    `PARAM_ID_ENV1_HOLD:    env_h[val_env_tab]     <= event_spi_param_val;
-                    `PARAM_ID_ENV1_DECAY:   env_d[val_env_tab]    <= event_spi_param_val;
-                    `PARAM_ID_ENV1_SUSTAIN: env_s[val_env_tab]  <= event_spi_param_val;
-                    `PARAM_ID_ENV1_RELEASE: env_r[val_env_tab]  <= event_spi_param_val;
+                    `PARAM_ID_ENV1_ATTACK:  env_a[event_spi_env_tab]   <= event_spi_param_val;
+                    `PARAM_ID_ENV1_HOLD:    env_h[event_spi_env_tab]   <= event_spi_param_val;
+                    `PARAM_ID_ENV1_DECAY:   env_d[event_spi_env_tab]   <= event_spi_param_val;
+                    `PARAM_ID_ENV1_SUSTAIN: env_s[event_spi_env_tab]   <= event_spi_param_val;
+                    `PARAM_ID_ENV1_RELEASE: env_r[event_spi_env_tab]   <= event_spi_param_val;
+                    `PARAM_ID_ENV2_ATTACK:  env_a[1] <= event_spi_param_val;
+                    `PARAM_ID_ENV2_HOLD:    env_h[1] <= event_spi_param_val;
+                    `PARAM_ID_ENV2_DECAY:   env_d[1] <= event_spi_param_val;
+                    `PARAM_ID_ENV2_SUSTAIN: env_s[1] <= event_spi_param_val;
+                    `PARAM_ID_ENV2_RELEASE: env_r[1] <= event_spi_param_val;
 
                     `PARAM_ID_FX_REVERB:    val_fx_reverb    <= event_spi_param_val;
                     `PARAM_ID_FX_DELAY:     val_fx_delay     <= event_spi_param_val;
@@ -563,6 +575,7 @@ module param_merger (
                     if(curve_mask[0] && env_a[curve_tab]!=curve_values[6:0]) begin
                         env_a[curve_tab]<=curve_values[6:0];
                         if(curve_tab==0) curve_midi_pending[2]<=1;
+                        else if(curve_tab==1) curve_midi_pending[7]<=1;
                     end
                     if(curve_mask[1] && env_h[curve_tab]!=curve_values[13:7]) begin
                         env_h[curve_tab]<=curve_values[13:7];
@@ -571,14 +584,17 @@ module param_merger (
                     if(curve_mask[2] && env_d[curve_tab]!=curve_values[20:14]) begin
                         env_d[curve_tab]<=curve_values[20:14];
                         if(curve_tab==0) curve_midi_pending[4]<=1;
+                        else if(curve_tab==1) curve_midi_pending[8]<=1;
                     end
                     if(curve_mask[3] && env_s[curve_tab]!=curve_values[27:21]) begin
                         env_s[curve_tab]<=curve_values[27:21];
                         if(curve_tab==0) curve_midi_pending[5]<=1;
+                        else if(curve_tab==1) curve_midi_pending[9]<=1;
                     end
                     if(curve_mask[4] && env_r[curve_tab]!=curve_values[34:28]) begin
                         env_r[curve_tab]<=curve_values[34:28];
                         if(curve_tab==0) curve_midi_pending[6]<=1;
+                        else if(curve_tab==1) curve_midi_pending[10]<=1;
                     end
                 end
             end
@@ -726,25 +742,30 @@ module param_merger (
                     end
 
                     // Envelope 1
-                    `PARAM_ID_ENV1_ATTACK: begin
+                    `PARAM_ID_ENV1_ATTACK, `PARAM_ID_ENV2_ATTACK: begin
                         new_v = clamp7($signed({3'b000, val_env_attack}) + event_touch_delta_val);
-                        env_a[val_env_tab] <= new_v; midi_cc_val <= new_v;
+                        env_a[event_touch_env_tab] <= new_v;
+                        if(event_touch_env_tab!=0) midi_cc_req <= 0; else midi_cc_val <= new_v;
                     end
-                    `PARAM_ID_ENV1_HOLD: begin
+                    `PARAM_ID_ENV1_HOLD, `PARAM_ID_ENV2_HOLD: begin
                         new_v = clamp7($signed({3'b000, val_env_hold}) + event_touch_delta_val);
-                        env_h[val_env_tab] <= new_v; midi_cc_val <= new_v;
+                        env_h[event_touch_env_tab] <= new_v;
+                        if(event_touch_env_tab!=0) midi_cc_req <= 0; else midi_cc_val <= new_v;
                     end
-                    `PARAM_ID_ENV1_DECAY: begin
+                    `PARAM_ID_ENV1_DECAY, `PARAM_ID_ENV2_DECAY: begin
                         new_v = clamp7($signed({3'b000, val_env_decay}) + event_touch_delta_val);
-                        env_d[val_env_tab] <= new_v; midi_cc_val <= new_v;
+                        env_d[event_touch_env_tab] <= new_v;
+                        if(event_touch_env_tab!=0) midi_cc_req <= 0; else midi_cc_val <= new_v;
                     end
-                    `PARAM_ID_ENV1_SUSTAIN: begin
+                    `PARAM_ID_ENV1_SUSTAIN, `PARAM_ID_ENV2_SUSTAIN: begin
                         new_v = clamp7($signed({3'b000, val_env_sustain}) + event_touch_delta_val);
-                        env_s[val_env_tab] <= new_v; midi_cc_val <= new_v;
+                        env_s[event_touch_env_tab] <= new_v;
+                        if(event_touch_env_tab!=0) midi_cc_req <= 0; else midi_cc_val <= new_v;
                     end
-                    `PARAM_ID_ENV1_RELEASE: begin
+                    `PARAM_ID_ENV1_RELEASE, `PARAM_ID_ENV2_RELEASE: begin
                         new_v = clamp7($signed({3'b000, val_env_release}) + event_touch_delta_val);
-                        env_r[val_env_tab] <= new_v; midi_cc_val <= new_v;
+                        env_r[event_touch_env_tab] <= new_v;
+                        if(event_touch_env_tab!=0) midi_cc_req <= 0; else midi_cc_val <= new_v;
                     end
 
                     // Master FX
@@ -791,6 +812,18 @@ module param_merger (
                 end else if(curve_midi_pending[6]) begin
                     midi_cc_req<=1;midi_cc_param_id<=`PARAM_ID_ENV1_RELEASE;
                     midi_cc_val<=env_r[0];curve_midi_pending[6]<=0;
+                end else if(curve_midi_pending[7]) begin
+                    midi_cc_req<=1;midi_cc_param_id<=`PARAM_ID_ENV2_ATTACK;
+                    midi_cc_val<=env_a[1];curve_midi_pending[7]<=0;
+                end else if(curve_midi_pending[8]) begin
+                    midi_cc_req<=1;midi_cc_param_id<=`PARAM_ID_ENV2_DECAY;
+                    midi_cc_val<=env_d[1];curve_midi_pending[8]<=0;
+                end else if(curve_midi_pending[9]) begin
+                    midi_cc_req<=1;midi_cc_param_id<=`PARAM_ID_ENV2_SUSTAIN;
+                    midi_cc_val<=env_s[1];curve_midi_pending[9]<=0;
+                end else if(curve_midi_pending[10]) begin
+                    midi_cc_req<=1;midi_cc_param_id<=`PARAM_ID_ENV2_RELEASE;
+                    midi_cc_val<=env_r[1];curve_midi_pending[10]<=0;
                 end
             end
         end

@@ -30,10 +30,13 @@
       </div>
       <div class="control-grid">
         <label>键盘起始音
-          <select id="baseNote">
-            <option value="48">C3 / MIDI 48</option>
-            <option value="60" selected>C4 / MIDI 60</option>
-            <option value="72">C5 / MIDI 72</option>
+          <select id="baseNote" disabled><option value="29">F0 / MIDI 29（板卡上报）</option></select>
+        </label>
+        <label>演奏模式
+          <select id="modeSelect">
+            <option value="0">0 试听：曲谱自动播放</option>
+            <option value="1">1 跟弹：指引后等实体键</option>
+            <option value="2" selected>2 弹奏：自由演奏＋灯带</option>
           </select>
         </label>
         <label>播放控制
@@ -58,6 +61,7 @@
         <span id="songMeta">上传 MIDI 后显示事件和时长</span>
       </div>
       <div class="progress-track"><div id="progress" class="progress"></div></div>
+      <div id="progressLabel" class="progress-label">未开始传输</div>
     </section>
 
     <section class="guide-card">

@@ -76,6 +76,10 @@ module midi_uart_tx #(
                 `PARAM_ID_ENV1_DECAY:   map_id_to_cc = 7'd25; // OSC A decay
                 `PARAM_ID_ENV1_SUSTAIN: map_id_to_cc = 7'd26; // OSC A sustain
                 `PARAM_ID_ENV1_RELEASE: map_id_to_cc = 7'd27; // OSC A release
+                `PARAM_ID_ENV2_ATTACK:  map_id_to_cc = 7'd32; // OSC B attack
+                `PARAM_ID_ENV2_DECAY:   map_id_to_cc = 7'd33; // OSC B decay
+                `PARAM_ID_ENV2_SUSTAIN: map_id_to_cc = 7'd34; // OSC B sustain
+                `PARAM_ID_ENV2_RELEASE: map_id_to_cc = 7'd35; // OSC B release
                 `PARAM_ID_FLT_PAN:      map_id_to_cc = 7'd10; // Reused K27: global output balance
                 `PARAM_ID_OSCA_PAN:     map_id_to_cc = 7'd91;
                 `PARAM_ID_OSCB_PAN:     map_id_to_cc = 7'd92;
@@ -101,6 +105,8 @@ module midi_uart_tx #(
                 `PARAM_ID_FLT_MIX,
                 `PARAM_ID_ENV1_ATTACK, `PARAM_ID_ENV1_DECAY,
                 `PARAM_ID_ENV1_SUSTAIN, `PARAM_ID_ENV1_RELEASE,
+                `PARAM_ID_ENV2_ATTACK, `PARAM_ID_ENV2_DECAY,
+                `PARAM_ID_ENV2_SUSTAIN, `PARAM_ID_ENV2_RELEASE,
                 `PARAM_ID_MASTER_VOL, `PARAM_ID_FLT_PAN,
                 `PARAM_ID_OSCA_PAN, `PARAM_ID_OSCB_PAN:
                     cc_id_supported = 1'b1;
