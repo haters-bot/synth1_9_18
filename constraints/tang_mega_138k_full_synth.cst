@@ -149,9 +149,15 @@ IO_PORT "rst_n" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
 INS_LOC "GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_ddr3_wrapper/u_ddr_pll/u_pll/PLL_inst" PLL_L[0];
 INS_LOC "GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/u_dll" DDRDLLM_BL;
 INS_LOC "GEN_WAVETABLE_STORAGE.u_wavetable_storage_system/u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/fclkdiv" LEFTSIDE[4];
-// MAX98357A and onboard power-amplifier control.
+// MAX98357A, onboard PT8211 and onboard power-amplifier control.
 IO_LOC "PA_EN" AB16;
 IO_PORT "PA_EN" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "HP_DIN" AA16;
+IO_PORT "HP_DIN" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "HP_WS" AB17;
+IO_PORT "HP_WS" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "HP_BCK" Y17;
+IO_PORT "HP_BCK" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "MAX_SD" AB20;
 IO_PORT "MAX_SD" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "MAX_GAIN" AA21;

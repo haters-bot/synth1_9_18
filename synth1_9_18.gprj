@@ -51,6 +51,7 @@
         <File path="src/parameter_linear_interpolator.v" type="file.verilog" enable="1"/>
         <File path="src/performance_pitch_controller.v" type="file.verilog" enable="1"/>
         <File path="src/pll_init.v" type="file.verilog" enable="1"/>
+        <File path="src/pt8211_tx.v" type="file.verilog" enable="1"/>
         <File path="src/reset_release_sync.v" type="file.verilog" enable="1"/>
         <File path="src/sawtooth_lut.v" type="file.verilog" enable="1"/>
         <File path="src/sd_card/sd_file_list_reader.sv" type="file.verilog" enable="1"/>

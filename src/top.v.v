@@ -21,6 +21,9 @@ module top #(
     output wire VIS_BCLK,      // 音频可视化从机位时钟，引脚R19
     output wire VIS_LRC,       // 音频可视化从机左右声道时钟，引脚U21
     output wire VIS_DIN,       // 音频可视化从机串行数据，引脚R17
+    output wire HP_BCK,        // 板载PT8211位时钟，引脚Y17
+    output wire HP_WS,         // 板载PT8211字选择信号，引脚AB17
+    output wire HP_DIN,        // 板载PT8211串行数据，引脚AA16
     output wire PA_EN,         // 板载NS4263使能，低电平有效，引脚AB16
 
     output wire        sd_clk,
@@ -305,8 +308,8 @@ module top #(
     wire cache_a_ready;
     wire cache_b_ready;
 
-    // 使用外接MAX98357A，关闭板载NS4263。SD和GAIN保持高电平。
-    assign PA_EN    = 1'b1;
+    // 两个DAC并行输出同一个96 kHz单声道样本。板载NS4263低电平使能。
+    assign PA_EN    = 1'b0;
     assign MAX_SD   = 1'b1;
     assign MAX_GAIN = 1'b1;
     // 第二组排针直接镜像同一组I2S信号，不增加采样、缓存或时钟域。
@@ -1308,6 +1311,20 @@ module top #(
         .sdata          (MAX_DIN),
         .sample_tick    (sample_tick),
         .oversample_tick(oversample_tick)
+    );
+
+    // PT8211使用日本格式（LSBJ），不能直接复制标准I2S的数据和字选择信号。
+    // 两个发送器使用相同的系统时钟、复位和BCK相位增量，帧边界保持一致；
+    // 音频调度仍只由上面的MAX98357A发送器产生sample_tick。
+    pt8211_tx u_onboard_pt8211_tx (
+        .sys_clk        (clk_sys),
+        .rst_n          (rst_n_sys),
+        .sample_data    (master_output_sample),
+        .bck            (HP_BCK),
+        .ws             (HP_WS),
+        .din            (HP_DIN),
+        .sample_tick    (),
+        .oversample_tick()
     );
 
 endmodule

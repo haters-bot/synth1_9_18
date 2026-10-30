@@ -13,6 +13,9 @@ module tb_top_midi_input;
 
     wire MAX_SD;
     wire MAX_GAIN;
+    wire HP_BCK;
+    wire HP_WS;
+    wire HP_DIN;
     wire MAX_DIN;
     wire MAX_BCLK;
     wire MAX_LRC;
@@ -69,6 +72,9 @@ module tb_top_midi_input;
         .keyboard_uart_rx(keyboard_uart_rx),
         .MAX_SD  (MAX_SD),
         .MAX_GAIN(MAX_GAIN),
+        .HP_BCK  (HP_BCK),
+        .HP_WS   (HP_WS),
+        .HP_DIN  (HP_DIN),
         .MAX_DIN (MAX_DIN),
         .MAX_BCLK(MAX_BCLK),
         .MAX_LRC (MAX_LRC),
@@ -688,8 +694,8 @@ module tb_top_midi_input;
 
         if (dut.uart_framing_error !== 1'b0
             || MAX_SD !== 1'b1 || MAX_GAIN !== 1'b1
-            || PA_EN !== 1'b1) begin
-            $display("ERROR: UART or MAX98357A control state is incorrect");
+            || PA_EN !== 1'b0) begin
+            $display("ERROR: UART or audio output control state is incorrect");
             errors = errors + 1;
         end
 
