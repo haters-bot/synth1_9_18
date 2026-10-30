@@ -222,6 +222,19 @@ initial begin
  wrong_response_kind=1;read_one(5,1);wrong_response_kind=0;read_one(5,0);
  // Calibration loss invalidates stored metadata even between transactions.
  init_done=0;repeat(5)step;init_done=1;repeat(6)step;read_one(0,1);
+ // Precomputing read bounds must not precompute live DDR availability: a
+ // calibration loss between bounds calculation and validation rejects even
+ // an in-range index without issuing a backend read.
+ record_and_check(9);requests_before=requests;
+ fork
+  read_one(3,1);
+  begin
+   wait(dut.mem_state==dut.M_VALIDATE);
+   @(negedge mem_clk);init_done=0;
+  end
+ join
+ if(requests!=requests_before)$fatal(1,"Read issued after calibration loss during validation");
+ repeat(5)step;init_done=1;repeat(6)step;read_one(0,1);
  // A discontinuous frame index terminates an incomplete recording explicitly.
  begin_record(100);send(0);send(2);wait_done;
  if(!protocol_error || stored_frames!=1)$fatal(1,"Index discontinuity not reported");
@@ -251,7 +264,7 @@ initial begin
  stall_cycles=100;begin_record(100);for(i=0;i<8;i=i+1)send(i);
  repeat(12)step;init_done=0;wait_done;
  if(!storage_error || backend_available)$fatal(1,"DDR calibration loss not reported");
- $display("PASS: PCM DDR transport clocks=%0d/%0d, all tail masks, 2053-frame readback, FIFO wrap/stall, capacity, immediate/error/final-watchdog responses, completion reset and timeout quarantine",SRC_HALF,MEM_HALF);
+ $display("PASS: PCM DDR transport clocks=%0d/%0d, all tail masks, 2053-frame readback, FIFO wrap/stall, capacity, immediate/error/final-watchdog responses, validation calibration loss, completion reset and timeout quarantine",SRC_HALF,MEM_HALF);
  $finish;
 end
 initial begin #30000000;$fatal(1,"PCM store watchdog");end

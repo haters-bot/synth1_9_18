@@ -181,6 +181,7 @@ module performance_pcm_store #(
     localparam integer WATCHDOG_BITS=(RESPONSE_TIMEOUT<=1) ? 1 : $clog2(RESPONSE_TIMEOUT);
     reg [WATCHDOG_BITS-1:0] watchdog;
     reg [31:0] pending_read_index;
+    reg pending_read_out_of_range /* synthesis syn_preserve=1 syn_keep=1 */;
     reg completion_error;
     reg [31:0] completion_read_data;
     reg [1:0] pending_kind;
@@ -203,7 +204,7 @@ module performance_pcm_store #(
         if(!mem_rst_n)begin
             mem_state<=M_IDLE;session<=0;session_error<=0;poisoned<=0;last_good<=0;
             memory_base<=0;last_base<=0;memory_limit<=0;committed<=0;last_frames<=0;watchdog<=0;
-            pending_read_index<=0;completion_error<=0;completion_read_data<=0;
+            pending_read_index<=0;pending_read_out_of_range<=0;completion_error<=0;completion_read_data<=0;
             pending_kind<=0;pending_command_frames<=0;
             pending_command_addr<=0;pending_command_mask<=0;pending_command_data<=0;
             expected_command_addr<=0;pending_end_frame<=0;
@@ -243,6 +244,11 @@ module performance_pcm_store #(
             if(mem_state==M_CALCULATE)begin
                 expected_command_addr<=memory_base+committed;
                 pending_end_frame<={1'b0,committed}+pending_command_frames;
+                // Bound comparison has its own register boundary before the
+                // error-response mux. Metadata is stable for this command;
+                // live session/calibration checks stay in M_VALIDATE.
+                pending_read_out_of_range<=pending_command_data[31:29]!=0 ||
+                    pending_command_data[31:0]>=last_frames;
                 mem_state<=M_VALIDATE;
             end
             if(mem_state==M_VALIDATE)begin
@@ -279,7 +285,7 @@ module performance_pcm_store #(
                     end
                     T_READ:begin
                         pending_read_index<=pending_command_data[31:0];
-                        if(session || !last_good || !online || pending_command_data[31:29]!=0 || pending_command_data[31:0]>=last_frames)begin
+                        if(session || !last_good || !online || pending_read_out_of_range)begin
                             mem_state<=M_IDLE;
                             return_valid<=1;return_data<={R_READ,1'b1,pending_command_data[31:0],32'd0};
                         end else begin
