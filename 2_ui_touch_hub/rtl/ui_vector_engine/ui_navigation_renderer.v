@@ -2,10 +2,13 @@
 `include "font_3x5.vh"
 `include "pixel_coverage.vh"
 // Five stages after raster entry; native font and PCM-driven visualizations.
-module ui_navigation_renderer(
+module ui_navigation_renderer #(
+ parameter integer PERFORMANCE_KEY_COUNT=32,
+ parameter integer PERFORMANCE_BASE_NOTE=60
+)(
  input wire clk,rst_n,
  input wire [13:0] in_x,in_y,
- input wire [1:0] view,
+ input wire [2:0] view,
  input wire [7:0] settings_section_id,
  input wire show_diagnostics,usb_connected,usb_error,
  input wire [27:0] macro_values,
@@ -19,14 +22,32 @@ module ui_navigation_renderer(
  input wire audio_link_up,
  input wire signed [15:0] audio_xy_a,audio_xy_b,
  input wire audio_xy_valid,audio_xy_available,
+ input wire [PERFORMANCE_KEY_COUNT-1:0] performance_active_keys,
+ input wire [PERFORMANCE_KEY_COUNT-1:0] performance_guide_keys,
+ input wire [15:0] performance_progress,
+ input wire        performance_running,
+ input wire        performance_paused,
+ input wire        performance_gateway_up,
+ input wire        performance_recording,
+ input wire [3:0]  performance_record_status,
+ input wire [5:0]  performance_next_key,
+ input wire        performance_next_key_valid,
+ input wire [8:0]  performance_next_key_y,
  output reg out_hit,
  output reg [23:0] out_rgb
 );
  // Page state changes only in vertical blank. A preserved local text copy
  // isolates glyph selection from distant touch/menu control decode.
- reg [1:0] text_view /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ reg [2:0] text_view /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
  always @(posedge clk or negedge rst_n)
   if(!rst_n)text_view<=0;else text_view<=view;
+ // Keep the settings selector local to the pixel renderer.  It changes only
+ // on a touch-tab action, so one pixel clock of settling does not alter the
+ // seven-clock raster latency while removing a long state-to-label fanout.
+ reg [7:0] render_settings_section_id /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ always @(posedge clk or negedge rst_n)
+  if(!rst_n)render_settings_section_id<=8'd1;
+  else render_settings_section_id<=settings_section_id;
  // USB host state originates at clk_usb. Synchronize its two status bits
  // before they enter the pixel-domain text rectangle and character logic.
  reg text_usb_connected_meta,text_usb_error_meta /* synthesis syn_preserve=1 syn_keep=1 */;
@@ -90,8 +111,9 @@ module ui_navigation_renderer(
   .history_value(history_value),.ready(spectrum_ready),.frame_valid(spectrum_frame_valid),
   .peak_band(spectrum_peak_band),.peak_valid(spectrum_peak_valid),.peak_bin(spectrum_peak_bin),
   .peak_hz(spectrum_peak_hz),.centroid_hz(spectrum_centroid_hz));
- audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up && audio_xy_available),
-  .pair_valid(audio_xy_valid),.left_sample(audio_xy_a),.right_sample(audio_xy_b),
+ // Final-output stereo phase needs no separate OSC A/B return transport.
+ audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
   .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready),
   .gain_x(plot_scales[11:10]),.gain_y(plot_scales[9:8]));
 
@@ -219,6 +241,15 @@ module ui_navigation_renderer(
   assign tile_color[tile]=!inside_tile ? 24'd0 : border ? 24'h35495F :
    in_y<Y+48 ? 24'h1B2B3C : plot ? (tile_demo_hit[tile] ? tile_demo_color[tile] : (axis ? 24'h26394B : grid ? 24'h152331 : 24'h0B131D)) : 24'h111B28;
  end endgenerate
+ wire performance_hit;
+ wire [23:0] performance_rgb;
+ performance_page_renderer #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_performance_page(
+   .in_x(in_x),.in_y(in_y),
+   .active_keys(performance_active_keys),.guide_keys(performance_guide_keys),
+   .song_progress(performance_progress),.song_running(performance_running),.song_paused(performance_paused),
+   .gateway_up(performance_gateway_up),.recording(performance_recording),.record_status(performance_record_status),
+   .next_key(performance_next_key),.next_key_valid(performance_next_key_valid),.next_key_y(performance_next_key_y),
+   .out_hit(performance_hit),.out_rgb(performance_rgb));
  wire [23:0] visual_bg=(|tile_hit) ? tile_color[0]|tile_color[1]|tile_color[2]|tile_color[3]|tile_color[4]|tile_color[5] : 24'h101318;
  reg [11:0] bcd[0:3];
  genvar n;
@@ -227,57 +258,80 @@ module ui_navigation_renderer(
   wire [3:0] hundreds=value/7'd100,tens=(value%7'd100)/7'd10,ones=value%7'd10;
   always @(posedge clk)bcd[n]<={hundreds,tens,ones};
  end endgenerate
+ // Independent rectangle tests and masked colors avoid a 32-button priority
+ // mux followed by several page muxes on the raster-to-b0 path. The masks
+ // preserve the original overlap priorities and add no pipeline latency.
+ wire [31:0] knob_button_hit,knob_button_selected;
+ wire [23:0] plot_button_hit;
+ genvar kr,kc,bg_sr,bg_sc;
+ generate for(kr=0;kr<8;kr=kr+1)begin: background_knob_row
+  for(kc=0;kc<4;kc=kc+1)begin: background_knob_column
+   assign knob_button_hit[kr*4+kc]=in_y>=208+kr*44 && in_y<244+kr*44 &&
+    in_x>=352+kc*80 && in_x<416+kc*80;
+   assign knob_button_selected[kr*4+kc]=knob_button_hit[kr*4+kc] &&
+    knob_steps[(knob_page*8+kr)*2+:2]==kc;
+  end
+ end
+ for(bg_sr=0;bg_sr<6;bg_sr=bg_sr+1)begin: background_plot_row
+  for(bg_sc=0;bg_sc<4;bg_sc=bg_sc+1)begin: background_plot_column
+   assign plot_button_hit[bg_sr*4+bg_sc]=!((bg_sr==0 || bg_sr==5)&&bg_sc>=2) &&
+    in_y>=200+bg_sr*56 && in_y<240+bg_sr*56 && in_x>=528+bg_sc*160 && in_x<656+bg_sc*160;
+  end
+ end endgenerate
+ wire background_panel=((in_x>=32 && in_x<=680)||(in_x>=712 && in_x<=1248)) && in_y>=120 && in_y<=616;
+ wire background_border=in_x==32||in_x==680||in_x==712||in_x==1248||in_y==120||in_y==616;
+ wire background_detail=in_x>=736 && in_x<=1216 && in_y>=196 && in_y<=552;
+ wire knob_apply=in_y>=144 && in_y<176 && in_x>=432 && in_x<656;
+ wire knob_page_button=in_y>=576 && in_y<612 && ((in_x>=48 && in_x<208)||(in_x>=496 && in_x<656));
+ wire knob_diagnostics=in_x>=880 && in_x<=1216 && in_y>=520 && in_y<=584;
+ wire knob_selected=(|knob_button_selected) && !knob_page_button;
+ wire knob_plain=((|knob_button_hit) && !(|knob_button_selected)) || knob_page_button;
+ wire knob_special=knob_selected || knob_plain || knob_apply || knob_diagnostics;
+ wire settings_tab=in_y>=88 && in_y<120;
+ wire settings_tab_selected=(render_settings_section_id==1 && in_x>=32 && in_x<336)||
+  (render_settings_section_id==2 && in_x>=336 && in_x<632)||
+  (render_settings_section_id==3 && in_x>=632 && in_x<928)||
+  (render_settings_section_id==4 && in_x>=928 && in_x<=1248);
+ wire nav_selected=(view==0 && in_x>=128 && in_x<320)||
+  (view==1 && in_x>=336 && in_x<576)||(view==2 && in_x>=592 && in_x<800)||
+  (view==3 && in_x>=816 && in_x<1040);
+ wire nav_menu=in_x>=20 && in_x<=40 && (in_y==14 || in_y==19 || in_y==24 || in_y==29);
+ wire card_hit=in_y>=160 && in_y<=480 &&
+  ((in_x>=48 && in_x<=416)||(in_x>=456 && in_x<=824)||(in_x>=864 && in_x<=1232));
+ wire card_stripe=in_y>=280 && in_y<=336 && in_x[5:0]>=16 && in_x[5:0]<=48;
+ wire card_border=in_y==160 || in_y==480;
+ wire [23:0] nav_bg=({24{nav_selected}} & 24'h204152)|
+  ({24{!nav_selected && nav_menu}} & 24'hC4D7E8)|
+  ({24{!nav_selected && !nav_menu && in_y==42}} & 24'h2C94A8)|
+  ({24{!nav_selected && !nav_menu && in_y!=42}} & 24'h151D29);
+ wire [23:0] knob_bg=({24{knob_selected}} & 24'h246B68)|
+  ({24{knob_plain}} & 24'h22374C)|({24{knob_apply}} & 24'h24545B)|
+  ({24{knob_diagnostics && show_diagnostics}} & 24'h205148)|
+  ({24{knob_diagnostics && !show_diagnostics}} & 24'h25384D)|
+  ({24{!knob_special && background_panel}} & 24'h142030)|
+  ({24{!knob_special && !background_panel}} & 24'h101318);
+ wire [23:0] generic_settings_bg=({24{background_detail}} & 24'h192A3B)|
+  ({24{!background_detail && background_border}} & 24'h35495F)|
+  ({24{!background_detail && !background_border && background_panel}} & 24'h142030)|
+  ({24{!background_detail && !background_border && !background_panel}} & 24'h101820);
+ wire plot_shortcut=render_settings_section_id==2 && (|plot_button_hit);
+ wire [23:0] settings_body_bg=({24{plot_shortcut}} & 24'h223C4C)|
+  ({24{!plot_shortcut && render_settings_section_id==1}} & knob_bg)|
+  ({24{!plot_shortcut && render_settings_section_id!=1}} & generic_settings_bg);
+ wire [23:0] settings_bg=settings_tab ?
+  (in_y==119 ? 24'h347B90 : settings_tab_selected ? 24'h285064 : 24'h1A2735) : settings_body_bg;
+ wire [23:0] cards_bg=({24{!card_hit}} & 24'h101318)|
+  ({24{card_hit && card_stripe}} & 24'h25465C)|
+  ({24{card_hit && !card_stripe && card_border}} & 24'h3E8495)|
+  ({24{card_hit && !card_stripe && !card_border}} & 24'h17283B);
  always @(*)begin
   hit=(in_y<44 && !master_hole) || view!=0;
-  bg=24'h101318;
-  if(in_y<44)begin
-   bg=24'h151D29;
-   if(in_y==42)bg=24'h2C94A8;
-   if(in_x>=20 && in_x<=40 && (in_y==14 || in_y==19 || in_y==24 || in_y==29))bg=24'hC4D7E8;
-   if((view==0 && in_x>=128 && in_x<320) ||
-      (view==1 && in_x>=336 && in_x<576) ||
-      (view==2 && in_x>=592 && in_x<800))bg=24'h204152;
-  end else if(view==1)begin
-   // All six PCM views are live. The first tile is an audio overview derived
-   // from the same measured stream as the waveform and level meters.
-   bg=visual_bg;
-  end else if(view==2 && settings_section_id==8'd1)begin
-   if(in_x>=32 && in_x<=680 && in_y>=120 && in_y<=616)bg=24'h142030;
-   if(in_x>=712 && in_x<=1248 && in_y>=120 && in_y<=616)bg=24'h142030;
-   for(integer kr=0;kr<8;kr=kr+1)for(integer kc=0;kc<4;kc=kc+1)
-    if(in_y>=208+kr*44 && in_y<244+kr*44 && in_x>=352+kc*80 && in_x<416+kc*80)
-     bg=knob_steps[(knob_page*8+kr)*2+:2]==kc ? 24'h246B68 : 24'h22374C;
-   if(in_y>=144&&in_y<176&&in_x>=432&&in_x<656)bg=24'h24545B;
-   if(in_y>=576&&in_y<612&&((in_x>=48&&in_x<208)||(in_x>=496&&in_x<656)))bg=24'h22374C;
-   if(in_x>=880 && in_x<=1216 && in_y>=520 && in_y<=584)
-    bg=show_diagnostics ? 24'h205148 : 24'h25384D;
-  end else if(view==3)begin
-   if(in_y>=160 && in_y<=480)begin
-    if((in_x>=48 && in_x<=416)||(in_x>=456 && in_x<=824)||(in_x>=864 && in_x<=1232))begin
-     bg=24'h17283B;
-     if(in_y==160 || in_y==480)bg=24'h3E8495;
-     if(in_y>=280 && in_y<=336 && in_x[5:0]>=16 && in_x[5:0]<=48)bg=24'h25465C;
-    end
-   end
-  end else if(view==2)begin
-   bg=24'h101820;
-   if(in_x>=32&&in_x<=680&&in_y>=120&&in_y<=616)bg=24'h142030;
-   if(in_x>=712&&in_x<=1248&&in_y>=120&&in_y<=616)bg=24'h142030;
-   if(in_x==32||in_x==680||in_x==712||in_x==1248||in_y==120||in_y==616)bg=24'h35495F;
-   if(settings_section_id!=8'd1 && in_x>=736 && in_x<=1216 && in_y>=196 && in_y<=552)bg=24'h192A3B;
-   if(in_x>=712&&in_x<=1248&&in_y>=120&&in_y<=616&&
-      (in_x==712||in_x==1248||in_y==120||in_y==616))bg=24'h35495F;
-  end
-  if(view==2 && settings_section_id==2)
-   for(integer sr=0;sr<6;sr=sr+1)for(integer sc=0;sc<4;sc=sc+1)
-    if(!((sr==0 || sr==5)&&sc>=2)&&in_y>=200+sr*56&&in_y<240+sr*56&&in_x>=528+sc*160&&in_x<656+sc*160)
-     bg=24'h223C4C;
-  if(view==2 && in_y>=88 && in_y<120)begin
-   bg=24'h1A2735;
-   if((settings_section_id==8'd1&&in_x>=32&&in_x<336)||(settings_section_id==8'd2&&in_x>=336&&in_x<632)||
-      (settings_section_id==8'd3&&in_x>=632&&in_x<928)||(settings_section_id==8'd4&&in_x>=928&&in_x<=1248))bg=24'h285064;
-   if(in_y==119)bg=24'h347B90;
-  end
+  bg=({24{in_y<44}} & nav_bg)|
+   ({24{in_y>=44 && view==1}} & visual_bg)|
+   ({24{in_y>=44 && view==2}} & performance_rgb)|
+   ({24{in_y>=44 && view==3}} & settings_bg)|
+   ({24{in_y>=44 && view==4}} & cards_bg)|
+   ({24{in_y>=44 && view!=1 && view!=2 && view!=3 && view!=4}} & 24'h101318);
   macro_row=(in_y-248)>>6;
   macro_number=0;
   case(macro_row)
@@ -319,7 +373,11 @@ module ui_navigation_renderer(
  reg [5:0] col0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
  reg [5:0] rom_ch1,digit1;
  reg number1;
- wire [5:0] ch1=number1 ? digit1 : rom_ch1;
+ reg [3:0] recorder_status0;
+ reg recorder_select1;
+ reg [5:0] recorder_ch1;
+ wire [5:0] ch1=number1 ? digit1 : recorder_select1 ? recorder_ch1 : rom_ch1;
+ always @(posedge clk)recorder_ch1<=recorder_char_rom[{recorder_status0,col0[4:0]}];
  // Unconditional synchronous read lets Gowin map the character table to
  // block ROM, instead of another deep combinational case decoder.
  always @(posedge clk)rom_ch1<=navigation_char_rom[{id0,col0}];
@@ -436,27 +494,38 @@ module ui_navigation_renderer(
  endfunction
  reg [6:0] wave_addr0;
  wire [7:0] wave_sample1,wave_previous1;
+ wire [7:0] wave_right1,wave_right_previous1;
  reg [7:0] wave_gy0,wave_gy1;
  wire triggered_wave;
- audio_waveform_capture u_waveform(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
-  .sample_valid(audio_sample_valid),.sample(audio_sample),.read_address(wave_addr0),.time_zoom(plot_scales[7:6]),
+ audio_waveform_capture #(.STEREO(1)) u_waveform(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .sample_valid(audio_stereo_valid),.sample(audio_sample),.right_sample(audio_right_sample),
+  .read_address(wave_addr0),.time_zoom(plot_scales[7:6]),
   .plot_sample(wave_sample1),.plot_previous(wave_previous1),.ready(waveform_ready),
+  .plot_right(wave_right1),.plot_right_previous(wave_right_previous1),
   .frame_valid(),.triggered(triggered_wave));
- reg wave_area0,wave_area1,wave_hit2;
+ reg wave_area0,wave_area1,wave_hit2,wave_right_hit2;
  wire signed [15:0] scaled_wave=plot_gain({wave_sample1,8'd0},plot_scales[5:4]);
  wire signed [15:0] scaled_previous=plot_gain({wave_previous1,8'd0},plot_scales[5:4]);
  wire [7:0] wave_y1=8'd72-{{1{scaled_wave[15]}},scaled_wave[15:9]};
  wire [7:0] wave_previous_y1=8'd72-{{1{scaled_previous[15]}},scaled_previous[15:9]};
  wire [7:0] wave_low1=wave_y1<wave_previous_y1 ? wave_y1 : wave_previous_y1;
  wire [7:0] wave_high1=wave_y1>wave_previous_y1 ? wave_y1 : wave_previous_y1;
+ wire signed [15:0] scaled_right=plot_gain({wave_right1,8'd0},plot_scales[5:4]);
+ wire signed [15:0] scaled_right_previous=plot_gain({wave_right_previous1,8'd0},plot_scales[5:4]);
+ wire [7:0] right_y1=8'd72-{{1{scaled_right[15]}},scaled_right[15:9]};
+ wire [7:0] right_previous_y1=8'd72-{{1{scaled_right_previous[15]}},scaled_right_previous[15:9]};
+ wire [7:0] right_low1=right_y1<right_previous_y1 ? right_y1 : right_previous_y1;
+ wire [7:0] right_high1=right_y1>right_previous_y1 ? right_y1 : right_previous_y1;
  always @(posedge clk or negedge rst_n) begin
-  if(!rst_n)begin wave_area0<=0;wave_area1<=0;wave_hit2<=0;end
+  if(!rst_n)begin wave_area0<=0;wave_area1<=0;wave_hit2<=0;wave_right_hit2<=0;end
   else begin
    wave_area0<=view==1 && audio_link_up && waveform_ready &&
        in_x>=14'd496 && in_x<14'd752 && in_y>=14'd176 && in_y<14'd328;
    wave_area1<=wave_area0;
    wave_hit2<=wave_area1 && ({1'b0,wave_gy1}+9'd2)>={1'b0,wave_low1} &&
        {1'b0,wave_gy1}<=({1'b0,wave_high1}+9'd2);
+   wave_right_hit2<=wave_area1 && ({1'b0,wave_gy1}+9'd2)>={1'b0,right_low1} &&
+       {1'b0,wave_gy1}<=({1'b0,right_high1}+9'd2);
   end
  end
  always @(posedge clk) begin
@@ -549,6 +618,8 @@ module ui_navigation_renderer(
   end
   else begin
    h0<=hit;b0<=bg;fg0<=text_color;id0<=text_id;col0<=text_col;
+   recorder_status0<=performance_record_status;
+   recorder_select1<=id0==NAV_RECORDER_STATUS;
    tv0<=text_valid||macro_number||shortcut;number0<=macro_number||shortcut;digit0<=shortcut ? shortcut_char : number_char;
    compact0<=shortcut;
    rx0<=shortcut ? shortcut_x : macro_number ? in_x[3:0] : text_rx;
@@ -560,7 +631,8 @@ module ui_navigation_renderer(
    glyph_x1<=compact0 ? rx0[2:0] : glyph_x(large0,rx0);glyph_y1<=compact0 ? ry0[3:0] : glyph_y(large0,ry0);
    h2<=h1;b2<=b1;fg2<=fg1;
    glyph_row2<=get_font_7x10_row(ch1,glyph_y1);glyph_x2<=glyph_x1;glyph_valid2<=tv1;
-   h3<=h2;b3<=energy_hit2 ? energy_rgb2 : wave_hit2 ? 24'h61DED1 : phase_hit2 ? 24'h67CDE0 :
+   h3<=h2;b3<=energy_hit2 ? energy_rgb2 : (wave_hit2 && wave_right_hit2) ? 24'hE6F4FF :
+     wave_hit2 ? 24'h61DED1 : wave_right_hit2 ? 24'hF5AD78 : phase_hit2 ? 24'h67CDE0 :
        spectrum_peak2 ? 24'hF5D36A : spectrum_hit2 ? 24'h65CDA4 :
        history_hit2 ? history_rgb2 : b2;fg3<=fg2;
    coverage3<=glyph_valid2 ? glyph_column(glyph_row2,glyph_x2) : 0;

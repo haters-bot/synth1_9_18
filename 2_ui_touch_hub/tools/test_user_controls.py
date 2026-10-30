@@ -1,6 +1,7 @@
 """Regression for user settings, physical focus and absolute LFO previews."""
 from datetime import datetime
 from pathlib import Path
+from simulation_sources import project_verilog_sources
 import json
 import subprocess
 import hashlib
@@ -15,8 +16,7 @@ def main():
     out.mkdir()
     print(out, flush=True)
     benches = ['tb_user_controls', 'tb_focus_handoff', 'tb_modulation_values', 'tb_audio_stereo_meter']
-    sources = [ROOT / f.attrib['path'] for f in ET.parse(ROOT / '2_ui_touch_hub.gprj').findall('.//File')
-               if f.attrib['path'].endswith('.v')]
+    sources = project_verilog_sources(ROOT, '2_ui_touch_hub.gprj')
     sources += [ROOT / 'sim' / (name + '.v') for name in benches]
     hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
               for p in sources + list((ROOT / 'rtl/ui_vector_engine').glob('*.vh'))}

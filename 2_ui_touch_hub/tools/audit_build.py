@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import xml.etree.ElementTree as ET
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -23,6 +24,40 @@ def rows(text):
 def section(text,name):
     hit=re.search(r'<h2><a name="'+re.escape(name)+r'"[^>]*>.*?(?=<h2>|$)',text,re.S)
     return hit.group(0) if hit else ''
+
+
+def inspect_pins(build, project_name, manifest):
+    """Compare preserved intended pin locations to the final routed report."""
+    report=build/'impl/pnr'/(project_name+'.pin.html')
+    if not report.exists():
+        return {'passed':False,'errors':['Missing final pin report'],'checked_locations':0}
+    pin_rows=rows(report.read_text(errors='replace'))
+    physical={}
+    for row in pin_rows:
+        if len(row)>=5 and re.fullmatch(r'[A-Z]+\d+(?:,[A-Z]+\d+)?/\d+',row[2]):
+            pins=row[2].split('/')[0].split(',')
+            physical[row[0]]=pins[0]
+            if len(pins)==2:physical[row[1]]=pins[1]
+    expected={}
+    for name in manifest:
+        if name.endswith('.cst'):
+            clean=re.sub(r'//[^\n]*','',(build/name).read_text(encoding='utf-8'))
+            for port,pins in re.findall(r'IO_LOC\s+"([^"]+)"\s+([^;]+);',clean):
+                values=[p.strip() for p in pins.split(',')]
+                expected[port]=values[0]
+                if len(values)==2:
+                    negative=port.replace('_p_','_n_') if '_p_' in port else port.replace('ddr_dqs[','ddr_dqs_n[') if port.startswith('ddr_dqs[') else 'ddr_ck_n' if port=='ddr_ck' else None
+                    if negative:expected[negative]=values[1]
+    errors=[]
+    project=ET.parse(build/(project_name+'.gprj'))
+    for kind in ('file.cst','file.sdc'):
+        active=[f for f in project.findall('.//File') if f.attrib.get('type')==kind and f.attrib.get('enable','1')=='1']
+        if len(active)!=1:errors.append(f'Project must have exactly one active {kind}; found {len(active)}')
+    if not expected:errors.append('No expected pin locations')
+    mismatches=[{'port':port,'expected':pin,'actual':physical.get(port)}
+                for port,pin in expected.items() if physical.get(port)!=pin]
+    if mismatches:errors.append('Routed pins differ from preserved constraints')
+    return {'passed':not errors,'errors':errors,'checked_locations':len(expected),'mismatches':mismatches}
 
 def inspect_build(build):
     """Read the current preserved evidence; do not trust a cached pass flag."""
@@ -76,6 +111,8 @@ def inspect_build(build):
             if re.match(r'\s*set_false_path\b',line) and 'tmds_serdes_inst0/RESET' in line:
                 reset_exemptions.append(line.strip())
     errors=[]
+    pin_audit=inspect_pins(build,project_name,manifest)
+    errors.extend(pin_audit['errors'])
     if mismatches: errors.append('Workspace differs from preserved build inputs')
     if copy_mismatches: errors.append('Preserved build input hashes changed')
     if reset_exemptions: errors.append('OSER10 reset recovery/removal is exempted')
@@ -102,6 +139,7 @@ def inspect_build(build):
             'fs_sha256':hashlib.sha256(fs.read_bytes()).hexdigest().upper() if fs.exists() else None,
             'bitstream_complete':complete,'slack_tables':slack_tables,
             'oser10_reset_exemptions':reset_exemptions,'audit_errors':errors,
+            'pin_audit':pin_audit,
             'timing_closed':bool(clocks) and setup==0 and hold==0 and not paths and not errors
                             and complete and all(c['actual_mhz']>=c['required_mhz'] for c in clocks)}
     return result

@@ -16,12 +16,17 @@ module tb_audio_visual_windows;
  reg [23:0] expected_pixel;
  reg [23:0] pixel_history[0:4];
  ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),
-  .view(2'd1),.settings_section_id(8'd1),.show_diagnostics(1'b0),
+  .view(3'd1),.settings_section_id(8'd1),.show_diagnostics(1'b0),
   .usb_connected(usb_connected),.usb_error(usb_error),.knob_steps(64'd0),.knob_page(2'd0),.apply_step(2'd0),.plot_scales(24'd0),.macro_values(28'd0),
   .audio_sample_valid(audio_sample_valid),.audio_sample(audio_sample),
   .audio_xy_a(audio_sample),.audio_xy_b(audio_sample),.audio_xy_valid(audio_sample_valid),.audio_xy_available(audio_link_up),
   .audio_right_sample(audio_sample),.audio_stereo_valid(audio_sample_valid),
-  .audio_link_up(audio_link_up),.out_hit(hit),.out_rgb(rgb));
+  .audio_link_up(audio_link_up),
+  .performance_active_keys(32'd0),.performance_guide_keys(32'd0),
+  .performance_progress(16'd0),.performance_running(1'b0),
+  .performance_gateway_up(1'b0),.performance_recording(1'b0),
+  .performance_next_key(6'd0),.performance_next_key_valid(1'b0),
+  .out_hit(hit),.out_rgb(rgb));
  always #10 clk=~clk;
  always @(posedge clk)if(stream_check)begin
   for(j=4;j>0;j=j-1)pixel_history[j]=pixel_history[j-1];
@@ -94,7 +99,7 @@ module tb_audio_visual_windows;
   if(!dut.waveform_ready) $fatal(1,"History did not become ready after 1024 source samples");
   for(i=0;i<128;i=i+1)if(dut.u_waveform.memory[{dut.u_waveform.display_bank,7'd0}+i]!==8'h10)
    $fatal(1,"Snapshot location %0d invalid",i);
-  pixel(496,240,24'h61DED1);pixel(750,240,24'h61DED1);
+  pixel(496,240,24'hE6F4FF);pixel(750,240,24'hE6F4FF);
   pixel(496,260,24'h0B131D);
   repeat(200)@(negedge clk);
   if(!dut.metrics_ready || dut.metrics_rms_l!=4096 || dut.metrics_rms_r!=4096)
@@ -131,25 +136,25 @@ module tb_audio_visual_windows;
   @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
   send_samples(-16'sd32768,1024);
   repeat(200)@(negedge clk);
-  pixel(496,312,24'h61DED1);pixel(1220,520,24'hE87565);pixel(1223,520,24'hFFFFFF);
+  pixel(496,312,24'hE6F4FF);pixel(1220,520,24'hE87565);pixel(1223,520,24'hFFFFFF);
   if(dut.metrics_clip!=48)$fatal(1,"New clipping indicator missing");
   send_samples(16'sd0,2048); // auto-trigger then a complete silent capture
   repeat(200)@(negedge clk);
-  pixel(496,248,24'h61DED1);
+  pixel(496,248,24'hE6F4FF);
   if(dut.stereo_width_l>=160 || dut.stereo_width_r>=160)$fatal(1,"Silent meters failed to decay");
   // A nonuniform snapshot verifies read addressing and both plotted edges.
   @(negedge clk);audio_link_up=0;repeat(3)@(negedge clk);audio_link_up=1;
   for(i=0;i<128;i=i+1) send_samples(i*256,8);
-  pixel(496,248,24'h61DED1);pixel(750,185,24'h61DED1);
+  pixel(496,248,24'hE6F4FF);pixel(750,185,24'hE6F4FF);
   send_samples(-16'sd16384,8);
-  pixel(496,248,24'h61DED1);pixel(750,185,24'h61DED1);
+  pixel(496,248,24'hE6F4FF);pixel(750,185,24'hE6F4FF);
   // Vary addresses and expected colors on every pixel clock: a misplaced
   // RAM-read stage must fail even when the output later settles correctly.
   @(negedge clk);stream_checks=0;stream_check=1;
   for(i=0;i<80;i=i+1)begin
    case(i%4)
-    0:begin x=496;y=248;expected_pixel=24'h61DED1;end
-    1:begin x=750;y=185;expected_pixel=24'h61DED1;end
+    0:begin x=496;y=248;expected_pixel=24'hE6F4FF;end
+    1:begin x=750;y=185;expected_pixel=24'hE6F4FF;end
     2:begin x=496;y=260;expected_pixel=24'h0B131D;end
     3:begin x=750;y=320;expected_pixel=24'h152331;end // y=320 is a grid line
    endcase

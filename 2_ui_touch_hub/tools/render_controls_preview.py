@@ -1,6 +1,7 @@
 """Render the real settings RTL into reviewable PNGs, without operating hardware."""
 from datetime import datetime
 from pathlib import Path
+from simulation_sources import project_verilog_sources
 import argparse
 import hashlib
 import json
@@ -19,8 +20,7 @@ def main():
     out = ROOT / 'impl' / ('controls_preview_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
     out.mkdir()
     print(out, flush=True)
-    sources = [ROOT / f.attrib['path'] for f in ET.parse(ROOT / '2_ui_touch_hub.gprj').findall('.//File')
-               if f.attrib['path'].endswith('.v')]
+    sources = project_verilog_sources(ROOT, '2_ui_touch_hub.gprj')
     sources.append(ROOT / 'sim/tb_controls_preview.v')
     inputs = sources + list((ROOT / 'rtl/ui_vector_engine').glob('*.vh'))
     hashes = {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}

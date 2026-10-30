@@ -2,7 +2,7 @@
 module tb_user_controls;
  reg clk=0,rst_n=0,touch_valid=0,touch_down=0;
  reg [13:0] touch_x=0,touch_y=0;
- reg [1:0] view=2;
+ reg [2:0] view=3;
  reg [7:0] section=1;
  wire [63:0] knob_steps;
  wire [1:0] knob_page,apply_step;
@@ -96,14 +96,14 @@ module tb_user_controls;
    if(plot_scales[t*4+:2]!=3)$fatal(1,"Display gain saturation failed");
    view=1;click(48+(t%3)*418,364+(t/3)*296);
    if(plot_scales[t*4+:2]!=2)$fatal(1,"Local gain and settings gain diverged");
-   view=2;
+   view=3;
    before_scales=plot_scales;
    for(c=0;c<4;c=c+1)click(1040,216+t*56);
    if(t==0 || t==5)begin
     if(plot_scales!==before_scales)$fatal(1,"Unsupported X control is active");
    end else begin
     if(plot_scales[t*4+2+:2]!=3)$fatal(1,"X saturation failed");
-    view=1;click(232+(t%3)*418,364+(t/3)*296);view=2;
+    view=1;click(232+(t%3)*418,364+(t/3)*296);view=3;
     if(plot_scales[t*4+2+:2]!=2)$fatal(1,"Local X and settings X diverged");
    end
   end

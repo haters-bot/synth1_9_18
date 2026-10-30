@@ -1,5 +1,6 @@
 """Run a pin-level TXE8148 burst slave, parameter merger and ASCII UART regression."""
 from datetime import datetime
+from simulation_sources import project_verilog_sources
 from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
@@ -22,8 +23,7 @@ def main():
         return result.stdout + result.stderr
 
     run([MS / 'vlib.exe', 'work'], 'vlib.log')
-    sources = [ROOT / e.attrib['path'] for e in ET.parse(ROOT / '2_ui_touch_hub_debug.gprj').findall('.//File')
-               if e.attrib['path'].endswith('.v')]
+    sources = project_verilog_sources(ROOT, '2_ui_touch_hub_debug.gprj')
     run([MS / 'vlog.exe', '-sv', '+incdir+' + str(ROOT / 'rtl/ui_vector_engine'),
          *sources, ROOT / 'sim/tb_knob_spi_burst.v', ROOT / 'sim/tb_knob_spi_rx.v',
          ROOT / 'sim/tb_knob_ascii_trace.v'], 'compile.log')

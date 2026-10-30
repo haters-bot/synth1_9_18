@@ -7,7 +7,7 @@ module tb_audio_waveform_capture;
  wire [7:0] plot_sample,plot_previous;
  wire ready,frame_valid,triggered;
  integer n,saved_bank,z;
- audio_waveform_capture dut(.*);
+ audio_waveform_capture dut(.right_sample(16'sd0),.plot_right(),.plot_right_previous(),.*);
  always #10 clk=~clk;
  task send;
   input signed [15:0] value;input integer count;integer i;

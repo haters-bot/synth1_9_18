@@ -54,7 +54,7 @@
 `define PARAM_ID_OSCA_PHASE   8'h16
 `define PARAM_ID_OSCA_WT_POS  8'h17 // CC20
 `define PARAM_ID_OSCA_WARP    8'h18 // CC21
-`define PARAM_ID_OSCA_PAN     8'h19 // CC10
+`define PARAM_ID_OSCA_PAN     8'h19 // CC91: OSC A pan
 `define PARAM_ID_OSCA_VOL     8'h1A
 `define PARAM_ID_OSCA_RAND    8'h1B
 
@@ -75,7 +75,7 @@
 // Filter
 `define PARAM_ID_FLT_CUTOFF   8'h30 // CC74
 `define PARAM_ID_FLT_RES      8'h31 // CC71
-`define PARAM_ID_FLT_PAN      8'h32
+`define PARAM_ID_FLT_PAN      8'h32 // K27 now MASTER PAN / CC10; stable legacy ID
 `define PARAM_ID_FLT_DRIVE    8'h33
 `define PARAM_ID_FLT_FAT      8'h34
 `define PARAM_ID_FLT_MIX      8'h35

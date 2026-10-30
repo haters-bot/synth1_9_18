@@ -15,6 +15,13 @@ module modulation_preview # (parameter PREVIEW_BASE_TICKS=520833)(
 );
     reg [8:0] phase[0:2];
     reg [19:0] count[0:2];
+    // The selected LFO tab changes only on a UI action. Keep a local copy
+    // beside the preview scan so tab decode is off wave0's critical path.
+    reg [1:0] render_active_tab /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=8 */;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n) render_active_tab<=0;
+        else render_active_tab<=active_tab;
+    end
     wire [20:0] samples;
     wire [38:0] raster_samples;
     integer k;
@@ -31,10 +38,10 @@ module modulation_preview # (parameter PREVIEW_BASE_TICKS=520833)(
     generate for(s=0;s<3;s=s+1) begin: curves
         lfo_smooth_table u_table(.clk(clk),.rst_n(rst_n),.nodes(nodes[s*49+:49]),
             .stepped(stepped[s]),.raster_index(raster_index),
-            .preview_index(active_tab==s ? active_phase : phase[s]),
+            .preview_index(render_active_tab==s ? active_phase : phase[s]),
             .raster_q6(raster_samples[s*13+:13]),.preview_value(samples[s*7+:7]));
     end endgenerate
-    assign raster_q6=active_tab==0 ? raster_samples[12:0] : active_tab==1 ? raster_samples[25:13] : raster_samples[38:26];
+    assign raster_q6=render_active_tab==0 ? raster_samples[12:0] : render_active_tab==1 ? raster_samples[25:13] : raster_samples[38:26];
     // One shared multiplier updates all 53 visual values in 53 clocks (<1 us).
     // There is no reason to allocate an audio-rate DSP per UI destination.
     reg [5:0] scan,index0,index1,index2;

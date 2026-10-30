@@ -2,6 +2,19 @@
 
 Purpose: durable handoff record for AI-assisted changes made on the shared UI/audio integration branch. Each entry records touched files, verification, limits, and the associated commit once pushed.
 
+## 2026-10-29 — Local performance acceptance and handoff corrected
+
+- Updated the UI performance acceptance criteria to match the schematic-verified LED route: FPGA J16 → onboard U15 → J24 pin 3, with C14 reserved for debug UART; corrected the pin audit threshold to 122.
+- Updated the latest status and handoff entries with normal/debug timing and pin-audit results, the normal SRAM check-only hash, and the 23:12 LED/key regression reruns.
+- No hardware was programmed; no files were deleted; no changes were pushed; the audio-board project was not modified. Physical LED wiring, keyboard MIDI range and full-length DDR recording remain for board validation.
+
+## 2026-10-29 23:42 — Local performance regression resumed
+
+- Re-ran the 25-pixel WS2812 chain, 32-key MIDI/white-key mapping, cue/display/command, MIDI parser, note arbitration, PCM capture, long-score progress, protocol, scheduler, and PCM-to-DDR exact-readback regressions; all passed.
+- Re-ran UI SRAM `--check-only`: 99 inputs matched, all five timing classes passed, 122/122 pins matched, and the bitstream SHA256 remained `9F842D53FF2B12F36AC67A317E7D1A16B9CFA7C613C947ABD8520F7C6401CC00`.
+- A duplicate full-page renderer run was stopped for excessive runtime; its partial output and logs were retained, and its simulator process exited. The earlier completed preview remains the full-page PASS evidence.
+- No hardware programming, remote engineering-host access, deletion, push, or audio-board modification occurred. Physical JTAG target and LED wiring are still unconfirmed.
+
 ## 2026-10-26 04:48 — TXE8148 32-encoder SRAM deployment
 
 - Deployed commit `76a7fb9` with `tools/deploy_verified.py --target sram` to engineering host `10.136.125.157`.
@@ -148,6 +161,26 @@ Future entries should append a dated section and never rewrite prior verificatio
 - **修正**：`knob_spi_rx.v` 改为 `A=GPIO[k]`、`B=GPIO[16+k]`、`SW=GPIO[32+k]`，不再按三个连续 GPIO 交错读取。四区 UI 参数映射保持原定义。
 - **供电修正**：同一原理图把 Type-C VCC 网络标为 `3.3V-IN`，因此文档中的 5 V 入口说明已改为 3.3 V，禁止把 5 V 直接接入键盘板 VCC。用户已确认已改接 3.3 V。
 - **验证**：Gowin P&R Setup/Hold 违例 0，最差恢复余量 `+0.201 ns`；位流 SHA256 `37FB1A5409AF62F51B32BBC04146C125D09F7FB55320527128E22FC76D25E541`。新位流尚未部署。
+## 2026-10-26 20:55 — PCB bank 映射修正版已部署到 UI 板 SRAM（Codex）
+
+- **来源**：提交 `0699cac`，位流 SHA256 `37FB1A5409AF62F51B32BBC04146C125D09F7FB55320527128E22FC76D25E541`。
+- **部署**：工程机 `10.136.125.157` 执行 `tools/deploy_verified.py --target sram`，目录 `2_ui_touch_hub/impl/deploy_runs/20261026_205443_TXE8148_PCB_BANK_MAPPING_3V3/`；GW5AST-138B、SRAM operation 2、`PROGRAMMER_EXIT=0`、Status `0x00026230`、User Code `0x00008733`、23.14 s，远端哈希匹配。
+- **实屏证据**：`preview.jpg` 显示正常 UI。现场旋钮旋转、方向和按压仍待用户逐项确认；Flash 保持暂停。
+# 2026-10-26 22:25 — UI 板外接调试 UART C14/E13（Codex）
+
+- 按用户指定新增 `debug_uart_tx=C14`、`debug_uart_rx=E13`，LVCMOS33；TX 镜像 `midi_uart_tx` 监视流。诊断 build 下 U15/C14 是 115200 trace；normal build 仍是 31250 MIDI 镜像。E13 当前只分配为上拉输入，无命令协议。
+- 新增 `doc/UI_PCB_DEBUG_UART_PINOUT.md`；接线为 C14→USB-TTL RX、E13←USB-TTL TX、共地，仅 3.3 V TTL。
+- 调试工程原先缺少 `ui_navigation_state.v`、`ui_navigation_renderer.v`、`navigation_font.vh`、`lfo_sysex_tx.v`，且误使用普通 CST 内部实例锚点。本轮补齐源文件并新增无旧内部锚点的 `ui_touch_hub_debug.cst`；`build_isolated.py --debug`、`audit_build.py` 已支持诊断工程构建/审计。
+- 诊断 build `DEBUG_R16A_build_20261026_221313` 通过完整时序审计：Setup/Hold 0、最差 Setup `+0.074 ns`，其余 recovery/removal/pulse 检查通过，源码快照一致。SHA256 `D5A8492AC467CDD4C2C0183FCBB37FE593DAE93E84756B640D70B525981F5080`。
+- SRAM 烧录成功：`2_ui_touch_hub/impl/deploy_runs/20261026_222436_UI_PCB_DEBUG_UART_C14_E13/`，`PROGRAMMER_EXIT=0`、Status `0x00026230`、User Code `0x0000233D`。不代表串口已在电脑端解码验收。
+
+## 2026-10-27 01:05 — 实体旋钮动作串口诊断版已烧录 SRAM（Codex）
+
+- C14 调试 UART 在实体旋钮有动作时输出 `KNOBnn CW/CCW/PRESS/RELEASE`，空闲不输出旋钮事件；`python tools/test_touch_trace.py` 全过。追踪解码器已避免复用旧按键动作造成误报。
+- 隔离构建 `DEBUG_R16A_build_20261027_005555` 五类时序余量均为正，clk_pixel Fmax 52.855 MHz，源码快照匹配。SHA256 `DA3A01208EB321513418C8495C7BD0E15C3E4CA6C9DBFDA17E09611F4D2FEEDF`。
+- 工程机 SRAM 烧录成功：`2_ui_touch_hub/impl/deploy_runs/20261027_010415_KNOB_ACTIVE_EVENTS/`，User Code `0x0000881D`，Status `0x00026230`，`PROGRAMMER_EXIT=0`，远端哈希匹配；抓屏显示六窗 UI 正常。Flash 未操作。实体旋钮逐个方向和按压仍待现场验收。
+- **项目协作偏好（用户要求）**：处理时序/P&R 时先快速核对一次整体门禁和关键路径，采用有数据支撑的最小修复，减少连续无目标试跑；时序安全条件仍须全部达标，不得把负余量或低于约束频率放行为通过。
+
 
 ## 2026-10-29 — UI LFO V2 SysEx MIDI-safe packing fix
 

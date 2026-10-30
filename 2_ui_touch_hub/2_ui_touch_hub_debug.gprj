@@ -54,14 +54,41 @@
         <File path="rtl/audio/audio_stereo_meter.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_correlation_cursor.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_waveform_capture.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_event_scheduler.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_key_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_note_arbiter.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_pcm_capture.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_async_fifo.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_pcm_store.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_recording_subsystem.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_record_status.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_progress.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_led_white_mapper.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_uart_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_packet_parser.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_packet_tx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_phone_transport.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_phone_session.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_audio_export.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_export_filter.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_command_decoder.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_touch_controls.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_user_port_adapter.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_wavetable_wrapper.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/reset_release_sync.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/pll_init.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_pll_400m_ip.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_pll_400m_ip_mod.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_wavetable_ip.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ws2812_driver.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/performance_page_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
         <File path="rtl/midi_uart_tx/midi_uart_tx.v" type="file.verilog" enable="1"/>
         <File path="rtl/debug/ui_debug_trace.v" type="file.verilog" enable="1"/>
         <File path="rtl/debug/knob_ascii_trace.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_touch_hub_top.v" type="file.verilog" enable="1"/>
         <File path="rtl/midi_uart_tx/lfo_sysex_tx.v" type="file.verilog" enable="1"/>
-        <File path="constraints/ui_touch_hub_debug.cst" type="file.cst" enable="1"/>
-        <File path="constraints/ui_touch_hub.sdc" type="file.sdc" enable="1"/>
+        <File path="constraints/ui_touch_hub_debug_combined.cst" type="file.cst" enable="1"/>
         <File path="constraints/ui_touch_hub_debug.sdc" type="file.sdc" enable="1"/>
         <File path="rtl/ui_touch_hub_debug_top.v" type="file.verilog" enable="1"/>
     </FileList>

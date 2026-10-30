@@ -20,6 +20,41 @@ module tb_i2s_visual_loopback;
   .i2s_lrc(connected&&lrc),.i2s_din(connected&&din),
   .sample(sample),.sample_valid(sample_valid),.link_up(link_up),
   .sample_right(sample_right),.stereo_valid(stereo_valid));
+`ifdef PCM_CAPTURE
+ reg capture_start=0,capture_started=0;
+ wire capture_valid,capture_recording,capture_busy,capture_done,capture_full,capture_overflow,capture_source_error,capture_command_error;
+ wire [31:0] capture_index,capture_data,captured_frames,written_frames;
+ reg [31:0] captured_expected[0:511];
+ integer capture_writes=0,capture_reads=0;
+ performance_pcm_capture capture_dut(
+  .clk(clk),.rst_n(rst_n),.start(capture_start),.stop(1'b0),.clear(1'b0),
+  .link_up(link_up),.stereo_valid(stereo_valid),.sample_left(sample),.sample_right(sample_right),
+  .capacity_frames(32'd512),.write_valid(capture_valid),.write_ready(1'b1),
+  .write_index(capture_index),.write_data(capture_data),.recording(capture_recording),
+  .busy(capture_busy),.done(capture_done),.full(capture_full),.overflow(capture_overflow),
+  .source_error(capture_source_error),.command_error(capture_command_error),
+  .captured_frames(captured_frames),.written_frames(written_frames));
+ always @(negedge clk)begin
+  if(!rst_n)begin capture_start=0;capture_started=0;end
+  else begin
+   capture_start=link_up && !capture_started;
+   if(capture_start)capture_started=1;
+  end
+ end
+ always @(posedge clk)begin
+  if(!rst_n)begin capture_writes=0;capture_reads=0;end
+  else begin
+   if(capture_recording && link_up && stereo_valid)begin
+    captured_expected[capture_writes]={sample_right,sample};capture_writes=capture_writes+1;
+   end
+   if(capture_valid)begin
+    if(capture_reads>=capture_writes || capture_index!==capture_reads || capture_data!==captured_expected[capture_reads])
+     $fatal(1,"Production I2S to PCM store order/sample mismatch");
+    capture_reads=capture_reads+1;
+   end
+  end
+ end
+`endif
  always #10 tx_clk=~tx_clk;
  // Same nominal frequency, unrelated phase as on the two real boards.
  initial begin #3;forever #10 clk=~clk;end
@@ -79,6 +114,13 @@ module tb_i2s_visual_loopback;
   if(!link_up) $fatal(1,"Link did not recover");
   if(errors) $fatal(1,"Production I2S loopback failed: %0d errors",errors);
   if(pairs<120)$fatal(1,"Too few complete production stereo pairs");
+`ifdef PCM_CAPTURE
+  if(capture_reads<20 || capture_reads!=capture_writes || capture_reads!=written_frames || captured_frames!=written_frames)
+   $fatal(1,"Incomplete production PCM capture");
+  if(capture_busy || !capture_source_error || capture_overflow || capture_command_error)
+   $fatal(1,"Production PCM source-loss status incorrect");
+  $display("PASS: production I2S transmitter -> independent-clock UI receiver -> PCM write stream; exact pairs and source-loss completion");
+`endif
   $display("PASS: production 96 kHz / 3.072 MHz I2S loopback, %0d exact samples, reset and timeout recovery",checked);
   $finish;
  end

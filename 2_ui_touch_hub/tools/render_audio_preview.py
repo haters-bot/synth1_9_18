@@ -1,6 +1,7 @@
 """Render actual RTL into an isolated directory with explicitly synthetic PCM."""
 from datetime import datetime
 from pathlib import Path
+from simulation_sources import project_verilog_sources
 import json
 import hashlib
 import subprocess
@@ -24,7 +25,7 @@ def main():
             raise RuntimeError(f'{name} failed: {out}')
         return log
     run('library',[MS/'vlib.exe','work'])
-    sources=[ROOT/e.attrib['path'] for e in ET.parse(ROOT/'2_ui_touch_hub.gprj').findall('.//File') if e.attrib['path'].endswith('.v')]
+    sources=project_verilog_sources(ROOT,'2_ui_touch_hub.gprj')
     inputs=[*sources,ROOT/'sim/tb_audio_spectral_preview.v',*sorted((ROOT/'rtl/ui_vector_engine').glob('*.vh'))]
     hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
     (out/'source_manifest.json').write_text(json.dumps(hashes,indent=2))

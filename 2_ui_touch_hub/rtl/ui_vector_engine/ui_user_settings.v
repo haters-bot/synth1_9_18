@@ -3,7 +3,7 @@
 module ui_user_settings #(parameter CONTACT_CYCLES=2500000)(
  input wire clk,rst_n,touch_valid,touch_down,
  input wire [13:0] touch_x,touch_y,
- input wire [1:0] view,
+ input wire [2:0] view,
  input wire [7:0] section,
  output reg [63:0] knob_steps,
  output reg [1:0] knob_page,apply_step,
@@ -25,7 +25,7 @@ module ui_user_settings #(parameter CONTACT_CYCLES=2500000)(
     else begin
      finger<=1;
      if(!finger)begin
-      if(view==2 && section==1)begin
+      if(view==3 && section==1)begin
        if(touch_y>=576 && touch_y<612)begin
         if(touch_x>=48 && touch_x<208)knob_page<=knob_page-1'b1;
         if(touch_x>=496 && touch_x<656)knob_page<=knob_page+1'b1;
@@ -42,7 +42,7 @@ module ui_user_settings #(parameter CONTACT_CYCLES=2500000)(
       // amplitude -, amplitude +, horizontal -, horizontal +.
       for(tile=0;tile<6;tile=tile+1)for(col=0;col<4;col=col+1)begin
        if(!((tile==0 || tile==5) && col>=2))begin
-       if((view==2 && section==2 && touch_y>=200+tile*56 && touch_y<240+tile*56 &&
+       if((view==3 && section==2 && touch_y>=200+tile*56 && touch_y<240+tile*56 &&
            touch_x>=528+col*160 && touch_x<656+col*160) ||
           (view==1 && touch_y>=96+(tile/3)*296+258 && touch_y<96+(tile/3)*296+278 &&
            touch_x>=24+(tile%3)*418+20+col*92 && touch_x<24+(tile%3)*418+104+col*92))begin

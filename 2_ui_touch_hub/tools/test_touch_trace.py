@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import xml.etree.ElementTree as ET
 from touch_trace_monitor import TraceDecoder, format_record
+from simulation_sources import project_verilog_sources
 
 ROOT=Path(__file__).resolve().parents[1]
 MS=Path('D:/altera/modelsim_ase/win32aloem')
@@ -18,10 +19,9 @@ def main():
     out=ROOT/'impl'/('trace_tests_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
     out.mkdir(exist_ok=False)
     run([MS/'vlib.exe','work'],out,'vlib.log')
-    paths=[e.attrib['path'] for e in ET.parse(ROOT/'2_ui_touch_hub_debug.gprj').findall('.//File')
-           if e.attrib['path'].endswith('.v')]
+    paths=project_verilog_sources(ROOT,'2_ui_touch_hub_debug.gprj')
     run([MS/'vlog.exe','-sv','+incdir+'+str(ROOT/'rtl/ui_vector_engine'),
-         *[ROOT/p for p in paths],ROOT/'sim/tb_touch_trace.v'],out,'compile.log')
+         *paths,ROOT/'sim/tb_touch_trace.v'],out,'compile.log')
     run([MS/'vsim.exe','-c','-l','simulation.log','tb_touch_trace','-do','run -all; quit -f'],out,'vsim_stdout.log')
     data=(out/'simulation.log').read_text(errors='replace')
     assert 'PASS:' in data and not any(v in data for v in ['** Fatal:','** Error:']),out

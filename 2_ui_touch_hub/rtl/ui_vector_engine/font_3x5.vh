@@ -157,7 +157,7 @@ function [17:0] get_param_label3;
             // Filter
             `PARAM_ID_FLT_CUTOFF:  get_param_label3 = {`CH_C, `CH_U, `CH_T};
             `PARAM_ID_FLT_RES:     get_param_label3 = {`CH_R, `CH_E, `CH_S};
-            `PARAM_ID_FLT_PAN:     get_param_label3 = {`CH_P, `CH_A, `CH_N};
+            `PARAM_ID_FLT_PAN:     get_param_label3 = {`CH_M, `CH_P, `CH_N};
             `PARAM_ID_FLT_DRIVE:   get_param_label3 = {`CH_D, `CH_R, `CH_V};
             `PARAM_ID_FLT_FAT:     get_param_label3 = {`CH_F, `CH_A, `CH_T};
             `PARAM_ID_FLT_MIX:     get_param_label3 = {`CH_M, `CH_I, `CH_X};
@@ -211,10 +211,12 @@ function [35:0] get_param_label6;
                 get_param_label6 = {`CH_W,`CH_T,`CH_SPACE,`CH_P,`CH_O,`CH_S};
             `PARAM_ID_OSCA_WARP, `PARAM_ID_OSCB_WARP:
                 get_param_label6 = {`CH_SPACE,`CH_W,`CH_A,`CH_R,`CH_P,`CH_SPACE};
-            `PARAM_ID_OSCA_PAN, `PARAM_ID_OSCB_PAN, `PARAM_ID_FLT_PAN:
+            `PARAM_ID_OSCA_PAN, `PARAM_ID_OSCB_PAN:
                 get_param_label6 = {`CH_SPACE,`CH_P,`CH_A,`CH_N,`CH_SPACE,`CH_SPACE};
             `PARAM_ID_OSCA_VOL, `PARAM_ID_OSCB_VOL:
                 get_param_label6 = {`CH_V,`CH_O,`CH_L,`CH_U,`CH_M,`CH_E};
+            `PARAM_ID_FLT_PAN:
+                get_param_label6 = {`CH_M,`CH_S,`CH_T,`CH_P,`CH_A,`CH_N};
             `PARAM_ID_FLT_CUTOFF:
                 get_param_label6 = {`CH_C,`CH_U,`CH_T,`CH_O,`CH_F,`CH_F};
             `PARAM_ID_FLT_RES:

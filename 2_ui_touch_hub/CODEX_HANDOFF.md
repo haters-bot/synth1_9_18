@@ -1,5 +1,111 @@
 # UI Touch Hub 当前交接入口
 
+> **2026-10-30 GitHub检查点：用户已授权提交并推送当前版本。** 分支 `integration/dual-138k-uart-phase1`；版本范围为当前已审计/烧录且显示正常的UI源码、安卓壳、网页、测试与协作文档，摘要见 [R16发布检查点](doc/RELEASE_R16_STEREO_HC07_2026-10-30.md)。不纳入实现输出、APK/签名密钥、仿真库、抓拍或临时分析；旧音频构建脚本改动留在本地。此前“不推送”条目为用户本次授权前的历史约束。
+
+> **2026-10-30 用户现场确认新版UI显示正常。** 对20:43 SRAM部署，用户回复“没事，正常的”，已记入部署目录hardware_acceptance.json；摄像头朝天花板的局限不再影响显示验收结论。用户准备验证手机→MIDI→灯屏→实体演奏→I²S录音→手机回传链路；提供C大调4秒音阶与90BPM《小星星》单旋律测试MIDI，位于 `E:/gaoyun_builds/midi_examples_20261030/`，均已用生产JS解析器核对。实体键盘最低音仍待核对，当前固件60起，曲谱只指引不自动发声；蓝牙/灯带/录音回传尚未宣称实物验收。
+
+> **2026-10-30 20:44 UI新版已执行一次SRAM烧录，显示/功能待现场验收。** 用户明确要求“按照烧录流程烧录”。IPv6只读扫描1个GW5AST-138B/138C（ID0x0001081B），无其他Programmer进程；deploy_verified.py在写前重新校验105输入/123引脚/五类时序全部通过。部署目录 `impl/deploy_runs/20261030_204315_R16_stereo_hc07_F14_F16`；operation2、PROGRAMMER_EXIT=0、User Code **0x00001521**、Status **0x00026230**、programming_status=sram_programmed；本地/远端位流SHA256均 `4BA5FD918FAAE9B52CE3099B33F8E23453F90FAF722606736F0C74D6199B3525`。Flash未写、没有自动重试/推送/改音频。摄像头preview.jpg朝向天花板，没有拍到屏幕，不能证明显示正常或异常；hardware_acceptance.json标为待用户现场确认。当前板上应为本轮F14TX/F16RX、F13灯带/PAN/LFO/双声道/蓝牙与录音导出新版，不再是14:03旧固件；实际蓝牙/实体音域/灯带/整曲DDR未验收。下方“未部署”均为写板前历史。
+
+> **2026-10-30 20:36 最终统一候选审计通过，未部署。** `E:/gaoyun_builds/R16A_build_20261030_201520` 于20:35:12退出0；审计 `audit_20261030_203534_639478.json`：105输入工作区/快照哈希一致、123/123引脚一致、setup/hold均0端点、无负路径/审计错误，七时钟全部达标，`timing_closed=true`。最差setup/hold/recovery/removal/pulse为 **+0.472/+0.133/+0.335/+0.338/+0.361ns**，pixel51.722/50MHz，DDR104.959/100MHz；3路OSER10复位完整检查且无豁免。原5条FX setup违例已消除。位流 `impl/pnr/2_ui_touch_hub.fs` 39707831bytes，SHA256 `4BA5FD918FAAE9B52CE3099B33F8E23453F90FAF722606736F0C74D6199B3525`。保留place3/route1，不靠盲换模式/放宽频率收敛。最终APK仍为202948（SHA见下一条），蓝牙 **F14 TX／F16 RX**、灯带 **F13**。功能与回归索引 `functional_evidence.json` 已保存。Gowin已结束，本轮浏览器及HTTP辅助进程已关闭，不需重跑相同输入。未烧录/推送/修改音频板；板上仍14:03旧固件，真实安卓/HC-07、实体最低音、灯带映射及整曲DDR验收均待执行。
+
+> **2026-10-30 20:31 Codex：唯一统一候选仍在布局，未部署。** 当前为 `E:/gaoyun_builds/R16A_build_20261030_201520`，Gowin PID40292；综合已完成，布局Phase2完成，尚无最终STA结论。实际cmd.do确认place3/route1/timing/correct_hold1、唯一combined CST/SDC。综合Logic70214/138240、寄存器44534、BSRAM89/340。D盘曾满：201235因误将系数include头文件独立登记为Verilog而失败（登记已纠正，头文件保留）；201321因磁盘满停止，证据均保留。仅按用户授权删除3个本轮安装压缩包，释放314912768字节，解压工具和工程保留。最终APK更新为 `impl/phone_apk_20261030_202948/FPGA-Performance.apk`，SHA256 `3ae03bf7555c305ceaa9c89322062ee5bc0487d36e7b7df2e644bf28d2566c71`；页面320/360/412px验证无横向溢出。浏览器原生桥模拟已走通16事件上传及12帧单声道下载；不属于真实蓝牙验收。接续先核对唯一进程与日志，完成后严格audit_build.py审计，禁止相同输入另起Gowin。RTL冻结，未烧录/推送/改音频工程。
+
+> **2026-10-30 20:10 Codex：功能整合完成，最终候选待构建/审计，尚未部署。** PAN(CC10/91/92)/最终L:R双波形与相位/F13直接24灯/LFO14bit与FX流水线保留；HC-07双向ACK、曲谱整包校验/去重、DDR原PCM离线127tap低通96k→8k单/双声道回传和安卓RFCOMM壳已实现。用户要求蓝牙改近邻 **F14 TX→RXD、F16 RX←TXD**，已核对原理图第7/19页及无DDR引脚冲突；E13方案作废。APK `impl/phone_apk_20261030_200836/FPGA-Performance.apk` 已签名验证，未手机实测。双速串口8回复、31板端会话、337精确FIR样本、I²S→DDR→11帧FIR端到端、14 JS用例、网关真ACK、PAN/LFO/导航/视频/灯带回归通过。统一Gowin尚未启动，下一步冻结源后唯一候选、五类时序与全部引脚审计。详见 [蓝牙协议与验收](doc/HC07_PHONE_PROTOCOL_AND_ACCEPTANCE_2026-10-30.md)。不推送/删除/改音频/自动烧录；192337中断产物保留。
+
+> **2026-10-30 19:35 Codex 整合进行中：用户要求全部问题（含新提供HC-07手册）解决后再统一构建一次。** PAN/左右波形与L:R相位/F13直连24灯/LFO 14bit及FX输入流水线已改并通过相关仿真，尚未部署；提前启动的192337构建已按用户要求停止并保留，非最终候选。安卓轻量壳+HC-07双向通信/录音降采样仍待实现。详情见 [整合状态](doc/STEREO_HC07_UPDATE_2026-10-30.md)。所有历史失败证据保留，未推送/烧录/删除/修改音频工程。
+
+
+> **后续EDA工作先读：** [EDA经验与执行规则](doc/EDA_LESSONS_2026-10-30.md)，集中记录RAM推断、唯一CST、DDR时钟边界、流水时序修复、模式归因边界和减少重复构建的要求。该文件已持久落盘，不代表已确认写入Hindsight独立长期记忆。
+
+> **2026-10-30 最新实板状态：** 用户确认“这一版成功上板”。已执行唯一一次 UI SRAM operation 2，部署 `impl/deploy_runs/20261030_140337_R16_local_performance_ui_sram_20261030`；PROGRAMMER_EXIT=0、User Code `0x00009B47`、Status `0x00026230`，本地/远端 SHA256 `9F842D53FF2B12F36AC67A317E7D1A16B9CFA7C613C947ABD8520F7C6401CC00`。验收原话见部署目录 `hardware_acceptance.json`。首次摄像头抓拍偏黑，但用户随后现场确认成功；不再依据该单帧认定黑屏。此确认只覆盖成功上板，未扩展为灯带逐键、实际音域或 DDR 整曲录音逐项验收。Flash 未动、未推送、未删除、未改音频板。下方旧“未烧录/目标板未确认”均为历史。
+
+> **2026-10-29 接续入口：** 灯带安排按 Dock 原理图确定为 FPGA J16→板载 U15→J24 pin 3，C14 保留调试 UART；每帧为1个板载黑像素+24个外接像素。normal `R16A_build_20261029_222234` 与 debug `DEBUG_R16A_build_20261029_223907` 均通过五类时序和122/122引脚审计。normal SRAM `--check-only` 通过，SHA256 `9F842D53FF2B12F36AC67A317E7D1A16B9CFA7C613C947ABD8520F7C6401CC00`，未访问工程机、未烧录。23:12 重跑的25像素WS2812串行与白键/MIDI键态回归通过（`performance_led_serial_20261029_231227_998673`、`performance_keys_20261029_231227_990124`）。仍待实物确认J24接线/供电、32键实际音域、DDR整曲录音；不推送、不删除、不修改音频板。
+
+> **23:42 最新本地验证：** 再次执行 normal SRAM `--check-only`，99个构建输入哈希无偏差，五类时序通过、122/122引脚一致、位流哈希不变。25像素串行/键位映射/曲谱提示/录音显示/命令/MIDI/Note仲裁/PCM与DDR读回/进度/协议/调度器回归全PASS。重复全页预览因耗时中止，部分文件保留、无仿真进程；先前完整预览仍有PASS结果。实物 JTAG 目标和 J24 接线未确认，尚未烧录。
+
+> **历史记录口径：** 本文件下方较早条目中的 121 引脚门槛、C14 灯带待确认和旧构建句柄均只描述当时状态，已由本入口的 J16/J24、122 引脚和最新构建结论取代；旧文件和产物保留，不作为当前门禁。
+
+> **最新只读设备探测：** 工程机通过 IPv6 SSH 在线，Programmer CLI `--scan` 识别到 1 个 `GW5AST-138B/GW5AST-138C`（ID `0x0001081B`）和 Gowin USB Cable FT2CH。扫描没有写 SRAM/Flash；在确认该器件就是 UI 板且确认 JTAG/灯带接线后，才可执行 SRAM operation 2。
+
+> **2026-10-29 22:55 接续：演奏灯带引脚安排已按官方 Dock 原理图修正并通过双构建审计。** FPGA J16 驱动板载 WS2812B U15，U15 DOUT 经 J24 pin 3 接外部灯带；pin1 GND、pin2 NC、pin4 5V（0.45 A max）。演奏链每帧发 1 个板载黑像素 + 24 个外部像素；J16 已作为独立 `performance_led_data` 顶层端口，C14 保留 debug UART。PWM 颜色受限流约束，灯带文档见 `doc/UI_PCB_DEBUG_UART_PINOUT.md`。串行链路仿真 `performance_led_serial_20261029_213654_873950` PASS；完整renderer预览 `performance_preview_20261029_213935_466000` 的 7 个25像素帧/1200位和921600屏幕像素 PASS，PNG已检查。正常构建 `R16A_build_20261029_222234` 与诊断构建 `DEBUG_R16A_build_20261029_223907` 均以唯一 combined CST/SDC 完成，审计均 122/122 引脚匹配、五类时序零违例；余量和哈希详见 `doc/LOCAL_PERFORMANCE_STATUS_2026-10-29.md`。未烧录/推送/删除或修改音频板。实物J24接线、灯带电气/亮度、键盘音域、DDR录音仍未验收。**
+
+> **21:11 历史 SRAM 只读预检（已被22:55后的构建和引脚复核取代）：** `191907` 候选曾通过 `--check-only`，当时只审计121个引脚；没有访问工程机或写板。当时发现的 C14 冲突来自旧方案，后来已按 Dock 原理图将灯带独立接到 J16，C14 保留调试 UART。当前状态见本文件顶部，未烧录。
+
+> **21:13 本地录音边界回归补齐：** PCM 捕获深度 3/16、左右声道次序/有符号采样、背压、容量、溢出、排空、断源及命令优先级通过（`impl/performance_pcm_20261029_211338_276125`）；生产 I²S 发送器到独立时钟 UI 接收器的逐对采样测试通过。长曲目进度 1047 项参考通过（`impl/performance_progress_20261029_211338_277479`）。加上上一轮 DDR adapter 全链路读回回归，软件侧录音/进度用例已覆盖。当前只读 SRAM 预检仍通过，物理接线与断电状态未确认，继续不烧录、不推送。
+
+> **20:58 历史构建与回归记录（已被22:55候选取代）：** `191907` 曾通过121/121引脚和五类时序审计；旧位流及资源数据仅供追溯，当前以顶部 `222234` normal 与 `223907` debug 构建审计为准。旧 `185326` 综合后中断且保留。后续修正了灯带端口、引脚数与串行证据，详见最新入口和状态文档。
+>
+> 当前回归全部 PASS：`performance_keys_20261029_194846_759722`、`performance_led_serial_20261029_194846_765328`、`performance_cue_20261029_194846_766005`、`performance_command_tests_20261029_194846_811607`、`performance_store_20261029_194932_141837`（两组异步时钟、137 对生产 I²S 样本逐帧读回、故障恢复）、`performance_display_20261029_194932_141544`、`navigation_20261029_194932`、`trace_tests_20261029_194932_169522`、`performance_notes_20261029_205545_646398`、`performance_scheduler_tests_20261029_205545_632768`，以及 MIDI/协议 Python 回归。当前 renderer 预览 `performance_preview_20261029_202447_714069/result.json` PASS，`performance.png` 为 1280×720，720 行×1280 像素、7 个 24 灯帧/921600 有效像素，已人工查看。预览工具改为逐行写出并严格恢复/校验完整像素，原始超时目录 `performance_preview_20261029_195017_613814` 保留。
+>
+> `impl/R16A_build_20261029_191907/functional_evidence.json` 汇总上述构建、位流、预览和回归路径。仍不烧录、不推送、不改音频、不删除：实体键盘最低 MIDI 音仍是临时 `PERFORMANCE_BASE_NOTE=60`，DDR 实板容量/校准、WS2812 电气接线和整首录音硬件验收未完成；手机/蓝牙只保留接口，音频板由队友负责。
+> **19:40 接续恢复：** 先前 `impl/R16A_build_20261029_185326` 不是成功结束：PID 37860 已不存在，日志只到 Routing Phase 0，只有综合产物，没有 P&R 时序/位流；该目录 99 个输入哈希均匹配，未删除。按同一最终源码启动唯一新候选 `impl/R16A_build_20261029_191907`，构建 PID 17256、exec 19784；真实日志已完成综合并进入布局 `[30%] Placement Phase 2 completed`，进程仍存活，未收结果。实际 `cmd.do` 已核对 `-place_option 3`、`-route_option 1`、`-correct_hold 1`；约束文件为唯一 `ui_touch_hub_combined.cst`。综合资源为 Logic 61259/138240、Register 38370/139095、BSRAM 86/340；仍需完整五类时序审计。综合日志报告 `performance_led_white_mapper` 实例 swept；白键映射与 24 灯串行有 RTL 回归及生产 renderer 预览证据，但该综合警告与实体灯带行为仍须实板核实，不据仿真宣称硬件验收。继续不并行 Gowin、不烧录、不推送、不改音频、不删除。
+
+
+
+> **2026-10-30 17:55 ZCode 接续：队友 LFO 协议修复 8f46f98 已同步入库并通过回归，但两轮全量构建均差 5 条同源 setup 违例（-0.084~-0.126ns），均未烧录；板上 14:03 版仍为旧 LFO 编码，待随用户其他改动一并收敛。** `git pull --ff-only` 将 integration/dual-138k-uart-phase1 从 ea28bf3 快进到 8f46f98（队友 TEENAGERKILLER 10-29 20:55 "encode LFO SysEx as MIDI-safe 14-bit values"：value 改 14bit 拆两个 7bit、route source 移 value[9:8]，协议文档 §2 同步更正）。pull 时 AI_COLLABORATION_LOG.md 与本地未提交条目冲突，已合并保留双方全部条目（stash 已清）；工作区其余脏文件原样未动，未提交、未推送。验证：lfo_sysex_tx.v blob=ff99eea；tb_lfo_sysex_tx 于 sim/work_lfo_sync_20261030 全 PASS（含新增 T6：OSC A Level/LFO1/+127 → 0x017F）。
+>
+> 两轮唯一隔离构建（PID 38296/22064，先后串行、无并行 Gowin）：impl/R16A_build_20261030_165924 与 R16A_build_20261030_172142，快照 lfo_sysex_tx.v sha256=0dcf9ecf…（修复版）。审计 audit_20261030_172103_048998.json / audit_20261030_173930_618017.json 结果逐位相同：setup 5/hold 0，全部同源 u_knob_spi/param_id_3_s0 → u_render/u_fx_state/packet_external_value_{0,2,3,4}（-0.126×3、-0.084×2）；recovery/removal/pulse 通过、122 引脚全匹配、七时钟 Fmax 达标（pixel 49.686、ddr_user 110.36/100）。timing_closed=false，禁止部署。
+>
+> 关键结论：① 相同输入两轮 Fmax/违例逐位相同（且 222234 与 191907 位流同为 SHA 9F842D53），本机 Gowin P&R 同输入确定性再次实证，重跑相同输入无意义；② 222234 全零版 worst setup 仅 +0.140ns，LFO 修复 9 行（不在关键路径）挪动全局布局把该族老路径挤过线，属布局敏感非结构缺陷。收敛建议：方案A fx_state 入口对 knob param_id/value 事件寄存一拍（10-19 参数库整体寄存先例）并重跑 fx_lfo/knob 回归；方案B 试 place_option 3→2（当前 build.tcl 第 8-9 行 place3/route1）。板上 14:03 部署版快照 lfo=4a89beca 为旧编码，音频板未实现接收端故暂无实害，但联调前必须换新。队友 main 另有 4 新提交至 5224279（立体声振荡器+全局声像、恢复板载 PT8211、音频流水线）未合并。本轮无活跃 Gowin/ModelSim 进程残留。
+
+> **16:44 当前唯一构建164300正在综合，目标未完成。** 实际UI impl/R16A_build_20261029_164300，PID29796、exec39803，99输入哈希一致。上一162301已退出0并审计：3setup/0hold，pixel50.299/50MHz已通过，DDR90.976/100MHz仍失败，最差-0.992ns为committed到return_data64，121引脚全匹配，recovery/removal/pulse+0.335/+0.290/+0.361ns，三路OSER10均有完整检查，不可部署。审计audit_20261029_163948_380808.json。
+>
+> 已增加M_CALCULATE阶段，先寄存memory_base+committed及committed+frames，再比较并生成状态，未放宽时钟/约束。store164215两异步时钟/2053帧/137生产I²S链路/故障恢复PASS；测试原随机窗口未覆盖data-first，已改逐写强制交替，两顺序各9次通过，保留失败证据。trace164051正常/诊断完整编译、cue164331、navigation164331、display164331通过；notes162226及背景259330逐点比较输入仍匹配。索引当前构建functional_evidence.json。
+>
+> 无运行中预览；旧preview152737已经PASS和人工查看，本版以背景等价和七拍导航回归支持，不声称新整帧截图。曲谱默认只指引，MIDI最低音60临时且实体32键待采样；E19队友main仍d4338fb。无线延后，整首DDR实际容量/校准/录音读回及灯带电气未实板验收。不烧录/推送/删除/修改音频。
+
+> **16:31 当前唯一构建162301仍在布局，未完成。** 实际UI impl/R16A_build_20261029_162301，PID32320、exec80315，99输入SHA与工作区一致。旧155807已退出0并审计失败：329setup/0hold，pixel48.774/50MHz、DDR81.593/100MHz，最差-2.256ns为committed计数到req_wmask；121引脚匹配，recovery/removal/pulse为+0.335/+0.377/+0.361ns，不能部署。审计audit_20261029_161438_233137.json。
+>
+> 已按关键路径将DDR命令锁存与校验分成M_VALIDATE阶段，宽请求载荷锁存独立于合法性检查。回归发现校准丢失后结束标记被旧故障逻辑覆盖，已把transaction_failed限定实际REQUEST/RESPONSE，store162149两时钟/2053帧/137生产I²S链路与校准丢失恢复全PASS。notes162226、cue162225（默认曲谱只指引不发音频Note）、navigation162226、display162225、trace162149正常/诊断完整编译PASS。带哈希证据索引impl/performance_timing_fix_20261029_155312/final_regressions_162301.json。trace脚本无result.json，记录日志证据，不伪造结果。
+>
+> 上一整帧预览152737已PASS并人工查看；该图早于时序改动，本版以259330背景等价比较和七拍导航回归支持，无新整帧捕获。Sipeed官方标称1GB DDR3/512MB×2，来源impl/ui_memory_reference_20261029_160033；配置1GiB录音区理论96kHz/16位双声道46分36秒，具体实板容量/校准/地址不折返未验收。验收基准doc/LOCAL_PERFORMANCE_ACCEPTANCE_2026-10-29.md。音符沿队友d4338fb原始MIDI号，实体最低音仍待测，60临时。无线继续延期；未烧录/推送/删除/改音频；目标未完成。
+
+> **15:58 接续：旧预览152737已收回PASS，当前唯一Gowin155807正在运行。** preview/session70304/kernel29548均结束；921600像素与7灯帧/4032位、按钮/切页全灭PASS，result.json输入SHA一致，performance.png已人工查看。解除冻结后增加DDR mem_token数据/valid保留边界、Note队列独立弹性输出寄存、并行背景选择（保持7拍），默认关闭曲谱自动发声，灯/屏幕指引不变。旧综合网表为加密文件，无法凭搜索不到mem_token断言寄存消失；是否改善以新STA判断。
+>
+> 新回归store155532（两异步时钟/2053帧/137生产VIS V2 I²S/队友adapter精确读回及故障恢复）、notes155532（36事件真实串行/背压/溢出）、cue155618（1000位置/暂停/停止且曲谱无音频Note）、navigation155618、display155618、trace155618正常/诊断完整编译均PASS；background_final_result.json比较259330组旧/新背景PASS，全部带哈希证据当前匹配。索引impl/performance_timing_fix_20261029_155312/final_regressions.json。编译曾因循环变量sc重名失败，已改名并重新通过，失败证据保留。
+>
+> 唯一构建实际副本impl/R16A_build_20261029_155807，exec61759，PID=34700；99输入SHA匹配，尚未时序审计。无第二份Gowin、无运行中整帧预览，不烧录/推送/删除、不改音频，目标未完成。键盘协议按队友d4338fb的E19 MIDI原始编号，最低音60仍临时，实物验收前需采样实际32键；无线延期。旧152727仍因488setup/DDR81.944MHz/pixel46.81MHz拒绝部署。
+
+> **15:48 唯一构建152727已退出0，仍拒绝部署：** 审计audit_20261029_154524_330143.json，99输入哈希匹配、121引脚全匹配，setup488/hold0，pixel46.81/50MHz、DDR user81.944/100MHz。官方DDR异步分组已消除原PHY跨域-7.508ns路径；本次最差-2.203ns为commands BSRAM到return_data/req，pixel最差-1.363ns为raster x到导航背景；另Note arbiter计数到MIDI FIFO使能-0.877ns。recovery/removal/pulse+0.335/+0.302/+0.361ns，三路OSER10均完整报告且通过。critical_path_review.json已保留，后续应保留DDR数据寄存边界、Note输出寄存、并行背景选择，不盲换模式。
+>
+> 无活跃Gowin；preview152737/session70304/kernel29548仍真实运行，约15:47已有5.8MB像素，未结束前RTL继续冻结。最终同源录音store153326通过拒绝/满/停止/断线恢复，candidate证据索引已更新。默认设计依据原需求为用户按实体琴键发声、曲谱仅指引；可选自动发声问题尚未答复，当前候选中曲谱到预留MIDI输出的默认行为仍需在冻结解除后明确。未烧录/推送/删除或改音频，目标未完成。
+
+> **15:31 本地功能已推进，源码冻结验证中：** 录音接受/拒绝/自动停止反馈已闭环，新增真实状态与字符ROM；解决上次断线故障污染下一次录音的capture epoch问题。store152158的2053帧两时钟组和137帧生产I²S→队友adapter→精确读回，含拒绝重试、满容量/停止/断线恢复及状态均PASS。三源Note独立16深队列+UART ready/独立键掩码，36事件真实串行、480三源同键重叠通过；超载可见但密集32键和Stop/Pause已发送Note清理尚须后续验收，不称完整音频演奏通路。
+>
+> 候选曲谱容量升16384事件并集中参数，满后额外写入导致load_error并拒绝播放截断曲谱；scheduler152702覆盖5/8/1024/4096/16384通过。新增提前1秒的下落Note-On提示，cue152729验证1000位置/暂停冻结/Off不提示/停止清除；导航152743、I²S字形/ROM152708、全部11状态字符152744、normal/debug完整编译152702通过。手机无线仍延后，只同步32键/容量接口。
+>
+> **唯一Gowin**实际副本impl/R16A_build_20261029_152727、PID22828、exec60928，仍综合，normal/debug使用官方DDR分组与扩大STA报告；不可并行。**新版preview**impl/performance_preview_20261029_152737_017392、exec70304，真实renderer/7灯帧验证运行中，相关RTL/vh冻结直到收回。恢复先核对真实进程/同句柄。未烧录、推送、删除或改音频工程，目标未完成。
+
+> **15:07 预览已收回并通过（覆盖下方运行中状态）：** performance_preview_20261029_144245_230550/session70866退出0，kernel34760已结束；921600有效像素、7个24灯帧/4032位、控制点击不切页、启动全灭/触摸/松开/MIDI64/停止/退出页全灭全部PASS，result.json的输入SHA256一致。完整performance.png已人工查看，控制按钮无导航遮挡；这不是实板验收。当前无活跃Gowin或ModelSim，RTL冻结已解除。
+>
+> normal/debug SDC已按高云GW5AST-138B官方例程拆开DDR100/400异步组，并按本机SUG940 5.5.1加入扩大及pixel/bit-clock专项report_timing，未降低频率或豁免域内/OSER10 reset。尚未跑下一候选；142528仍拒绝部署。下一步先补录音请求失败/自动停止恢复及真实状态显示、三源Note仲裁和容量硬门槛，再相关回归、唯一完整构建/五类审计。键盘最低音仍待现场MIDI采样，C14分配仍待回复；不依赖它们的本地工作继续。未推送/烧录/删除或改音频工程。
+
+> **15:01 接续核对：** 已再次fetch队友main，仍d4338fb。E19的MIDI音符号原样进入合成器、解析器接受全部16通道；UI发送约定通道1，不能写成E19只收通道1。仓库仍无实体32键最低音，60只是临时参数；不需要原理图，但实体灯安装/验收前必须采样实际键号。只读源码证据impl/audio_note_contract_20261029_145705，协议文档已纠正。
+>
+> **DDR官方约束新证据：** 高云官网DDR3 ZIP内含GW5AST-138B专用1:4工程，其SDC将100MHz用户时钟与400MHz PHY设异步组（源头/逐项对照/SHA在doc/DDR_OFFICIAL_TIMING_REFERENCE_2026-10-29.md与impl/ddr_official_reference_20261029_145035）。此前142528最差25条setup全部跨此边界（4条到下降沿、21条到上升沿），先前“同组”指导已被官方示例纠正。normal/debug SDC已按官方分组，域内时序/OSER10 reset未豁免，尚未重跑P&R，不代表时序闭合或DDR实物验收。无新活跃Gowin；preview144245/session70866/kernel34760仍运行，hex持续增长，RTL冻结等待收回。未烧录、推送、删除或改音频源。
+
+> **14:48 已收回Gowin结果（覆盖下条运行状态）：** 142528已退出0，session31668结束，无活跃Gowin。最终121处引脚全部匹配，combined CST修复得到实证；但233setup、pixel45.907/50MHz、最差-7.508ns（DDR PHY read_rclksel/hold_gen及校准相关），hold0，recovery/removal/pulse最差+0.324/+0.287/+0.451ns；removal摘要前25条未含全三路OSER10，审计仍拒绝。完整审计`audit_20261029_144607_910780.json`；最差25条全在DDR内部，须获取更广路径报告与IP时序说明，不能任意false-path或再盲目换route模式。该快照也早于按钮移动，不部署。新preview144245/session70866/kernel34760仍真实运行并输出全帧；尚未PASS。无新Gowin，不推送不烧录不删除，目标未完成。
+
+> **2026-10-29 14:44 当前恢复入口：** 实际UI仍本副本，音频只读。发现Gowin两份CST只读取最后DDR份，旧135029/140630所有UI引脚被自动重派，均禁止部署；已改为normal/debug各唯一combined CST+唯一SDC，build_isolated做预检，audit_build新增最终121处引脚核对（含差分），旧验收032336的50处正向通过，错误140630负向拒绝。DDR400/100MHz显式时钟组与录音命令RAM输出寄存已加；录音store142445、normal/debug串口142445、WS2812逐位141945、导航144322、演奏按钮144134均PASS。唯一Gowin仍`impl/R16A_build_20261029_142528`、PID33588、exec31668在routing（真实cmd.do确认place3/route1、combined CST）；勿并行启动。该快照早于下述按钮移动，后续即使STA通过也不能直接部署。旧整帧预览142720在部分画面发现演奏控件被全局导航覆盖，已只停止该preview kernel并保留全部产物，不能写PASS。控件已移至y136..168；新完整预览`impl/performance_preview_20261029_144245_230550`、exec70866、kernel34760，增加真实导航+触控+命令联动、7帧4032位LED解码及全帧，仍在运行，恢复先收取结果。C14分配已问用户尚无答复，源码暂按PERFORMANCE_LED_ENABLE=1专用灯带，不能动态切UART；未部署。详见状态文档最新条目；目标未完成、不推送不删除不烧录。
+
+> **2026-10-29 14:13 接续：** 实体键盘协议已按最新远端 `origin/main=d4338fb` 再核对，E19=31250/8N1/3.3V标准MIDI，音符号原样进入合成器；仓库没有32键最低音。工作分支音频源旧于E19接入，参考必须用`git show origin/main:...`。UI的60仍临时配置，待实物校准。DDR wrapper/PLL/IP/正常诊断顶层已接，旧“尚未接顶层”已过时；修正前135029退出0但109setup/120hold及recovery/removal负裕量，禁止部署。最新导航135807、完整normal/debug与串口135828、键映射135930、演奏命令135936均PASS。唯一新Gowin候选`impl/R16A_build_20261029_140630`、PID6804、exec27762正在布局，先核对真实进程不并行Gowin；UI DDR显式时钟/异步约束仍待补齐及验证。详见`doc/LOCAL_PERFORMANCE_STATUS_2026-10-29.md`。不改音频、不烧录、不推送、不删除，目标未完成。
+
+> **13:35 本地演奏 UI 控制更新：** 演奏页顶栏加入播放/暂停/继续/停止图标，新增 `performance_touch_controls.v` 做触摸边沿和坐标门控；命令接入共享 `performance_command_decoder` 状态，因此后续手机 PLAY/PAUSE/STOP 与本地控制一致。`performance_command_tests_20261029_133453_862938`、`navigation_20261029_133336`、`trace_tests_20261029_133336_612787`均PASS，`git diff --check`通过。未运行Gowin、未烧录/推送/删除；UI DDR IP/实体容量仍未确认，不能宣称整首录音或实板可用。音符协议仍按队友仓库标准MIDI 21..108，实体键盘最低音无记录，`PERFORMANCE_BASE_NOTE=60`仅待实物校准。
+
+> **13:23 最终验证（覆盖下条状态）：** 新增 `performance_recording_subsystem.v` 已加入 normal/debug GPRJ；137 个 VIS V2 左右 PCM 样本穿过生产 `i2s_visual_rx`、真实采集/存储子系统与队友 d4338fb 原版 DDR adapter，逐帧读回一致，DDR cmd/data 两种握手次序均被覆盖。证据 `impl/performance_store_20261029_131716_863132`。存储传输、2053 帧尾掩码、错误/超时/source-loss 均通过；演奏页 `navigation_20261029_131949`、I²S `i2s_tests_20261029_131949_887871`、工程/串口 `trace_tests_20261029_131949_891687` 均PASS。UI top仍未接DDR IP/pins，实物容量/校准无证据；UI工具版本1.9.11、队友IP模板1.9.12。本轮未构建/烧录/推送/删除，目标未完成。
+
+> **12:57 验证收尾补充（覆盖下条运行句柄）：** navigation_20261029_125443 已退出0且PASS，含当前源码SHA256；正常/诊断完整源码编译与串口回归 trace_tests_20261029_125622_446219 已退出0且PASS；git diff --check通过。句柄34083已结束，不再等待。本轮所有已启动测试均已收回结果，无待观察测试句柄；本轮未启动Gowin。整体本地演奏/整首录音目标仍未完成，继续入口见下条及详细状态文档。
+
+> **2026-10-29 12:55 本地演奏接续，目标未完成。** 已重新 fetch 音频队友 main=d4338fb；E19 为 MIDI 音符原样输入，无物理最低音事实。UI 顶层增加可配置 PERFORMANCE_BASE_NOTE（60 仅临时值），32 键与 24 白键灯映射分离；修正导航文字页号、拖键立即抬起粘键、出屏/切页释放、停止/清空/重播提示清理，Python 默认32键。长曲目进度新增48拍除法器，1047 大整数参考通过。新增 PCM 录音前端，独立 FIFO3/16 及生产 I²S发送→独立相位UI接收→PCM写流全通过，但尚未接入整首外存，UI不再把录音请求显示为真实保存状态。15起始音/1920MIDI/480重叠、I²S/原可视化、正常诊断源码与串口回归通过；最终导航回归句柄34083/目录navigation_20261029_125443恢复先查真实状态。旧105439已完成但审计失败：494 setup、-27.684ns、20.971/50MHz，禁止部署。本轮无Gowin、不烧录、不推送、不删除，音频代码未改。详细现状、证据、DDR1.9.12与本机1.9.11兼容边界及下一步见 doc/LOCAL_PERFORMANCE_STATUS_2026-10-29.md；勿把小FIFO当作整首录音或把C19当作Note输入。
+
+> **2026-10-29 演奏功能 EDA 自查：音频任务已取消，以下旧音频运行条目均为历史，不恢复音频工作。** 实际 UI 源码仍在本副本，保留所有脏改动、不推送、不烧录、不删除。`090153` 已退出1，PR0004/19825未布线，CLS98%，不能继续等待旧会话23053。其实际place3/route2与成功UI基线相同；确认调度器RAM展开，旧完整层次占48262FF且无BSRAM。修正单同步读/单写无复位RAM过程后，同参数1024容量独立综合由48266FF/27235LUT/0BSRAM降为131FF/178LUT/3BSRAM，证据`impl/performance_eda_probe_20261029_105142/resource_comparison.json`。ModelSim容量5/8/1024/4096生命周期回归及Python MIDI/协议通过。正常/诊断build.tcl明确小写gowinsynthesis、place3、route1、timing_driven1；route1仅是质量优先选择，不能声称它是已证根因。新唯一完整UI候选`impl/R16A_build_20261029_105439`、PID28528、exec35235，此记录时尚未完成；先核对真实进程/日志，不并行Gowin，通过后仍须五类审计。详见`doc/UI_PERFORMANCE_EDA_AUDIT_2026-10-29.md`。实体灯带/手机/音频录制回传未完成实机联调。
+
+> **2026-10-28 04:01 恢复更新：UI焦点已通过用户现场验收。** 用户确认“高亮已正常恢复并保留”，验收记录位于原副本部署034258的focus_acceptance.json。旧音频候选034258在会话续接后已无Gowin/监督进程，日志停Placement Phase1、无fs/最终STA，状态已记interrupted_no_exit_code，不能当作运行中或合格。未自动重烧、未删除文件。为避免终端任务被会话中断带走，构建器新增--background，经WMI隐藏独立启动；当前唯一音频候选为整合副本impl/AUDIO_XY_build_20261028_040056_136483，Gowin PID13268、监督PID20512，启动日志impl/audio_launcher_20261028_040055_308690/supervisor.log。通过文件/真实进程核对，不依赖已失效exec句柄。音频未部署，JTAG仍UI，五类审计后再请用户切换；目标未完成。**
+
+> **2026-10-28 03:44 接续：UI 新版已实际部署，音频构建中。** UI候选 `D:/github/synth1_9_18/2_ui_touch_hub/impl/R16A_build_20261028_032336` 已完成五类时序审计，73输入哈希一致、0 setup/hold端点、pixel50.879/50MHz；setup/hold/recovery/removal/pulse余量+0.346/+0.203/+0.184/+0.497/+0.453ns。用户确认JTAG接UI板后，仅一次SRAM2部署 `20261028_034258_R16_OSC_AB_FOCUS_UI` 成功，PROGRAMMER_EXIT=0、User Code0x00009A81、Status0x00026230，双机SHA256 `0322CBA28DC6004AB1CA697DE30F5874B46C4C2A3C2140B7B0DC9933F6D06DB2`；摄像头画面正常，用户已实物确认“高亮已正常恢复并保留”；验收原话保存在该部署目录focus_acceptance.json。原副本与构建输入完全相符，新整合副本20个输入只有CRLF/LF差异，故使用原副本严格审计/部署，不弱化哈希。音频首候选034022在Tcl因不支持-inc_place退出，尚未综合；脚本改用全新目录保证无增量，并修正生成Tcl原始字节哈希。当前唯一Gowin为整合副本impl/AUDIO_XY_build_20261028_034258_711468，PID24760、session61358，综合已完成、正在布局；不得另起Gowin。预览session43904已退出且PASS，完整921600像素/4096逐拍检查及64输入哈希通过，preview.png已查看；模拟PCM，不是实板音频证据。两板独立供电、仅一根JTAG，音频烧录前仍须用户切换并确认目标。Flash未动，音频未烧录，目标未完成。**
+
+> **2026-10-28 03:35 接续入口：两板OSC A/B与焦点修复仍进行中，尚未部署。** 用户保留X=OSC A/Y=OSC B并接受两板更新，随后授权拉取合并队友main并由工程机顺序烧两块板SRAM。main两次fetch均为29939e2（提交时间10月26日23:02，非服务端推送时间）。独立整合副本D:/github/synth1_9_18-osc-ab-20261028，分支integration/osc-ab-main-20261028，合并4b4cca1已推送，保留E19键盘、AB21/C19及弯音/滑音。原工作区脏文件未覆盖。当前UI唯一构建在原副本impl/R16A_build_20261028_032336，gw_sh PID33488、session98565，最近Placement Phase2；先核对进程，严禁并行Gowin。音频尚未启动构建。真实路由1329焦点检查、完整renderer的2638对A/B/26椭圆像素与最终输出隔离、247971时钟非零音频基线比较均通过；FIR用数学模型，不能代替加密IP/硬件验证。详细证据见新副本doc/OSC_AB_XY_FOCUS_2026-10-28.md。两板一根可切换JTAG USB线、独立供电，烧录前确认连接目标。Flash暂停、只SRAM2、五类时序全过、超时不自动重烧。**
+
 > **2026-10-28 01:13 焦点修正版已完成第二次 SRAM 部署。** 提交 `bbb38f4` 将实体 motion/press 优先级置于旧触摸选择之后，完整构建 `impl/R16A_build_20261028_005621` 五类时序全零，最差 setup/hold/recovery/removal/pulse `+0.625/+0.166/+0.114/+0.519/+0.361ns`。位流 SHA256 `9AA00FC4F6B62CEDE91E054712D1EB0F9ADBAFF6950C23079CE5183D7D208B99`。部署 `impl/deploy_runs/20261028_011226_R16_UI_FOCUS_FIX_20261028`，operation2、PROGRAMMER_EXIT=0、User Code `0x00006D89`、Status `0x00026230`，Flash未操作。李萨如图仍严格绘制真实左右声道采样：同相/单声道是直线，正交输入才是椭圆，禁止伪造；现场需确认音频板是否真的输出了相位差的独立L/R。**
 
 > **2026-10-28 00:25 本轮已构建并部署 UI SRAM，等待现场功能验收。** 最终候选 `impl/R16A_build_20261028_001108`：73输入文件无快照偏差，clk_pixel 50.374MHz，setup/hold/recovery/removal/pulse 最差余量 +0.149/+0.207/+0.212/+0.504/+0.361ns，五类违例全零，`timing_closed=true`。位流 SHA256 `E0E51202991CE576EC1C14C846333240E51E712DCD34B637DF4481135F827819`。唯一一次 UI SRAM operation2 部署 `impl/deploy_runs/20261028_002411_R16_UI_CONTROLS_LFO_STEREO_20261028`：PROGRAMMER_EXIT=0、User Code `0x00002ADC`、Status `0x00026230`，工程机回传 `preview.jpg` 已看到正常合成器画面；Flash未操作。现场尚未验证新LFO动态值、SYSTEM步长、旋钮白色焦点、DISPLAY缩放、第三窗正交椭圆或第六窗左右电平，不能把抓拍写成这些功能已验收。**

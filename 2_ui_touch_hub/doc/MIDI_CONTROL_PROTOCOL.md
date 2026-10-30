@@ -1,6 +1,26 @@
 # UI Touch Hub 与音频引擎 UART 协议 v1
 
-状态：第一阶段候选，双方硬件接线前复核；唯一CC基线位于音频仓库 `docs/ui_uart_integration_v1.md`。
+## 2026-10-30 立体声增量（优先于下方第一阶段历史说明）
+
+依据只读 fetch 的队友 `origin/main=52242799c1bc8b0ee411a2de39600408472b3219`：`docs/midi_control_protocol.md`、`src/synth_control_router.v` 与 `src/top.v.v`。未合并/修改音频工作树，未把四个音频提交直接混入本轮 UI。
+
+| UI 控件 | UI 参数 ID | 通道16 MIDI CC | 值 |
+|---|---|---|---|
+| K27 / MASTER PAN（复用原 Filter Pan 位置） | 0x32，保留旧宏名 PARAM_ID_FLT_PAN | 10 | 0=左，64=中，127=右 |
+| OSC A PAN | 0x19 | 91 | 同上 |
+| OSC B PAN | 0x29 | 92 | 同上 |
+
+总 PAN 控制音频板最终输出的左右平衡；不是两路独立音量，也不把一个声道的独有声音自动搬到另一个声道。音频采用中心不衰减的线性平衡律，UI 不另作增益换算。K27 默认64，实体与触摸共用参数银行。
+
+UI AB21 TX → 音频 C19 控制 RX，公共 GND；E19 留给实体键盘，不能并接发送器。下方旧 AB21→AB21 说明仅为第一阶段历史，不作为当前接线。音频端的控制 UART 波特率还须与实际部署的音频固件一致（本 UI 为31250/8N1）。
+
+LFO 继续使用 `F0 7D id value[13:7] value[6:0] F7`；路由 source 位于 value[9:8]、depth 为有符号低8位。例：OSC A Level/LFO1/+127 为 `F0 7D 56 02 7F F7`（0x017F）。新候选保留 8f46f98 编码修复；板上14:03旧 UI 尚未升级。队友最新源已包含 C19 的高精度参数接收器，不能沿用早期“音频尚无 SysEx 接收”的说法来判断最新源码。
+
+仍须区分双方源码测试通过与双方硬件已联调。下方未映射 Pan/mono 等文字为历史。
+
+## 第一阶段历史基线
+
+状态：第一阶段候选，原CC基线位于音频仓库 `docs/ui_uart_integration_v1.md`。
 
 ## 传输层
 

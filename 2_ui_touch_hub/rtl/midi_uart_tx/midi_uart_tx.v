@@ -40,7 +40,8 @@ module midi_uart_tx #(
 
     // Hardware UART Serial Output (to Teammate 3 Audio Engine)
     output reg         uart_tx,
-    output wire        tx_busy
+    output wire        tx_busy,
+    output wire        note_ready
 );
 
     localparam CLK_DIV = CLK_FREQ / BAUD; // 62,500,000 / 31250 = 2000
@@ -75,6 +76,9 @@ module midi_uart_tx #(
                 `PARAM_ID_ENV1_DECAY:   map_id_to_cc = 7'd25; // OSC A decay
                 `PARAM_ID_ENV1_SUSTAIN: map_id_to_cc = 7'd26; // OSC A sustain
                 `PARAM_ID_ENV1_RELEASE: map_id_to_cc = 7'd27; // OSC A release
+                `PARAM_ID_FLT_PAN:      map_id_to_cc = 7'd10; // Reused K27: global output balance
+                `PARAM_ID_OSCA_PAN:     map_id_to_cc = 7'd91;
+                `PARAM_ID_OSCB_PAN:     map_id_to_cc = 7'd92;
                 `PARAM_ID_MASTER_VOL:   map_id_to_cc = 7'd48; // Master level
                 default:                map_id_to_cc = 7'd0;
             endcase
@@ -97,7 +101,8 @@ module midi_uart_tx #(
                 `PARAM_ID_FLT_MIX,
                 `PARAM_ID_ENV1_ATTACK, `PARAM_ID_ENV1_DECAY,
                 `PARAM_ID_ENV1_SUSTAIN, `PARAM_ID_ENV1_RELEASE,
-                `PARAM_ID_MASTER_VOL:
+                `PARAM_ID_MASTER_VOL, `PARAM_ID_FLT_PAN,
+                `PARAM_ID_OSCA_PAN, `PARAM_ID_OSCB_PAN:
                     cc_id_supported = 1'b1;
                 default:
                     cc_id_supported = 1'b0;
@@ -163,6 +168,7 @@ module midi_uart_tx #(
     assign sysex_accept = sysex_push;
 
     wire in_pop = (seq_state == SEQ_IDLE) && (fifo_count != 4'd0) && !uart_byte_busy;
+    assign note_ready = fifo_count < 4'd8;
 
     integer f_i;
     always @(posedge clk or negedge rst_n) begin

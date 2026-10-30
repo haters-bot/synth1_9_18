@@ -10,7 +10,7 @@
 //      - Dynamic Filter resonance curve with Q hump and cutoff roll-off
 //      - Dynamic ADSR envelope curve with drag handles and time markers
 //      - 30 rotary knobs with metallic bezels, 270-deg arc gauges, glowing needles
-//      - 24-key full piano keyboard with instantaneous touch glow feedback
+//      - 32-key performance page with touch glow and white-key LED guidance
 //   2. Screen Touch Intake (USB/UART 0x5454 packet parser with 10ms watchdog)
 //   3. Teammate 1 Physical Knobs SPI Interface with digital hysteresis
 //   4. Parameter Merger coordinating touch & hardware knobs
@@ -19,7 +19,12 @@
 
 module ui_touch_hub_top #(
     parameter DEBUG_TOUCH_LOG=0,
-    parameter DEBUG_KNOB_ASCII=1
+    parameter DEBUG_KNOB_ASCII=1,
+    // Disable the separate WS2812 output only for diagnostics.
+    parameter PERFORMANCE_LED_ENABLE=1,
+    // Provisional until the physical keyboard's lowest MIDI note is captured.
+    parameter integer PERFORMANCE_BASE_NOTE=60,
+    parameter integer PERFORMANCE_MAX_EVENTS=16384
 )(
     input  wire        clk,             // 板载 50MHz 有源晶振 (V22)
     input  wire        rst_n,           // 板载复位按键 S2 (AA13, 低有效)
@@ -50,7 +55,9 @@ module ui_touch_hub_top #(
 
     // U15: board USB-UART monitor output (normal MIDI or diagnostic trace).
     output wire        midi_uart_tx,
-    // PMOD1 IO2/AB21: dedicated 3.3V UART TX to audio-board J8 pin 9.
+    // Direct 24-pixel WS2812 stream: F13 / J13 pin30.
+    output wire        performance_led_data,
+    // PMOD1 IO2/AB21: dedicated 3.3V UART TX to latest audio-board C19.
     output wire        audio_link_tx,
 
     // Audio-board I2S visualization return (audio board VIS_* pins).
@@ -59,10 +66,11 @@ module ui_touch_hub_top #(
     input  wire        audio_vis_lrc,
     input  wire        audio_vis_din,
 
-    // External debug UART on the user header: C14=TX, E13=RX (3.3V TTL).
-    // TX reports knob/link events at 115200 8N1; RX is reserved for commands.
+    // Diagnostic TX remains C14. Dedicated phone UART uses adjacent F14/F16.
     output wire        debug_uart_tx,
-    input  wire        debug_uart_rx,
+    input  wire        phone_uart_rx, // F16 / J13 pin32, module TXD -> FPGA
+    // Dedicated phone response UART, F14 / J13 pin29, FPGA -> module RXD.
+    output wire        phone_uart_tx,
 
     // 板载状态指示灯
     output wire [1:0]  led,             // T18: PLL Lock, R18: Heartbeat
@@ -71,7 +79,16 @@ module ui_touch_hub_top #(
     output wire        tmds_clk_p_0,    // G15 (P), G16 (N)
     output wire        tmds_clk_n_0,
     output wire [2:0]  tmds_d_p_0,      // D0: J14/H14, D1: J15/H15, D2: K17/J17
-    output wire [2:0]  tmds_d_n_0
+    output wire [2:0]  tmds_d_n_0,
+
+    // On-board DDR3 pins on the Tang Mega 138K Dock.
+    output wire [14:0] ddr_addr,
+    output wire [2:0]  ddr_bank,
+    output wire        ddr_cs,ddr_ras,ddr_cas,ddr_we,
+    output wire        ddr_ck,ddr_ck_n,ddr_cke,ddr_odt,ddr_reset_n,
+    output wire [3:0]  ddr_dm,
+    inout  wire [31:0] ddr_dq,
+    inout  wire [3:0]  ddr_dqs,ddr_dqs_n
 );
 
     // --------------------------------------------------------------------------
@@ -401,9 +418,24 @@ module ui_touch_hub_top #(
 
     // A physical detent applies its configured step to the shared static bank.
     wire physical_fx = spi_param_id==`PARAM_ID_FX_REVERB || spi_param_id==`PARAM_ID_FX_DELAY;
-    wire [7:0] physical_fx_id = spi_param_id==`PARAM_ID_FX_REVERB ? 8'h66 : 8'h60;
-    wire [6:0] physical_fx_base = spi_param_id==`PARAM_ID_FX_REVERB ? fx_parameter_snapshot[42+:7] : fx_parameter_snapshot[0+:7];
-    wire signed [8:0] physical_fx_sum = $signed({2'b0,physical_fx_base}) + $signed(physical_delta);
+    // Separate SPI ID/base selection from add/clamp. This is the operand
+    // boundary for the formerly failing param_id -> packet_external_value path.
+    // FX touch packets are delayed in the renderer by the same single cycle.
+    reg physical_fx_valid;
+    reg [7:0] physical_fx_id;
+    reg [6:0] physical_fx_base;
+    reg signed [7:0] physical_fx_delta;
+    always @(posedge clk_pixel or negedge sys_rst_n_sync) begin
+        if(!sys_rst_n_sync)begin
+            physical_fx_valid<=0;physical_fx_id<=0;physical_fx_base<=0;physical_fx_delta<=0;
+        end else begin
+            physical_fx_valid<=spi_param_valid && physical_fx;
+            physical_fx_id<=spi_param_id==`PARAM_ID_FX_REVERB ? 8'h66 : 8'h60;
+            physical_fx_base<=spi_param_id==`PARAM_ID_FX_REVERB ? fx_parameter_snapshot[42+:7] : fx_parameter_snapshot[0+:7];
+            physical_fx_delta<=physical_delta;
+        end
+    end
+    wire signed [8:0] physical_fx_sum = $signed({2'b0,physical_fx_base}) + $signed(physical_fx_delta);
     wire [6:0] physical_fx_value = physical_fx_sum<0 ? 7'd0 : physical_fx_sum>127 ? 7'd127 : physical_fx_sum[6:0];
     // Other controls use the existing merger
     // used by touch. Preserve existing navigation/touch priority on collisions.
@@ -513,6 +545,9 @@ module ui_touch_hub_top #(
     wire        render_den;
     wire [23:0] render_pixel;
     wire [59:0] trace_lfo_state;
+    wire performance_note_valid,performance_note_on,performance_note_ready,performance_note_overflow;
+    wire [6:0] performance_note_number,performance_note_velocity;
+    wire performance_led_serial_data,performance_page_active;
     wire signed [15:0] audio_vis_sample;
     wire audio_vis_sample_valid;
     wire signed [15:0] audio_vis_right_sample;
@@ -520,6 +555,155 @@ module ui_touch_hub_top #(
     wire audio_vis_link_up;
     wire signed [15:0] audio_xy_a,audio_xy_b;
     wire audio_xy_valid,audio_xy_available;
+
+    // HC-07 full-duplex UART: F16 RX, F14 TX, 9600/115200 selected by HELLO.
+    // Independent of C14 diagnostic TX and audio-board E19 keyboard input.
+    reg [15:0] performance_tick_counter;
+    wire performance_tick_1ms = performance_tick_counter == 16'd49_999;
+    always @(posedge clk_pixel or negedge sys_rst_n_sync) begin
+        if (!sys_rst_n_sync)
+            performance_tick_counter <= 16'd0;
+        else if (performance_tick_1ms)
+            performance_tick_counter <= 16'd0;
+        else
+            performance_tick_counter <= performance_tick_counter + 1'b1;
+    end
+    wire performance_packet_valid;
+    wire [7:0] performance_packet_type,performance_packet_sequence;
+    wire [6:0] performance_packet_length;
+    wire [511:0] performance_packet_payload;
+    wire [15:0] performance_packet_signature;
+    wire phone_reply_valid,phone_reply_ready,phone_fast_baud,phone_locked,phone_tx_busy;
+    wire [7:0] phone_reply_type,phone_reply_sequence;
+    wire [6:0] phone_reply_length;
+    wire [511:0] phone_reply_payload;
+    wire phone_upload_active,phone_export_busy;
+    wire phone_command_valid;
+    wire [7:0] phone_command_type;
+    wire [6:0] phone_command_length;
+    wire [511:0] phone_command_payload;
+    wire performance_score_error,performance_score_running;
+    performance_phone_transport u_phone_transport(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),.uart_rx(phone_uart_rx),
+        .hold_lock(phone_export_busy),.fast_baud(phone_fast_baud),.locked(phone_locked),
+        .packet_valid(performance_packet_valid),.packet_type(performance_packet_type),
+        .packet_sequence(performance_packet_sequence),.packet_length(performance_packet_length),
+        .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),
+        .reply_valid(phone_reply_valid),.reply_ready(phone_reply_ready),.reply_type(phone_reply_type),
+        .reply_sequence(phone_reply_sequence),.reply_length(phone_reply_length),.reply_payload(phone_reply_payload),
+        .uart_tx(phone_uart_tx),.tx_busy(phone_tx_busy));
+    wire performance_clear_events,performance_event_push;
+    wire [31:0] performance_event_time_ms;
+    wire [6:0] performance_event_note,performance_event_velocity;
+    wire performance_event_on,performance_start,performance_stop,performance_pause;
+    wire performance_remote_note_valid,performance_remote_note_on;
+    wire [6:0] performance_remote_note,performance_remote_velocity;
+    wire [31:0] performance_duration_ms;
+    wire performance_song_loaded,performance_gateway_up,performance_recording;
+    wire performance_protocol_error;
+    wire performance_record_start,performance_record_stop;
+    wire performance_record_active,performance_record_busy,performance_record_done,performance_record_full;
+    wire performance_record_start_accepted,performance_record_start_rejected;
+    wire [3:0] performance_record_status;
+    wire performance_local_play,performance_local_pause,performance_local_stop,performance_local_record;
+    performance_touch_controls u_performance_touch_controls(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.page_active(performance_page_active),
+        .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .play(performance_local_play),.pause_toggle(performance_local_pause),.stop(performance_local_stop),
+        .record_toggle(performance_local_record));
+    performance_command_decoder #(.MAX_PAYLOAD(64),.MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.GATEWAY_TIMEOUT_MS(10000)) u_performance_commands(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),
+        .packet_valid(phone_command_valid),.packet_type(phone_command_type),
+        .packet_length(phone_command_length),.packet_payload(phone_command_payload),
+        .local_play(performance_local_play && performance_song_loaded && !phone_upload_active),.local_pause_toggle(performance_local_pause),
+        .local_stop(performance_local_stop),.local_record_toggle(performance_local_record && !phone_export_busy &&
+            !(performance_packet_valid && performance_packet_type==8'h43)),
+        .record_start_accepted(performance_record_start_accepted),.record_start_rejected(performance_record_start_rejected),
+        .record_active(performance_record_active),.record_busy(performance_record_busy),.record_done(performance_record_done),
+        .clear_events(performance_clear_events),.event_push(performance_event_push),
+        .event_time_ms(performance_event_time_ms),.event_note(performance_event_note),
+        .event_velocity(performance_event_velocity),.event_on(performance_event_on),
+        .start_pulse(performance_start),.stop_pulse(performance_stop),.pause_state(performance_pause),
+        .record_start_pulse(performance_record_start),.record_stop_pulse(performance_record_stop),
+        .manual_valid(performance_remote_note_valid),.manual_on(performance_remote_note_on),
+        .manual_note(performance_remote_note),.manual_velocity(performance_remote_velocity),
+        .song_duration_ms(performance_duration_ms),.song_loaded(performance_song_loaded),
+        .gateway_up(performance_gateway_up),.recording(performance_recording),
+        .protocol_error(performance_protocol_error));
+
+    localparam [28:0] PERFORMANCE_DDR_BASE = 29'd0;
+    localparam [28:0] PERFORMANCE_DDR_REGION_END = 29'd268435456;
+    localparam [31:0] PERFORMANCE_RECORD_CAPACITY_FRAMES = 32'd268435456;
+    wire ddr_user_clk,ddr_user_rst_n,ddr_pll_locked,ddr_init_done;
+    wire performance_record_req_valid,performance_record_req_ready,performance_record_req_write;
+    wire [28:0] performance_record_req_addr;
+    wire [255:0] performance_record_req_wdata;
+    wire [31:0] performance_record_req_wmask;
+    wire [255:0] ddr_rsp_rdata;
+    wire ddr_rsp_valid,ddr_rsp_write,ddr_rsp_error;
+    ddr3_wavetable_wrapper u_ddr3_wrapper(
+        .clk_ref(clk),.rst_n_async(rst_n),.user_clk(ddr_user_clk),.user_rst_n(ddr_user_rst_n),
+        .pll_locked(ddr_pll_locked),.init_done(ddr_init_done),
+        .req_valid(performance_record_req_valid),.req_ready(performance_record_req_ready),
+        .req_write(performance_record_req_write),.req_addr(performance_record_req_addr),
+        .req_wdata(performance_record_req_wdata),.req_wmask(performance_record_req_wmask),
+        .rsp_valid(ddr_rsp_valid),.rsp_write(ddr_rsp_write),.rsp_rdata(ddr_rsp_rdata),.rsp_error(ddr_rsp_error),
+        .ddr_addr(ddr_addr),.ddr_bank(ddr_bank),.ddr_cs(ddr_cs),.ddr_ras(ddr_ras),.ddr_cas(ddr_cas),
+        .ddr_we(ddr_we),.ddr_ck(ddr_ck),.ddr_ck_n(ddr_ck_n),.ddr_cke(ddr_cke),.ddr_odt(ddr_odt),
+        .ddr_reset_n(ddr_reset_n),.ddr_dm(ddr_dm),.ddr_dq(ddr_dq),.ddr_dqs(ddr_dqs),.ddr_dqs_n(ddr_dqs_n));
+    wire performance_record_capture_error,performance_record_storage_error,performance_record_protocol_error;
+    wire performance_record_command_error,performance_record_read_error,performance_record_backend_available;
+    wire [31:0] performance_record_captured_frames,performance_record_accepted_frames,performance_record_stored_frames;
+    wire performance_record_read_ready,performance_record_read_data_valid;
+    wire performance_record_read_valid,performance_record_read_data_ready;
+    wire [31:0] performance_record_read_index;
+    wire [31:0] performance_record_read_data,performance_record_read_data_index;
+    performance_phone_session #(.MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_phone_session(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),
+        .packet_valid(performance_packet_valid),.packet_type(performance_packet_type),
+        .packet_sequence(performance_packet_sequence),.packet_length(performance_packet_length),
+        .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),.fast_baud(phone_fast_baud),
+        .command_valid(phone_command_valid),.command_type(phone_command_type),
+        .command_length(phone_command_length),.command_payload(phone_command_payload),
+        .decoder_error(performance_protocol_error),.score_error(performance_score_error),.score_running(performance_score_running),
+        .record_active(performance_record_active),.record_busy(performance_record_busy || performance_recording || performance_record_start),
+        .record_start_accepted(performance_record_start_accepted),.record_start_rejected(performance_record_start_rejected),
+        .backend_available(performance_record_backend_available),.audio_link_up(audio_vis_link_up),
+        .record_status(performance_record_status),.stored_frames(performance_record_stored_frames),
+        .upload_active(phone_upload_active),.export_busy(phone_export_busy),
+        .reply_valid(phone_reply_valid),.reply_ready(phone_reply_ready),.reply_type(phone_reply_type),
+        .reply_sequence(phone_reply_sequence),.reply_length(phone_reply_length),.reply_payload(phone_reply_payload),
+        .read_valid(performance_record_read_valid),.read_ready(performance_record_read_ready),.read_index(performance_record_read_index),
+        .read_data_valid(performance_record_read_data_valid),.read_data_ready(performance_record_read_data_ready),
+        .read_data(performance_record_read_data),.read_data_index(performance_record_read_data_index),.read_error(performance_record_read_error));
+    performance_recording_subsystem u_performance_recording(
+        .rst_n(sys_rst_n_sync),.src_clk(clk_pixel),.mem_clk(ddr_user_clk),.init_done(ddr_init_done),
+        .start(performance_record_start && !phone_export_busy),.stop(performance_record_stop),
+        .base_addr(PERFORMANCE_DDR_BASE),.region_end_addr(PERFORMANCE_DDR_REGION_END),
+        .capacity_frames(PERFORMANCE_RECORD_CAPACITY_FRAMES),.link_up(audio_vis_link_up),
+        .stereo_valid(audio_vis_stereo_valid),.sample_left(audio_vis_sample),.sample_right(audio_vis_right_sample),
+        .recording(performance_record_active),.active(performance_record_busy),.done(performance_record_done),
+        .start_accepted(performance_record_start_accepted),.start_rejected(performance_record_start_rejected),
+        .full(performance_record_full),.capture_error(performance_record_capture_error),
+        .storage_error(performance_record_storage_error),.protocol_error(performance_record_protocol_error),
+        .command_error(performance_record_command_error),.captured_frames(performance_record_captured_frames),
+        .accepted_frames(performance_record_accepted_frames),.stored_frames(performance_record_stored_frames),
+        .read_valid(performance_record_read_valid),.read_ready(performance_record_read_ready),.read_index(performance_record_read_index),
+        .read_data_valid(performance_record_read_data_valid),.read_data_ready(performance_record_read_data_ready),
+        .read_data(performance_record_read_data),.read_data_index(performance_record_read_data_index),
+        .read_error(performance_record_read_error),.backend_available(performance_record_backend_available),
+        .req_valid(performance_record_req_valid),.req_ready(performance_record_req_ready),
+        .req_write(performance_record_req_write),.req_addr(performance_record_req_addr),
+        .req_wdata(performance_record_req_wdata),.req_wmask(performance_record_req_wmask),
+        .rsp_valid(ddr_rsp_valid),.rsp_write(ddr_rsp_write),.rsp_error(ddr_rsp_error),.rsp_rdata(ddr_rsp_rdata));
+
+    performance_record_status u_performance_record_status(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.start_accepted(performance_record_start_accepted),
+        .recording(performance_record_active),.busy(performance_record_busy),.done(performance_record_done),
+        .full(performance_record_full),.backend_available(performance_record_backend_available),.link_up(audio_vis_link_up),
+        .capture_error(performance_record_capture_error),.storage_error(performance_record_storage_error),
+        .protocol_error(performance_record_protocol_error),.command_error(performance_record_command_error),
+        .status(performance_record_status));
 
     i2s_visual_rx #(
         .LINK_TIMEOUT_CYCLES(12_500_000) // 250 ms without BCLK = disconnected
@@ -538,11 +722,12 @@ module ui_touch_hub_top #(
         .link_up   (audio_vis_link_up)
     );
 
-    ui_top_renderer u_render (
+    ui_top_renderer #(.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.PERFORMANCE_USE_NOTE_READY(1)) u_render (
+        .performance_score_error_out(performance_score_error),.performance_running_out(performance_score_running),
         .navigation_capture(navigation_capture),.navigation_delta_valid(navigation_delta_valid),
         .navigation_delta_id(navigation_delta_id),.navigation_delta_value(navigation_delta_value),
         .display_env_snapshot(display_env_values),
-        .external_param_valid(spi_param_valid && physical_fx),.external_param_id(physical_fx_id),.external_param_value(physical_fx_value),
+        .external_param_valid(physical_fx_valid),.external_param_id(physical_fx_id),.external_param_value(physical_fx_value),
         .fx_parameter_snapshot(fx_parameter_snapshot),.fx_touch_focus_valid(fx_touch_focus_valid),.fx_touch_focus_id(fx_touch_focus_id),
         .binding_capture(binding_capture),
         .fx_event_valid(fx_event_valid),.fx_event_id(fx_event_id),.fx_event_value(fx_event_value),
@@ -552,6 +737,20 @@ module ui_touch_hub_top #(
         .lfo_step_snapshot(lfo_step_snapshot),.lfo_once_snapshot(lfo_once_snapshot),
         .route_source_snapshot(route_source_snapshot),.route_depth_snapshot(route_depth_snapshot),
         .trace_lfo_state(trace_lfo_state),
+        .performance_note_valid(performance_note_valid),.performance_note_on(performance_note_on),
+        .performance_note_ready(performance_note_ready),.performance_note_overflow(performance_note_overflow),
+        .performance_note_number(performance_note_number),.performance_note_velocity(performance_note_velocity),
+        .performance_led_data(performance_led_serial_data),.performance_page_active(performance_page_active),
+        .performance_tick_1ms(performance_tick_1ms),.performance_clear_events(performance_clear_events),
+        .performance_event_push(performance_event_push),.performance_event_time_ms(performance_event_time_ms),
+        .performance_event_note(performance_event_note),.performance_event_velocity(performance_event_velocity),
+        .performance_event_on(performance_event_on),.performance_start(performance_start),
+        .performance_stop(performance_stop),.performance_pause(performance_pause),
+        .performance_duration_ms(performance_duration_ms),.performance_gateway_up_in(performance_gateway_up),
+        .performance_recording_in(performance_record_active),.performance_record_status_in(performance_record_status),
+        .performance_remote_note_valid(performance_remote_note_valid),
+        .performance_remote_note_on(performance_remote_note_on),.performance_remote_note(performance_remote_note),
+        .performance_remote_velocity(performance_remote_velocity),
         .ui_touch_valid(ui_touch_valid), .ui_touch_down(ui_touch_down),
         .ui_touch_x(ui_touch_x), .ui_touch_y(ui_touch_y),
         .touch_diag_coords (touch_diag_coords),
@@ -694,10 +893,10 @@ module ui_touch_hub_top #(
     ) u_midi_tx (
         .clk           (clk_pixel),
         .rst_n         (sys_rst_n_sync),
-        .note_on_req   (1'b0),
-        .note_off_req  (1'b0),
-        .note_number   (7'd0),
-        .note_velocity (7'd100),
+        .note_on_req   (performance_note_valid && performance_note_on),
+        .note_off_req  (performance_note_valid && !performance_note_on),
+        .note_number   (performance_note_number),
+        .note_velocity (performance_note_velocity),
         .cc_req        (midi_cc_req),
         .cc_param_id   (midi_cc_param_id),
         .cc_val        (midi_cc_val),
@@ -705,11 +904,12 @@ module ui_touch_hub_top #(
         .sysex_msgs    (sysex_msgs),
         .sysex_accept  (sysex_accept),
         .uart_tx       (audio_midi_tx),
-        .tx_busy       (midi_tx_busy)
+        .tx_busy       (midi_tx_busy),.note_ready(performance_note_ready)
     );
 
-    // Diagnostic UI trace remains independently selectable. Both normal and
-    // diagnostic builds keep MIDI on U15 and knob text on C14 by default.
+    // Diagnostic UI trace remains independently selectable. MIDI stays on
+    // U15 and diagnostic text stays on C14; the LED stream has its own pin.
+    wire debug_trace_uart;
     generate if(DEBUG_TOUCH_LOG) begin: g_trace
         assign audio_link_tx=1'b1;
         assign midi_uart_tx=audio_midi_tx;
@@ -724,11 +924,14 @@ module ui_touch_hub_top #(
             .knob_valid(spi_param_valid),.knob_id(spi_param_id),.knob_cw(spi_param_cw),
             .button_valid(knob_select_valid),.button_id(knob_select_id),.button_action(knob_select_action),
             .link_valid(spi_link_valid),.link_chip(spi_link_chip),.link_up(spi_link_up),
-            .uart_tx(debug_uart_tx)
+            .uart_tx(debug_trace_uart)
         );
     end else begin: g_debug_uart_mirror
-        assign debug_uart_tx=midi_uart_tx;
+        assign debug_trace_uart=midi_uart_tx;
     end endgenerate
+    // Keep the documented C14 debug UART independent from the WS2812 chain.
+    assign debug_uart_tx = debug_trace_uart;
+    assign performance_led_data = PERFORMANCE_LED_ENABLE ? performance_led_serial_data : 1'b0;
     // --------------------------------------------------------------------------
     // 9. 心跳与系统状态指示
     // --------------------------------------------------------------------------

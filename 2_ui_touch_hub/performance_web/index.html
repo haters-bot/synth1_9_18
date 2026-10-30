@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:">
+  <title>FPGA Performance</title>
+  <link rel="stylesheet" href="style.css?v=20261030">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">FPGA PERFORMANCE</div>
+        <h1>演奏控制台</h1>
+      </div>
+      <div class="status-row">
+        <span id="gatewayStatus" class="pill">蓝牙／板卡未连接</span>
+        <span id="songStatus" class="pill muted">未载入曲谱</span>
+      </div>
+    </header>
+
+    <section class="control-card">
+      <div class="file-line">
+        <label class="file-button">选择 MIDI 曲谱
+          <input id="songFile" type="file" accept=".mid,.midi">
+        </label>
+        <button id="connectButton" class="primary">连接蓝牙</button>
+        <button id="uploadButton">发送到板卡</button>
+      </div>
+      <div class="control-grid">
+        <label>键盘起始音
+          <select id="baseNote">
+            <option value="48">C3 / MIDI 48</option>
+            <option value="60" selected>C4 / MIDI 60</option>
+            <option value="72">C5 / MIDI 72</option>
+          </select>
+        </label>
+        <label>播放控制
+          <span class="button-group">
+            <button id="playButton">播放</button>
+            <button id="pauseButton">暂停</button>
+            <button id="stopButton">停止</button>
+          </span>
+        </label>
+        <label>录音
+          <span class="button-group">
+            <button id="recordButton">开始录音</button>
+            <button id="downloadButton" disabled>下载 WAV</button>
+          </span>
+        </label>
+        <label>录音回传声道
+          <select id="exportChannels"><option value="1">8kHz 单声道（较快）</option><option value="2">8kHz 双声道（较慢）</option></select>
+        </label>
+      </div>
+      <div class="song-line">
+        <strong id="songTitle">尚未选择曲谱</strong>
+        <span id="songMeta">上传 MIDI 后显示事件和时长</span>
+      </div>
+      <div class="progress-track"><div id="progress" class="progress"></div></div>
+    </section>
+
+    <section class="guide-card">
+      <div class="guide-head">
+        <div>
+          <div class="eyebrow">GUIDANCE</div>
+          <h2 id="nextNote">等待曲谱</h2>
+        </div>
+        <div id="eventStats" class="stats">0 events</div>
+      </div>
+      <div id="piano" class="piano" aria-label="虚拟钢琴"></div>
+      <p class="hint">曲谱只作灯带与屏幕指引；声音由实体琴键产生。录音采集音频板 I²S，低通降采样后从板卡回传。起始音需实琴核对。</p>
+    </section>
+
+    <pre id="log" class="log" aria-live="polite"></pre>
+  </main>
+  <script src="protocol.js"></script>
+  <script src="midi.js"></script>
+  <script src="phone_app.js"></script>
+</body>
+</html>

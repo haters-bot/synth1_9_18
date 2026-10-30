@@ -30,15 +30,18 @@ module ui_touch_hub_debug_top (
 
     // U15: normal build MIDI 31250; diagnostic build trace 115200.
     output wire        midi_uart_tx,
+    // Dedicated WS2812 stream: FPGA F13 -> external strip DIN, direct 24-pixel frame.
+    output wire        performance_led_data,
 
     // Audio-board I2S visualization return: R19/U21/R17 on the UI board.
     input  wire        audio_vis_bclk,
     input  wire        audio_vis_lrc,
     input  wire        audio_vis_din,
 
-    // External debug UART: C14=TX, E13=RX (3.3V TTL).
+    // C14 diagnostic TX; F16 dedicated phone RX (3.3V TTL).
     output wire        debug_uart_tx,
-    input  wire        debug_uart_rx,
+    input  wire        phone_uart_rx,
+    output wire        phone_uart_tx,
 
     // 板载状态指示灯
     output wire [1:0]  led,             // T18: PLL Lock, R18: Heartbeat
@@ -48,7 +51,14 @@ module ui_touch_hub_debug_top (
     output wire        tmds_clk_n_0,
     output wire [2:0]  tmds_d_p_0,      // D0: J14/H14, D1: J15/H15, D2: K17/J17
     output wire [2:0]  tmds_d_n_0,
-    output wire        audio_link_tx
+    output wire        audio_link_tx,
+    output wire [14:0] ddr_addr,
+    output wire [2:0]  ddr_bank,
+    output wire        ddr_cs,ddr_ras,ddr_cas,ddr_we,
+    output wire        ddr_ck,ddr_ck_n,ddr_cke,ddr_odt,ddr_reset_n,
+    output wire [3:0]  ddr_dm,
+    inout wire [31:0]  ddr_dq,
+    inout wire [3:0]   ddr_dqs,ddr_dqs_n
 
 );
 ui_touch_hub_top #(.DEBUG_TOUCH_LOG(0),.DEBUG_KNOB_ASCII(1)) u_hub(
@@ -76,11 +86,17 @@ ui_touch_hub_top #(.DEBUG_TOUCH_LOG(0),.DEBUG_KNOB_ASCII(1)) u_hub(
     .audio_vis_din(audio_vis_din),
     .audio_link_tx(audio_link_tx),
     .debug_uart_tx(debug_uart_tx),
-    .debug_uart_rx(debug_uart_rx),
+    .performance_led_data(performance_led_data),
+    .phone_uart_rx(phone_uart_rx),
+    .phone_uart_tx(phone_uart_tx),
     .led(led),
     .tmds_clk_p_0(tmds_clk_p_0),
     .tmds_clk_n_0(tmds_clk_n_0),
     .tmds_d_p_0(tmds_d_p_0),
-    .tmds_d_n_0(tmds_d_n_0)
+    .tmds_d_n_0(tmds_d_n_0),
+    .ddr_addr(ddr_addr),.ddr_bank(ddr_bank),.ddr_cs(ddr_cs),.ddr_ras(ddr_ras),
+    .ddr_cas(ddr_cas),.ddr_we(ddr_we),.ddr_ck(ddr_ck),.ddr_ck_n(ddr_ck_n),
+    .ddr_cke(ddr_cke),.ddr_odt(ddr_odt),.ddr_reset_n(ddr_reset_n),
+    .ddr_dm(ddr_dm),.ddr_dq(ddr_dq),.ddr_dqs(ddr_dqs),.ddr_dqs_n(ddr_dqs_n)
 );
 endmodule

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+from simulation_sources import project_verilog_sources
 
 ROOT = Path(__file__).resolve().parents[1]
 MODELSIM = Path('D:/altera/modelsim_ase/win32aloem')
@@ -214,7 +215,7 @@ endmodule
     subprocess.run([str(MODELSIM/'vlib.exe'), 'work'], cwd=out, check=True, capture_output=True)
     ui = ROOT/'rtl/ui_vector_engine'
     import xml.etree.ElementTree as ET
-    files = [str(ROOT / e.attrib['path']) for e in ET.parse(ROOT/'2_ui_touch_hub.gprj').findall('.//File') if e.attrib['path'].endswith('.v')]
+    files = [str(path) for path in project_verilog_sources(ROOT,'2_ui_touch_hub.gprj')]
     with (out/'compile.log').open('w') as log:
         subprocess.run([str(MODELSIM/'vlog.exe'), '-sv', '+incdir+'+str(ui),
                         *files, 'tb_ui_frame.v'], cwd=out, stdout=log, stderr=subprocess.STDOUT, check=True)

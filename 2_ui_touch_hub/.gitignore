@@ -27,3 +27,10 @@ tools/*.png
 # Python cache
 __pycache__/
 *.pyc
+
+# Local browser checks and simulator scratch; preserve on disk, never version.
+/.playwright-cli/
+/work*/
+/knob_probe/
+/frame.ppm
+*.apk

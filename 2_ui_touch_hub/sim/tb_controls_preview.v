@@ -11,7 +11,7 @@ module tb_controls_preview;
  integer fd,px,py,i,k,count=0,checks=0,only_display;
  reg rendering=0;
  reg [4:0] pixels_valid=0;
- ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),.view(2'd2),
+ ui_navigation_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),.view(3'd3),
   .settings_section_id(section),.knob_steps(steps),.knob_page(page),.apply_step(2'd3),.plot_scales(scales),
   .show_diagnostics(1'b0),.usb_connected(1'b1),.usb_error(1'b0),.macro_values(28'd0),
   .audio_sample_valid(1'b0),.audio_sample(16'd0),.audio_right_sample(16'd0),

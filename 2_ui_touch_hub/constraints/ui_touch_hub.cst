@@ -112,8 +112,16 @@ IO_PORT "midi_uart_tx"    IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC  "debug_uart_tx"   C14;
 IO_PORT "debug_uart_tx"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 
-IO_LOC  "debug_uart_rx"   E13;
-IO_PORT "debug_uart_rx"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+// HC-07 TXD -> F16 (Bank2 IOR13A / SDRAM0_RAS / J13 pin32).
+IO_LOC  "phone_uart_rx"   F16;
+IO_PORT "phone_uart_rx"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// External strip DIN on free F13 / J13 pin 30 (SDRAM0_DM1); direct 24 pixels.
+IO_LOC  "performance_led_data" F13;
+// HC-07 RXD <- F14 (SDRAM0_EXIO0 / J13 pin29), 3.3V UART only.
+IO_LOC  "phone_uart_tx" F14;
+IO_PORT "phone_uart_tx" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+IO_PORT "performance_led_data" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 
 // Board CH569 USB Host HSPI Interface (Direct Portable Screen USB Touch Intake)
 IO_LOC  "ch569_htclk"     L20;

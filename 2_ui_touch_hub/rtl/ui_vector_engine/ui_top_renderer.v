@@ -11,7 +11,17 @@
 `include "params.vh"
 `include "font_3x5.vh"
 
-module ui_top_renderer (
+module ui_top_renderer #(
+    parameter integer PERFORMANCE_BASE_NOTE = 60,
+    parameter integer PERFORMANCE_KEY_COUNT = 32,
+    parameter integer PERFORMANCE_LED_COUNT = 24,
+    parameter integer PERFORMANCE_MAX_EVENTS = 16384,
+    // Physical keyboard E19 produces the sound; score events guide the player.
+    // Automatic audio is reserved until a dedicated audio-side Note input
+    // and transport stop/pause cleanup contract are available.
+    parameter PERFORMANCE_SCORE_AUDIO_ENABLE = 0,
+    parameter PERFORMANCE_USE_NOTE_READY = 0
+)(
     input  wire        clk,
     input  wire        rst_n,
 
@@ -87,6 +97,27 @@ module ui_top_renderer (
     input wire external_param_valid,
     input wire [7:0] external_param_id,
     input wire [6:0] external_param_value,
+    // Phone/gateway performance transport, already byte-framed and decoded
+    // in the top-level clock domain. E19 is not involved in this path.
+    input wire        performance_tick_1ms,
+    input wire        performance_clear_events,
+    input wire        performance_event_push,
+    input wire [31:0] performance_event_time_ms,
+    input wire [6:0]  performance_event_note,
+    input wire [6:0]  performance_event_velocity,
+    input wire        performance_event_on,
+    input wire        performance_start,
+    input wire        performance_stop,
+    input wire        performance_pause,
+    input wire [31:0] performance_duration_ms,
+    input wire        performance_gateway_up_in,
+    input wire        performance_recording_in,
+    input wire        performance_note_ready,
+    input wire [3:0]  performance_record_status_in,
+    input wire        performance_remote_note_valid,
+    input wire        performance_remote_note_on,
+    input wire [6:0]  performance_remote_note,
+    input wire [6:0]  performance_remote_velocity,
     output wire binding_capture,
     output wire navigation_capture,
     output wire [63:0] user_knob_steps,
@@ -114,6 +145,15 @@ module ui_top_renderer (
     output wire [34:0] display_env_snapshot,
     // Observation only; phase/running are intentionally excluded (no log flood).
     output wire [59:0] trace_lfo_state,
+    output wire        performance_note_valid,
+    output wire        performance_note_overflow,
+    output wire        performance_note_on,
+    output wire [6:0]  performance_note_number,
+    output wire [6:0]  performance_note_velocity,
+    output wire        performance_led_data,
+    output wire        performance_page_active,
+    output wire        performance_score_error_out,
+    output wire        performance_running_out,
 
     // Timing & Video Outputs (to dvi_tx_top)
     output reg         out_hsync,
@@ -144,11 +184,236 @@ module ui_top_renderer (
     end endgenerate
     reg raster_hsync,raster_vsync,raster_den;
     reg previous_vsync;
-    wire [1:0] navigation_view;
+    wire [2:0] navigation_view;
     wire [7:0] settings_section_id;
     wire show_diagnostics;
     wire navigation_hit;
     wire [23:0] navigation_rgb;
+    localparam integer PERFORMANCE_KEY_BITS = (PERFORMANCE_KEY_COUNT <= 2) ? 1 : $clog2(PERFORMANCE_KEY_COUNT);
+    localparam integer PERFORMANCE_KEY_WIDTH = 1280 / PERFORMANCE_KEY_COUNT;
+    wire [PERFORMANCE_KEY_COUNT-1:0] performance_active_keys;
+    wire [PERFORMANCE_KEY_COUNT-1:0] performance_guide_keys;
+    wire [PERFORMANCE_LED_COUNT-1:0] performance_led_active_keys;
+    wire [PERFORMANCE_LED_COUNT-1:0] performance_led_guide_keys;
+    wire [15:0] performance_progress;
+    wire        performance_running;
+    wire [5:0]  performance_next_key;
+    wire        performance_scheduled_valid;
+    wire        performance_scheduled_on;
+    wire [6:0]  performance_scheduled_note;
+    wire [6:0]  performance_scheduled_velocity;
+    wire [31:0] performance_song_time_ms;
+    wire        performance_done;
+    wire        performance_score_load_error;
+    wire [$clog2(PERFORMANCE_MAX_EVENTS+1)-1:0] performance_loaded_events;
+    wire [6:0]  performance_scheduler_next_note;
+    wire [31:0] performance_next_time_ms;
+    wire performance_next_on_valid;
+    wire        performance_remote_key_valid =
+        (performance_remote_note >= PERFORMANCE_BASE_NOTE) &&
+        (performance_remote_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
+    wire [PERFORMANCE_KEY_BITS-1:0] performance_remote_key =
+        performance_remote_note - PERFORMANCE_BASE_NOTE;
+    reg         performance_touch_prev;
+    reg [PERFORMANCE_KEY_BITS-1:0] performance_touch_key;
+    reg         performance_touch_press_pending;
+    reg [PERFORMANCE_KEY_BITS-1:0] performance_touch_pending_key;
+    reg         performance_manual_valid;
+    reg         performance_manual_down;
+    reg [PERFORMANCE_KEY_BITS-1:0] performance_manual_key;
+    wire [13:0] performance_touch_key_unclamped = ui_touch_x / PERFORMANCE_KEY_WIDTH;
+    wire [PERFORMANCE_KEY_BITS-1:0] performance_touch_key_index =
+        (ui_touch_x >= 14'd1280) ? PERFORMANCE_KEY_COUNT-1 : performance_touch_key_unclamped[PERFORMANCE_KEY_BITS-1:0];
+    wire performance_touch_packet = navigation_view==3'd2 && ui_touch_valid;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n)begin
+            performance_touch_prev<=1'b0;performance_touch_key<={PERFORMANCE_KEY_BITS{1'b0}};
+            performance_touch_press_pending<=1'b0;performance_touch_pending_key<={PERFORMANCE_KEY_BITS{1'b0}};
+            performance_manual_valid<=1'b0;performance_manual_down<=1'b0;performance_manual_key<={PERFORMANCE_KEY_BITS{1'b0}};
+        end else begin
+            performance_manual_valid<=1'b0;
+            if(navigation_view!=3'd2)begin
+                if(performance_touch_prev && !performance_touch_press_pending)begin
+                    performance_manual_valid<=1'b1;
+                    performance_manual_down<=1'b0;
+                    performance_manual_key<=performance_touch_key;
+                end
+                performance_touch_prev<=1'b0;
+                performance_touch_press_pending<=1'b0;
+            end else if(performance_touch_press_pending)begin
+                performance_touch_press_pending<=1'b0;
+                // A release can arrive on the very next clock after a drag.
+                // The old key is already off; cancel the pending On rather
+                // than consume and lose that release, leaving a stuck note.
+                if(performance_touch_packet && (!ui_touch_down ||
+                   ui_touch_y<14'd420 || ui_touch_y>=14'd720 || ui_touch_x>=14'd1280))begin
+                    performance_touch_prev<=1'b0;
+                end else begin
+                    performance_manual_valid<=1'b1;
+                    performance_manual_down<=1'b1;
+                    performance_manual_key<=performance_touch_packet ? performance_touch_key_index : performance_touch_pending_key;
+                    performance_touch_key<=performance_touch_packet ? performance_touch_key_index : performance_touch_pending_key;
+                end
+            end else if(performance_touch_packet)begin
+                if(ui_touch_down && ui_touch_y>=14'd420 && ui_touch_y<14'd720 && ui_touch_x<14'd1280)begin
+                    if(!performance_touch_prev)begin
+                        performance_manual_valid<=1'b1;
+                        performance_manual_down<=1'b1;
+                        performance_manual_key<=performance_touch_key_index;
+                        performance_touch_key<=performance_touch_key_index;
+                    end else if(performance_touch_key_index != performance_touch_key)begin
+                        // Release the previous key, then press the new key on
+                        // the following clock so neither MIDI event is lost.
+                        performance_manual_valid<=1'b1;
+                        performance_manual_down<=1'b0;
+                        performance_manual_key<=performance_touch_key;
+                        performance_touch_pending_key<=performance_touch_key_index;
+                        performance_touch_press_pending<=1'b1;
+                        performance_touch_key<=performance_touch_key_index;
+                    end
+                    performance_touch_prev<=1'b1;
+                end else if(performance_touch_prev)begin
+                    performance_manual_valid<=1'b1;
+                    performance_manual_down<=1'b0;
+                    performance_manual_key<=performance_touch_key;
+                    performance_touch_prev<=1'b0;
+                end
+            end
+        end
+    end
+    // Song capacity is an explicit image contract. Synchronous BSRAM avoids
+    // the register-expanded implementation; overflow invalidates playback.
+    performance_event_scheduler #(.MAX_EVENTS(PERFORMANCE_MAX_EVENTS)) u_performance_scheduler(
+        .clk(clk),.rst_n(rst_n),.tick_1ms(performance_tick_1ms),
+        .clear_events(performance_clear_events),.event_push(performance_event_push),
+        .event_time_ms(performance_event_time_ms),.event_note(performance_event_note),
+        .event_velocity(performance_event_velocity),.event_on(performance_event_on),
+        .start(performance_start),.stop(performance_stop),.pause(performance_pause),
+        .running(performance_running),.event_valid(performance_scheduled_valid),
+        .event_on_out(performance_scheduled_on),.event_note_out(performance_scheduled_note),
+        .event_velocity_out(performance_scheduled_velocity),.song_time_ms(performance_song_time_ms),
+        .done(performance_done),.next_note(performance_scheduler_next_note),
+        .next_time_ms(performance_next_time_ms),.next_on_valid(performance_next_on_valid),
+        .loaded_events(performance_loaded_events),.load_error(performance_score_load_error));
+    performance_progress u_performance_progress(
+        .clk(clk),.rst_n(rst_n),.refresh(performance_tick_1ms),
+        .elapsed_ms(performance_song_time_ms),.duration_ms(performance_duration_ms),
+        .progress(performance_progress),.busy());
+    // One-second advance cue. Fixed-point scale (51/256 px per ms) avoids
+    // a pixel-path divider; pause freezes song_time and therefore the cue.
+    wire [31:0] performance_until_next=performance_next_time_ms-performance_song_time_ms;
+    reg [9:0] performance_cue_delta;
+    reg [15:0] performance_cue_product;
+    reg [1:0] performance_cue_visible;
+    reg [8:0] performance_next_key_y;
+    always @(posedge clk or negedge rst_n)begin
+        if(!rst_n)begin
+            performance_cue_delta<=0;performance_cue_product<=0;
+            performance_cue_visible<=0;performance_next_key_y<=390;
+        end else begin
+            performance_cue_visible<={performance_cue_visible[0],performance_next_on_valid &&
+                performance_next_time_ms>=performance_song_time_ms && performance_until_next<=1000};
+            performance_cue_delta<=performance_until_next[9:0];
+            performance_cue_product<=performance_cue_delta*16'd51;
+            performance_next_key_y<=9'd390-{1'b0,performance_cue_product[15:8]};
+        end
+    end
+    wire performance_next_key_valid = performance_cue_visible[1] &&
+        (performance_scheduler_next_note >= PERFORMANCE_BASE_NOTE) &&
+        (performance_scheduler_next_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
+    assign performance_next_key = performance_next_key_valid ?
+        performance_scheduler_next_note - PERFORMANCE_BASE_NOTE : 6'd0;
+    performance_key_state #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_performance_keys(
+        .clk(clk),.rst_n(rst_n),.event_valid(performance_scheduled_valid),.event_on(performance_scheduled_on),
+        .clear_scheduled(performance_stop || (performance_clear_events && !performance_running) || performance_start),
+        .event_note(performance_scheduled_note),.manual_valid(performance_manual_valid),
+        .manual_down(performance_manual_down),.manual_key(performance_manual_key),
+        .remote_valid(performance_remote_note_valid && performance_remote_key_valid),
+        .remote_down(performance_remote_note_on),.remote_key(performance_remote_key),
+        .active_keys(performance_active_keys),.guide_keys(performance_guide_keys));
+    performance_note_arbiter u_performance_note_arbiter(
+        .clk(clk),.rst_n(rst_n),
+        .score_valid(PERFORMANCE_SCORE_AUDIO_ENABLE && performance_scheduled_valid),.score_on(performance_scheduled_on),
+        .score_note(performance_scheduled_note),.score_velocity(performance_scheduled_velocity),
+        .remote_valid(performance_remote_note_valid),.remote_on(performance_remote_note_on),
+        .remote_note(performance_remote_note),.remote_velocity(performance_remote_velocity),
+        .touch_valid(performance_manual_valid),.touch_on(performance_manual_down),
+        .touch_note(PERFORMANCE_BASE_NOTE+performance_manual_key),.touch_velocity(performance_manual_down ? 7'd100 : 7'd0),
+        .note_ready(PERFORMANCE_USE_NOTE_READY ? performance_note_ready : 1'b1),
+        .note_valid(performance_note_valid),.note_on(performance_note_on),
+        .note_number(performance_note_number),.note_velocity(performance_note_velocity),
+        .overflow(performance_note_overflow));
+    wire [3:0] performance_status_for_display=performance_note_overflow ? 4'd9 :
+        performance_score_load_error ? 4'd10 : performance_record_status_in;
+    assign performance_page_active = navigation_view == 3'd2;
+    assign performance_score_error_out = performance_score_load_error;
+    assign performance_running_out = performance_running;
+
+    // The logical map covers 24 external strip pixels. The Tang Mega dock
+    // drives the external strip directly on F13, so there is no prefix pixel.
+    performance_led_white_mapper #(
+        .KEY_COUNT(PERFORMANCE_KEY_COUNT),.LED_COUNT(PERFORMANCE_LED_COUNT),
+        .BASE_NOTE(PERFORMANCE_BASE_NOTE)
+    ) u_performance_led_map(
+        .active_keys(performance_active_keys),.guide_keys(performance_guide_keys),
+        .led_active(performance_led_active_keys),.led_guide(performance_led_guide_keys));
+
+    // The external strip receives a complete dark frame when leaving the page.
+    // Low brightness caps the 24-pixel simultaneous-on
+    // load while keeping the cues visible. Use an external supply for brighter
+    // output, with a shared ground and F13 for data (level-shift if required).
+    localparam LED_IDLE=2'd0, LED_WRITE=2'd1, LED_LATCH=2'd2, LED_WAIT=2'd3;
+    reg [1:0] led_state;
+    localparam integer WS2812_CHAIN_LED_COUNT = PERFORMANCE_LED_COUNT;
+    localparam integer LED_INDEX_BITS = (WS2812_CHAIN_LED_COUNT <= 2) ? 1 : $clog2(WS2812_CHAIN_LED_COUNT);
+    reg [LED_INDEX_BITS-1:0] led_write_index;
+    reg [PERFORMANCE_LED_COUNT-1:0] led_last_active, led_last_guide;
+    reg led_initialized;
+    wire [PERFORMANCE_LED_COUNT-1:0] led_active_source = performance_page_active ? performance_led_active_keys : {PERFORMANCE_LED_COUNT{1'b0}};
+    wire [PERFORMANCE_LED_COUNT-1:0] led_guide_source  = performance_page_active ? performance_led_guide_keys : {PERFORMANCE_LED_COUNT{1'b0}};
+    wire led_masks_changed = (led_active_source != led_last_active) || (led_guide_source != led_last_guide);
+    wire led_frame_we = led_state == LED_WRITE;
+    wire led_latch = led_state == LED_LATCH;
+    wire led_busy;
+    wire led_frame_done;
+    // Freeze both masks before the first RAM write. A key change halfway
+    // through a frame must appear in the NEXT frame, not tear this one.
+    wire [LED_INDEX_BITS-1:0] external_led_index = led_write_index;
+    wire [23:0] led_frame_rgb = led_last_active[external_led_index] ? 24'h20140A :
+                                 led_last_guide[external_led_index] ? 24'h07100E : 24'h000000;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n)begin
+            led_state<=LED_IDLE;led_write_index<={LED_INDEX_BITS{1'b0}};
+            led_last_active<={PERFORMANCE_LED_COUNT{1'b0}};led_last_guide<={PERFORMANCE_LED_COUNT{1'b0}};
+            led_initialized<=1'b0;
+        end else begin
+            case(led_state)
+                LED_IDLE: begin
+                    if((!led_initialized || led_masks_changed) && !led_busy)begin
+                        led_initialized<=1'b1;
+                        led_write_index<={LED_INDEX_BITS{1'b0}};
+                        led_last_active<=led_active_source;
+                        led_last_guide<=led_guide_source;
+                        led_state<=LED_WRITE;
+                    end
+                end
+                LED_WRITE: begin
+                    if(led_write_index==WS2812_CHAIN_LED_COUNT-1)begin
+                        led_state<=LED_LATCH;
+                    end else begin
+                        led_write_index<=led_write_index+1'b1;
+                    end
+                end
+                LED_LATCH: led_state<=LED_WAIT;
+                LED_WAIT: if(!led_busy) led_state<=LED_IDLE;
+                default: led_state<=LED_IDLE;
+            endcase
+        end
+    end
+    ws2812_driver #(.CLK_HZ(50000000),.LED_COUNT(WS2812_CHAIN_LED_COUNT)) u_performance_leds(
+        .clk(clk),.rst_n(rst_n),.frame_we(led_frame_we),.frame_index(led_write_index),
+        .frame_rgb(led_frame_rgb),.latch(led_latch),.data(performance_led_data),
+        .busy(led_busy),.frame_done(led_frame_done));
     wire synth_touch_down=ui_touch_down && !navigation_capture;
     always @(posedge clk or negedge rst_n)
         if(!rst_n)previous_vsync<=0;else previous_vsync<=in_vsync;
@@ -163,7 +428,7 @@ module ui_top_renderer (
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .view(navigation_view),.section(settings_section_id),.knob_steps(user_knob_steps),
         .knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales));
-    ui_navigation_renderer u_navigation_render(.clk(clk),.rst_n(rst_n),
+    ui_navigation_renderer #(.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_navigation_render(.clk(clk),.rst_n(rst_n),
         .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
         .show_diagnostics(show_diagnostics),.usb_connected(usb_connected),.usb_error(usb_conn_err),
         .macro_values({val_macro4,val_macro3,val_macro2,val_macro1}),
@@ -172,6 +437,11 @@ module ui_top_renderer (
         .audio_right_sample(audio_right_sample),.audio_stereo_valid(audio_stereo_valid),
         .audio_xy_a(audio_xy_a),.audio_xy_b(audio_xy_b),
         .audio_xy_valid(audio_xy_valid),.audio_xy_available(audio_xy_available),
+        .performance_active_keys(performance_active_keys),.performance_guide_keys(performance_guide_keys),
+        .performance_progress(performance_progress),.performance_running(performance_running),
+        .performance_paused(performance_pause),
+        .performance_gateway_up(performance_gateway_up_in),.performance_recording(performance_recording_in),.performance_record_status(performance_status_for_display),
+        .performance_next_key(performance_next_key),.performance_next_key_valid(performance_next_key_valid),.performance_next_key_y(performance_next_key_y),
         .out_hit(navigation_hit),.out_rgb(navigation_rgb));
     always @(posedge clk) begin
         raster_hsync<=in_hsync;raster_vsync<=in_vsync;raster_den<=in_den;
@@ -265,9 +535,19 @@ module ui_top_renderer (
     assign mod_base[231+:7]=val_env_release;
     assign mod_base[238+:133]=fx_values;
 
+    reg fx_touch_valid,fx_touch_down;
+    reg [13:0] fx_touch_x,fx_touch_y;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n)begin fx_touch_valid<=0;fx_touch_down<=0;fx_touch_x<=0;fx_touch_y<=0;end
+        else begin
+            fx_touch_valid<=ui_touch_valid;
+            fx_touch_down<=synth_touch_down && !binding_capture;
+            fx_touch_x<=ui_touch_x;fx_touch_y<=ui_touch_y;
+        end
+    end
     fx_editor_state u_fx_state(.clk(clk),.rst_n(rst_n),
-        .touch_valid(ui_touch_valid),.touch_down(synth_touch_down && !binding_capture),
-        .touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .touch_valid(fx_touch_valid),.touch_down(fx_touch_down),
+        .touch_x(fx_touch_x),.touch_y(fx_touch_y),
         .external_valid(external_param_valid),.external_id(external_param_id),.external_value(external_param_value),
         .values(fx_values),.switches(fx_switches),.focus_valid(fx_touch_focus_valid),.focus_id(fx_touch_focus_id),
         .event_valid(fx_event_valid),.event_id(fx_event_id),.event_value(fx_event_value));

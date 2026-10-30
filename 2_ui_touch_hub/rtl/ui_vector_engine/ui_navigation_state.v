@@ -3,7 +3,7 @@ module ui_navigation_state #(parameter CONTACT_CYCLES=2500000)(
  input wire clk,rst_n,frame_start,
  input wire touch_valid,touch_down,
  input wire [13:0] touch_x,touch_y,
- output reg [1:0] view,
+ output reg [2:0] view,
  output reg [7:0] settings_section_id,
  output wire capture_active,
  output reg show_diagnostics,
@@ -11,9 +11,12 @@ module ui_navigation_state #(parameter CONTACT_CYCLES=2500000)(
  output reg [7:0] delta_id,
  output reg signed [7:0] delta_value
 );
- reg [1:0] requested,last_page;
+ reg [2:0] requested,last_page;
  reg finger,owned_contact;
  reg [21:0] quiet;
+ localparam [2:0] VIEW_ADJUST=3'd0, VIEW_VISUAL=3'd1,
+                  VIEW_PERFORMANCE=3'd2, VIEW_SYSTEM=3'd3,
+                  VIEW_ROUTE=3'd4;
  wire master_area=touch_x>=1140 && touch_x<=1230 && touch_y<44;
  wire header=touch_y<44 && !master_area;
  assign capture_active=view!=0 || requested!=view || owned_contact ||
@@ -36,16 +39,17 @@ module ui_navigation_state #(parameter CONTACT_CYCLES=2500000)(
       owned_contact<=view!=0 || header || requested!=view;
       if(header)begin
        if(touch_x>=16 && touch_x<112)begin
-        if(view==3)requested<=last_page;
-        else begin last_page<=view;requested<=3;end
-       end else if(touch_x>=128 && touch_x<320)requested<=0;
-       else if(touch_x>=336 && touch_x<576)requested<=1;
-       else if(touch_x>=592 && touch_x<800)requested<=2;
-      end else if(view==3 && touch_y>=160 && touch_y<=480)begin
-       if(touch_x>=48 && touch_x<=416)requested<=0;
-       else if(touch_x>=456 && touch_x<=824)requested<=1;
-       else if(touch_x>=864 && touch_x<=1232)requested<=2;
-      end else if(view==2)begin
+        if(view==VIEW_ROUTE)requested<=last_page;
+        else begin last_page<=view;requested<=VIEW_ROUTE;end
+       end else if(touch_x>=128 && touch_x<320)requested<=VIEW_ADJUST;
+       else if(touch_x>=336 && touch_x<576)requested<=VIEW_VISUAL;
+       else if(touch_x>=592 && touch_x<800)requested<=VIEW_PERFORMANCE;
+       else if(touch_x>=816 && touch_x<1040)requested<=VIEW_SYSTEM;
+      end else if(view==VIEW_ROUTE && touch_y>=160 && touch_y<=480)begin
+       if(touch_x>=48 && touch_x<=416)requested<=VIEW_ADJUST;
+       else if(touch_x>=456 && touch_x<=824)requested<=VIEW_VISUAL;
+       else if(touch_x>=864 && touch_x<=1232)requested<=VIEW_SYSTEM;
+      end else if(view==VIEW_SYSTEM)begin
        if(touch_y>=88 && touch_y<=120)begin
         if(touch_x>=32 && touch_x<336)settings_section_id<=8'd1;
         else if(touch_x>=336 && touch_x<632)settings_section_id<=8'd2;

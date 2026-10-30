@@ -4,6 +4,7 @@ Uses independently known solid pixels in both the old base and new FX layers;
 varies sync and DEN every clock so a one-pixel latency error cannot settle away.
 """
 from datetime import datetime
+from simulation_sources import project_verilog_sources
 from pathlib import Path
 import re
 import subprocess
@@ -123,7 +124,7 @@ endmodule
         with (out/name).open('w') as stream:
             subprocess.run([str(a) for a in args],cwd=out,stdout=stream,stderr=subprocess.STDOUT,check=True,timeout=120)
     run([MS/'vlib.exe','work'],'vlib.log')
-    files=[ROOT/e.attrib['path'] for e in ET.parse(ROOT/'2_ui_touch_hub.gprj').findall('.//File') if e.attrib['path'].endswith('.v')]
+    files=project_verilog_sources(ROOT,'2_ui_touch_hub.gprj')
     run([MS/'vlog.exe','-sv','+incdir+'+str(ROOT/'rtl/ui_vector_engine'),*files,'tb_video_alignment.v'],'compile.log')
     run([MS/'vsim.exe','-c','-l','simulation.log','tb_video_alignment','-do','onerror {quit -code 1}; run -all; quit -f'],'vsim.log')
     log=(out/'simulation.log').read_text(errors='replace')

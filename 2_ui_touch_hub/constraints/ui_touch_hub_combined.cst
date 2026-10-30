@@ -1,0 +1,311 @@
+// Generated from the UI and DDR review fragments. Do not edit.
+// ==============================================================================
+// Physical Constraints: ui_touch_hub.cst
+// Target Board: Sipeed Tang Mega 138K Dock (GW5AST-LV138PG484AC1/I0, PBGA484A)
+// Bank Voltage: 3.3V LVCMOS
+// ==============================================================================
+
+// 50MHz System Clock & Reset
+// Keep the three local serializer reset chains in their previously audited
+// bottom-right fabric sites. An unconstrained placement spread clk_5x_bit
+// across PTR3/PBR3 and failed minimum clock pulse width on these nine FFs.
+// Sites are from the 20261019_200320 routed timing report; all recovery,
+// removal, setup, hold and pulse-width checks remain enabled.
+INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R101C159[0][A];
+INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R101C161[0][A];
+INS_LOC "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R101C163[0][A];
+INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R88C164[0][B];
+INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R90C166[0][A];
+INS_LOC "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R92C166[0][A];
+INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_0_s1" R63C164[0][B];
+INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_1_s1" R61C164[0][A];
+INS_LOC "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/reset_pipe_2_s1" R60C166[0][A];
+
+// Historical navigation anchor, retired after the glyph-row/column pipeline
+// split changed the synthesized character register object. Keep the record;
+// the new font pipeline is placed normally and must pass the complete audit.
+// INS_LOC "u_render/u_navigation_render/ch1_0_s0" R35C151[0][A];
+
+IO_LOC  "clk"             V22;
+IO_PORT "clk"             IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=OFF BANK_VCCIO=3.3;
+
+IO_LOC  "rst_n"           AA13;
+IO_PORT "rst_n"           IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// Status LEDs
+IO_LOC  "led[0]"          T18;
+IO_PORT "led[0]"          IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "led[1]"          R18;
+IO_PORT "led[1]"          IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+// HDMI Type-A Differential Video Port (J29)
+IO_LOC  "tmds_d_p_0[0]"   J14,H14;
+IO_PORT "tmds_d_p_0[0]"   IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "tmds_d_p_0[1]"   J15,H15;
+IO_PORT "tmds_d_p_0[1]"   IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "tmds_d_p_0[2]"   K17,J17;
+IO_PORT "tmds_d_p_0[2]"   IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "tmds_clk_p_0"    G15,G16;
+IO_PORT "tmds_clk_p_0"    IO_TYPE=LVCMOS33D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+// Board USB-A Host Port (J18 via SW4 in FPGA position on Tang Mega NEO Dock)
+IO_LOC  "usb_dp"              H13;
+IO_PORT "usb_dp"              IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "usb_dm"              G13;
+IO_PORT "usb_dm"              IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+// Screen Touch UART / USB Bridge Inputs (V14 and Y14 dual-pin)
+IO_LOC  "touch_uart_rx"       V14;
+IO_PORT "touch_uart_rx"       IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "touch_uart_rx_y14"   Y14;
+IO_PORT "touch_uart_rx_y14"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// Teammate 1: dual TXE8148 / 32 EC11 panel.
+// Header order: GND, 2CS#, 1CS#, SCLK, SDI, SDO, INT#, RESET.
+// The panel VCC is supplied through its separate 5V Type-C input; E16 is not
+// driven by the FPGA and is deliberately absent from this constraint file.
+IO_LOC  "knob_2cs_n"   A15;
+IO_PORT "knob_2cs_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "knob_1cs_n"   B20;
+IO_PORT "knob_1cs_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "knob_sclk"    B21;
+IO_PORT "knob_sclk"    IO_TYPE=LVCMOS33 PULL_MODE=DOWN DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "knob_sdi"     B17;
+IO_PORT "knob_sdi"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "knob_sdo"     D17;
+IO_PORT "knob_sdo"     IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "knob_int_n"   A18;
+IO_PORT "knob_int_n"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC  "knob_reset_n" D14;
+IO_PORT "knob_reset_n" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+// Audio-engine UART MIDI output to PMOD1 IO2 (J8 pin 9, 3.3V GPIO).
+IO_LOC  "audio_link_tx"   AB21;
+IO_PORT "audio_link_tx"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+// Audio-board I2S visualization return.  The audio board mirrors its
+// MAX98357A stream to these three 3.3 V outputs.
+IO_LOC  "audio_vis_bclk"   R19;
+IO_PORT "audio_vis_bclk"   IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+IO_LOC  "audio_vis_lrc"    U21;
+IO_PORT "audio_vis_lrc"    IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+IO_LOC  "audio_vis_din"    R17;
+IO_PORT "audio_vis_din"    IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+// Board USB-UART monitor output (normal build mirrors MIDI; debug build logs).
+IO_LOC  "midi_uart_tx"    U15;
+IO_PORT "midi_uart_tx"    IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+// External debug UART header: C14 (TX) -> adapter RX, E13 (RX) <- adapter TX.
+// 3.3V TTL only; share GND and do not apply 5V or RS-232 levels.
+IO_LOC  "debug_uart_tx"   C14;
+IO_PORT "debug_uart_tx"   IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+
+// HC-07 TXD -> F16 (Bank2 IOR13A / SDRAM0_RAS / J13 pin32).
+IO_LOC  "phone_uart_rx"   F16;
+IO_PORT "phone_uart_rx"   IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+// External strip DIN on free F13 / J13 pin 30 (SDRAM0_DM1); direct 24 pixels.
+IO_LOC  "performance_led_data" F13;
+// HC-07 RXD <- F14 (SDRAM0_EXIO0 / J13 pin29), 3.3V UART only.
+IO_LOC  "phone_uart_tx" F14;
+IO_PORT "phone_uart_tx" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
+IO_PORT "performance_led_data" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+
+// Board CH569 USB Host HSPI Interface (Direct Portable Screen USB Touch Intake)
+IO_LOC  "ch569_htclk"     L20;
+IO_PORT "ch569_htclk"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+IO_LOC  "ch569_htreq"     N20;
+IO_PORT "ch569_htreq"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+IO_LOC  "ch569_htvld"     L15;
+IO_PORT "ch569_htvld"     IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+IO_LOC  "ch569_htrdy"     J22;
+IO_PORT "ch569_htrdy"     IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC  "hspi_hd[0]"      G17;
+IO_LOC  "hspi_hd[1]"      H22;
+IO_LOC  "hspi_hd[2]"      L14;
+IO_LOC  "hspi_hd[3]"      K22;
+IO_LOC  "hspi_hd[4]"      K21;
+IO_LOC  "hspi_hd[5]"      K18;
+IO_LOC  "hspi_hd[6]"      L21;
+IO_LOC  "hspi_hd[7]"      M21;
+IO_LOC  "hspi_hd[8]"      M22;
+IO_LOC  "hspi_hd[9]"      N22;
+IO_LOC  "hspi_hd[10]"     L18;
+IO_LOC  "hspi_hd[11]"     M18;
+IO_LOC  "hspi_hd[12]"     N19;
+IO_LOC  "hspi_hd[13]"     N18;
+IO_LOC  "hspi_hd[14]"     K16;
+IO_LOC  "hspi_hd[15]"     L16;
+IO_PORT "hspi_hd[0]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[1]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[2]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[3]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[4]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[5]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[6]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[7]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[8]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[9]"      IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[10]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[11]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[12]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[13]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[14]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "hspi_hd[15]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+// DDR3 pins and dedicated PHY resources for the Tang Mega 138K UI board.
+// Source: d4338fb1509f724e686d84f7bbac45692632ea3b:constraints/tang_mega_138k_ddr3_standalone.cst
+// Keep this separate from the UI peripheral constraints for review.
+
+IO_LOC  "ddr_bank[2]"   M6;
+IO_PORT "ddr_bank[2]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_bank[1]"   P2;
+IO_PORT "ddr_bank[1]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_bank[0]"   P5;
+IO_PORT "ddr_bank[0]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[14]"  D1;
+IO_PORT "ddr_addr[14]"  IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[13]"  K1;
+IO_PORT "ddr_addr[13]"  IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[12]"  K4;
+IO_PORT "ddr_addr[12]"  IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[11]"  H3;
+IO_PORT "ddr_addr[11]"  IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[10]"  L1;
+IO_PORT "ddr_addr[10]"  IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[9]"   H5;
+IO_PORT "ddr_addr[9]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[8]"   J5;
+IO_PORT "ddr_addr[8]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[7]"   J1;
+IO_PORT "ddr_addr[7]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[6]"   G3;
+IO_PORT "ddr_addr[6]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[5]"   H2;
+IO_PORT "ddr_addr[5]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[4]"   J2;
+IO_PORT "ddr_addr[4]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[3]"   J4;
+IO_PORT "ddr_addr[3]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[2]"   G2;
+IO_PORT "ddr_addr[2]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[1]"   K2;
+IO_PORT "ddr_addr[1]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_addr[0]"   M1;
+IO_PORT "ddr_addr[0]"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_odt"       M2;
+IO_PORT "ddr_odt"       IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_cke"       K6;
+IO_PORT "ddr_cke"       IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_we"        M5;
+IO_PORT "ddr_we"        IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_cas"       L4;
+IO_PORT "ddr_cas"       IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_ras"       L5;
+IO_PORT "ddr_ras"       IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_cs"        P4;
+IO_PORT "ddr_cs"        IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_reset_n"   L6;
+IO_PORT "ddr_reset_n"   IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_ck"        L3,K3;
+IO_PORT "ddr_ck"        IO_TYPE=SSTL15D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dm[3]"     W1;
+IO_PORT "ddr_dm[3]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dm[2]"     T6;
+IO_PORT "ddr_dm[2]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dm[1]"     V7;
+IO_PORT "ddr_dm[1]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dm[0]"     AA4;
+IO_PORT "ddr_dm[0]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[31]"    Y2;
+IO_PORT "ddr_dq[31]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[30]"    U1;
+IO_PORT "ddr_dq[30]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[29]"    V2;
+IO_PORT "ddr_dq[29]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[28]"    U2;
+IO_PORT "ddr_dq[28]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[27]"    U3;
+IO_PORT "ddr_dq[27]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[26]"    T1;
+IO_PORT "ddr_dq[26]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[25]"    Y1;
+IO_PORT "ddr_dq[25]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[24]"    W2;
+IO_PORT "ddr_dq[24]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[23]"    T5;
+IO_PORT "ddr_dq[23]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[22]"    V5;
+IO_PORT "ddr_dq[22]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[21]"    T4;
+IO_PORT "ddr_dq[21]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[20]"    Y6;
+IO_PORT "ddr_dq[20]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[19]"    R4;
+IO_PORT "ddr_dq[19]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[18]"    U6;
+IO_PORT "ddr_dq[18]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[17]"    R6;
+IO_PORT "ddr_dq[17]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[16]"    U5;
+IO_PORT "ddr_dq[16]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[15]"    Y9;
+IO_PORT "ddr_dq[15]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[14]"    AB6;
+IO_PORT "ddr_dq[14]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[13]"    W9;
+IO_PORT "ddr_dq[13]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[12]"    AB8;
+IO_PORT "ddr_dq[12]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[11]"    Y7;
+IO_PORT "ddr_dq[11]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[10]"    AB7;
+IO_PORT "ddr_dq[10]"    IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[9]"     Y8;
+IO_PORT "ddr_dq[9]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[8]"     AA8;
+IO_PORT "ddr_dq[8]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[7]"     AB1;
+IO_PORT "ddr_dq[7]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[6]"     AB5;
+IO_PORT "ddr_dq[6]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[5]"     AB2;
+IO_PORT "ddr_dq[5]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[4]"     AA1;
+IO_PORT "ddr_dq[4]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[3]"     V4;
+IO_PORT "ddr_dq[3]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[2]"     AA5;
+IO_PORT "ddr_dq[2]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[1]"     AB3;
+IO_PORT "ddr_dq[1]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dq[0]"     Y4;
+IO_PORT "ddr_dq[0]"     IO_TYPE=SSTL15 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dqs[3]"    R3,R2;
+IO_PORT "ddr_dqs[3]"    IO_TYPE=SSTL15D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dqs[2]"    W6,W5;
+IO_PORT "ddr_dqs[2]"    IO_TYPE=SSTL15D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dqs[1]"    V9,V8;
+IO_PORT "ddr_dqs[1]"    IO_TYPE=SSTL15D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+IO_LOC  "ddr_dqs[0]"    Y3,AA3;
+IO_PORT "ddr_dqs[0]"    IO_TYPE=SSTL15D PULL_MODE=NONE DRIVE=8 BANK_VCCIO=1.5;
+INS_LOC "u_ddr3_wrapper/u_ddr_pll/u_pll/PLL_inst" PLL_L[0];
+INS_LOC "u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/u_dll" DDRDLLM_BL;
+INS_LOC "u_ddr3_wrapper/u_ddr3_ip/gw3_top/u_ddr_phy_top/fclkdiv" LEFTSIDE[4];

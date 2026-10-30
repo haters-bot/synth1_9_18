@@ -23,9 +23,14 @@ lfo_binding_state #(.WATCHDOG_CYCLES(1000)) binder(
 lfo_editor_state #(.WATCHDOG_CYCLES(100),.PREVIEW_BASE_TICKS(128)) editor(
  .clk(clk),.rst_n(rst_n),.touch_valid(tv),.touch_down(td && !capture),
  .touch_x(x),.touch_y(y),.active_tab(tab),.nodes(nodes),.phase(phase));
+// Match the production FX input latency (aligned to physical knob operands).
+reg ftv=0,ftd=0;reg [13:0] fx_x=0,fx_y=0;
+always @(posedge clk or negedge rst_n)
+ if(!rst_n)begin ftv<=0;ftd<=0;fx_x<=0;fx_y<=0;end
+ else begin ftv<=tv;ftd<=td && !capture;fx_x<=x;fx_y<=y;end
 fx_editor_state #(.WATCHDOG_CYCLES(100)) fx(
- .clk(clk),.rst_n(rst_n),.touch_valid(tv),.touch_down(td && !capture),
- .touch_x(x),.touch_y(y),.external_valid(1'b0),.external_id(8'd0),
+ .clk(clk),.rst_n(rst_n),.touch_valid(ftv),.touch_down(ftd),
+ .touch_x(fx_x),.touch_y(fx_y),.external_valid(1'b0),.external_id(8'd0),
  .external_value(7'd0),.switches(switches));
 task packet;
  input integer px,py;input down;

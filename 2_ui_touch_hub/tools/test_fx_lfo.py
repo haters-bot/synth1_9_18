@@ -1,6 +1,7 @@
 """Compile the real board project and run the new routing/control regression."""
 from pathlib import Path
 from datetime import datetime
+from simulation_sources import project_verilog_sources
 import subprocess
 import xml.etree.ElementTree as ET
 ROOT=Path(__file__).resolve().parents[1]
@@ -11,7 +12,7 @@ def main():
         with (out/name).open('w') as f:
             subprocess.run([str(a) for a in args],cwd=out,stdout=f,stderr=subprocess.STDOUT,check=True,timeout=120)
     run([MS/'vlib.exe','work'],'vlib.log')
-    files=[ROOT/e.attrib['path'] for e in ET.parse(ROOT/'2_ui_touch_hub.gprj').findall('.//File') if e.attrib['path'].endswith('.v')]
+    files=project_verilog_sources(ROOT,'2_ui_touch_hub.gprj')
     run([MS/'vlog.exe','-sv','+incdir+'+str(ROOT/'rtl/ui_vector_engine'),*files,ROOT/'sim/tb_fx_lfo_routing.v',ROOT/'sim/tb_modulation_overlay.v',ROOT/'sim/tb_lfo_binding_release.v',ROOT/'sim/tb_binding_editor_handoff.v'],'compile.log')
     run([MS/'vsim.exe','-c','-l','simulation.log','tb_fx_lfo_routing','-do','onerror {quit -code 1}; run -all; quit -f'],'vsim.log')
     log=(out/'simulation.log').read_text(errors='replace')

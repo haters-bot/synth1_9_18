@@ -227,7 +227,7 @@ module tb_midi_uart_tx;
         send_cc_check(`PARAM_ID_MASTER_VOL, 7'd100, 7'd48, 7'd100);
 
         // Unsupported legacy/local-only controls must not emit CC0 or alias
-        // into unrelated audio parameters (Hold, pan, and FX placeholders).
+        // into unrelated audio parameters (Hold and FX placeholders).
         @(negedge clk);
         cc_req = 1'b1;
         cc_param_id = `PARAM_ID_ENV1_HOLD;
@@ -241,15 +241,16 @@ module tb_midi_uart_tx;
         end else begin
             $display("[PASS] Unsupported Hold control was suppressed");
         end
-        @(negedge clk);cc_req=1;cc_param_id=`PARAM_ID_OSCA_PAN;cc_val=7'd127;
-        @(negedge clk);cc_req=0;
-        repeat (8) @(posedge clk);
-        if (tx_busy !== 1'b0 || uart_tx !== 1'b1) begin
-            $display("[FAIL] Unsupported mono Pan control emitted UART data");
-            $stop;
-        end else begin
-            $display("[PASS] Unsupported mono Pan control was suppressed");
-        end
+        // Latest audio 5224279: global output balance and oscillator pans.
+        send_cc_check(`PARAM_ID_FLT_PAN, 7'd0, 7'd10, 7'd0);
+        send_cc_check(`PARAM_ID_FLT_PAN, 7'd64, 7'd10, 7'd64);
+        send_cc_check(`PARAM_ID_FLT_PAN, 7'd127, 7'd10, 7'd127);
+        send_cc_check(`PARAM_ID_OSCA_PAN, 7'd0, 7'd91, 7'd0);
+        send_cc_check(`PARAM_ID_OSCA_PAN, 7'd64, 7'd91, 7'd64);
+        send_cc_check(`PARAM_ID_OSCA_PAN, 7'd127, 7'd91, 7'd127);
+        send_cc_check(`PARAM_ID_OSCB_PAN, 7'd0, 7'd92, 7'd0);
+        send_cc_check(`PARAM_ID_OSCB_PAN, 7'd64, 7'd92, 7'd64);
+        send_cc_check(`PARAM_ID_OSCB_PAN, 7'd127, 7'd92, 7'd127);
 
         // ----------------------------------------------------------------------
         // Test 5: Rapid Back-to-Back Enqueue (FIFO Protection)

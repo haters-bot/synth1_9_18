@@ -4,7 +4,7 @@ import json
 ROOT=Path(__file__).resolve().parents[1]
 
 def generate_knob_captions(chars):
-    captions=['K01 OSC A WT POS', 'K02 OSC A WARP', 'K03 OSC A PAN', 'K04 OSC A VOLUME', 'K05 OSC A UNISON', 'K06 OSC A DETUNE', 'K07 OSC A BLEND', 'K08 OSC A PHASE', 'K09 ENV ATTACK', 'K10 ENV HOLD', 'K11 ENV DECAY', 'K12 ENV SUSTAIN', 'K13 ENV RELEASE', 'K14 MASTER VOLUME', 'K15 MACRO 1', 'K16 MACRO 2', 'K17 OSC B WT POS', 'K18 OSC B WARP', 'K19 OSC B PAN', 'K20 OSC B VOLUME', 'K21 OSC B UNISON', 'K22 OSC B DETUNE', 'K23 OSC B BLEND', 'K24 OSC B PHASE', 'K25 FLT CUTOFF', 'K26 FLT RES', 'K27 FLT PAN', 'K28 FLT DRIVE', 'K29 FLT FAT', 'K30 FLT MIX', 'K31 REVERB SIZE', 'K32 DELAY FEEDBACK']
+    captions=['K01 OSC A WT POS', 'K02 OSC A WARP', 'K03 OSC A PAN', 'K04 OSC A VOLUME', 'K05 OSC A UNISON', 'K06 OSC A DETUNE', 'K07 OSC A BLEND', 'K08 OSC A PHASE', 'K09 ENV ATTACK', 'K10 ENV HOLD', 'K11 ENV DECAY', 'K12 ENV SUSTAIN', 'K13 ENV RELEASE', 'K14 MASTER VOLUME', 'K15 MACRO 1', 'K16 MACRO 2', 'K17 OSC B WT POS', 'K18 OSC B WARP', 'K19 OSC B PAN', 'K20 OSC B VOLUME', 'K21 OSC B UNISON', 'K22 OSC B DETUNE', 'K23 OSC B BLEND', 'K24 OSC B PHASE', 'K25 FLT CUTOFF', 'K26 FLT RES', 'K27 MASTER PAN', 'K28 FLT DRIVE', 'K29 FLT FAT', 'K30 FLT MIX', 'K31 REVERB SIZE', 'K32 DELAY FEEDBACK']
     out=['function [5:0] knob_caption; input [4:0] knob; input [5:0] col; begin case({knob,col})\n']
     for knob,caption in enumerate(captions):
         for col,ch in enumerate(caption[:18]):
@@ -20,31 +20,31 @@ def main():
     named={}
     def add(condition,x,y,text,large=False,color='DDE7F4',name=None):
         if name:named[name]=len(lines)
-        condition=condition.replace('view','text_view').replace('usb_connected','text_usb_connected').replace('usb_error','text_usb_error')
+        condition=condition.replace('view','text_view').replace('usb_connected','text_usb_connected').replace('usb_error','text_usb_error').replace('settings_section_id','render_settings_section_id')
         lines.append((condition,x,y,text.replace('/',':'),large,color))
     add('1',44,16,'MENU')
     add('1',136,14,'SYNTHESIZER')
     add('1',344,14,'VISUALIZATION')
-    add('1',616,16,'SYSTEM')
-    add('usb_connected && !usb_error',840,16,'USB CONNECTED',False,'58DDB8')
-    add('!usb_connected || usb_error',840,16,'USB OFFLINE',False,'D0A46C')
+    add('1',600,16,'PERFORMANCE')
+    add('1',832,16,'SYSTEM')
+    add('view!=0 && usb_connected && !usb_error',1056,16,'USB ON',False,'58DDB8')
+    add('view!=0 && (!usb_connected || usb_error)',1056,16,'USB OFF',False,'D0A46C')
     add('view==0',1040,14,'MASTER')
-    add('view!=0',1056,16,'UI TOUCH HUB')
     add('view==1',24,56,'PERFORMANCE MONITOR',True)
     add('view==1',800,64,'SIX VIEWS / I2S RETURN',False,'B3C5D8')
-    titles=['01 AUDIO OVERVIEW','02 WAVEFORM','03 OSC A:B XY','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
-    details=['LEVEL DBFS / 96 KHZ','AUTO TRIGGER','PRE FX / SAME TIME',
+    titles=['01 AUDIO OVERVIEW','02 WAVEFORM','03 STEREO L:R XY','04 SPECTRUM','05 SPECTROGRAM','06 LEVELS']
+    details=['LEVEL DBFS / 96 KHZ','L CYAN / R AMBER','FINAL PCM / SAME TIME',
              'PEAK 00000','BLUE LOW / RED HIGH','DBFS / PEAK / CREST']
     ready=['metrics_ready','waveform_ready','phase_ready','spectrum_ready','spectrum_ready','metrics_ready']
     for i in range(6):
         x=24+(i%3)*418;y=96+(i//3)*296
         add('view==1',x+20,y+12,titles[i],True)
         live=f'view==1 && audio_link_up && {ready[i]}'
-        subtitle=['I2S PCM / LIVE ENERGY','LEFT PCM : 10.67 MS','X OSC A / Y OSC B',
+        subtitle=['I2S PCM / LIVE ENERGY','L:R PCM  : 10.67 MS','X LEFT / Y RIGHT',
                   'CENTER 00000 HZ','LOG FREQ / TIME RIGHT','STEREO RMS / PEAK HOLD'][i]
         add(live,x+22,y+56,subtitle,False,'B3C5D8',name='CENTROID' if i==3 else 'WAVE_SPAN' if i==1 else None)
         add('view==1 && !audio_link_up',x+22,y+56,'I2S DISCONNECTED',False,'D5AD78')
-        add(f'view==1 && audio_link_up && !{ready[i]}',x+22,y+56,'WAITING FOR OSC A:B' if i==2 else 'WAITING FOR PCM',False,'D5AD78')
+        add(f'view==1 && audio_link_up && !{ready[i]}',x+22,y+56,'WAITING FOR PCM',False,'D5AD78')
         add('view==1',x+20,y+238,details[i],False,'C0D0E0',name={2:'STEREO',3:'PEAK_HZ'}.get(i))
     add('view==1',222,630,'TO 00000HZ',False,'C0D0E0',name='SPECTRUM_RANGE')
     live='view==1 && audio_link_up && metrics_ready'
@@ -100,9 +100,7 @@ def main():
     add('view==2 && settings_section_id==4',64,320,'CONFIGURATION FLASH NOT CHANGED',False,'AFC3D8')
     add('view==2 && settings_section_id==4',64,392,'SETTINGS ITEMS CAN BE ADDED BY ID',False,'AFC3D8')
     add('view==2 && settings_section_id==4',760,216,'EXPANSION INTERFACE',True)
-    add('view==2 && settings_section_id==4',760,296,'ADD A SECTION ID AND LABEL')
-    add('view==2 && settings_section_id==4',760,344,'CONNECT ITS STATE AND TOUCH')
-    add('view==2 && settings_section_id==4',760,392,'NO UNUSED SETTINGS ARE EXPOSED',False,'D6B989')
+    add('view==2 && settings_section_id==4',760,296,'PHONE : HC07 UART',False,'D6B989')
     add('view==3',48,72,'WORKSPACE MENU',True)
     for i,(title,detail) in enumerate([('SYNTHESIZER','OSC FILTER ENV FX LFO'),
                                     ('VISUALIZATION','PCM VIEWS / NOTE SLOT'),
@@ -112,6 +110,19 @@ def main():
         add('view==3',x+20,384,detail,False,'AFC3D8')
     add('view==3',48,544,'PAGE SWITCHING KEEPS SYNTH SETTINGS',False,'B3C5D8')
     add('view==3',48,576,'AUDIO DATA INPUTS / I2S RETURN',False,'B3C5D8')
+    # Page IDs: synth=0, visual=1, performance=2, system=3, menu=4.
+    # Remap only the pre-existing system/menu text before adding performance.
+    lines=[(condition.replace('view==3','view==4').replace('view==2','view==3'),
+            x,y,text,large,color) for condition,x,y,text,large,color in lines]
+    add('view==2',32,100,'PERFORMANCE',True)
+    add('view==2 && !performance_gateway_up',336,100,'PHONE : DISCONNECTED',False,'D5AD78')
+    add('view==2 && performance_gateway_up',336,100,'PHONE : CONNECTED',False,'58DDB8')
+    record_labels=['RECORDER READY', 'RECORDER NOT READY', 'RECORDING',
+                   'SAVING RECORDING', 'RECORDING SAVED', 'RECORDING LIMIT REACHED',
+                   'AUDIO INPUT LOST', 'RECORDING STORAGE ERROR', 'RECORDER BUSY / RETRY',
+                   'MIDI QUEUE OVERFLOW', 'SCORE LOAD ERROR : RETRY']
+    add('view==2',800,100,'RECORDER STATUS             ',False,'AFC3D8',name='RECORDER_STATUS')
+    add('view==2',32,400,'FOLLOW THE HIGHLIGHTED KEYS',False,'AFC3D8')
     # Parallel one-hot rectangle decode. A serial chain of 97 if-assignments
     # made view -> glyph-coordinate timing unnecessarily deep.
     count=len(lines)
@@ -158,6 +169,14 @@ def main():
     out.append('reg [5:0] navigation_char_rom[0:8191];\ninitial begin\n')
     for address,value in enumerate(rom):
         out.append(f"navigation_char_rom[{address}]=6'd{value};\n")
+    out.append('end\n')
+    status_rom=[0]*512
+    for status,text in enumerate(record_labels):
+        for col,ch in enumerate(text.replace('/',':')):
+            if ch!=' ':status_rom[status*32+col]=chars.index(ch)
+    out.append('reg [5:0] recorder_char_rom[0:511];\ninitial begin\n')
+    for address,value in enumerate(status_rom):
+        out.append(f"recorder_char_rom[{address}]=6'd{value};\n")
     out.append('end\n')
     (ROOT/'rtl/ui_vector_engine/navigation_labels.vh').write_text(''.join(out))
     print(f'{len(lines)} navigation text rectangles generated')

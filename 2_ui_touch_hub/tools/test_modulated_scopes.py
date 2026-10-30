@@ -4,6 +4,7 @@ The separate reference scopes receive arithmetic from the test, not DUT preview
 outputs. Pixel comparisons catch a scope still wired to the unmodulated bank.
 """
 from datetime import datetime
+from simulation_sources import project_verilog_sources
 from pathlib import Path
 import argparse
 import re
@@ -141,7 +142,7 @@ endmodule
         with (out/name).open('w') as f:
             subprocess.run([str(a) for a in args],cwd=out,stdout=f,stderr=subprocess.STDOUT,check=True,timeout=180)
     run([MS/'vlib.exe','work'],'vlib.log')
-    files=[ROOT/e.attrib['path'] for e in ET.parse(ROOT/'2_ui_touch_hub.gprj').findall('.//File') if e.attrib['path'].endswith('.v')]
+    files=project_verilog_sources(ROOT,'2_ui_touch_hub.gprj')
     if args.renderer_ref:
         old=out/'ui_top_renderer_before.v'
         old.write_bytes(subprocess.check_output(['git','show',args.renderer_ref+':rtl/ui_vector_engine/ui_top_renderer.v'],cwd=ROOT))
