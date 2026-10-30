@@ -345,49 +345,7 @@ module ui_navigation_renderer #(
    default:number_char=`CH_0+bcd[macro_row][3:0];
   endcase
  end
- reg shortcut;
- reg [5:0] shortcut_char;
- reg [3:0] shortcut_x;reg [4:0] shortcut_y;
- integer st,sc,cc;reg [1:0] code;
- always @*begin
-  shortcut=0;shortcut_char=0;shortcut_x=0;shortcut_y=0;code=0;cc=0;
-  for(st=0;st<6;st=st+1)for(sc=0;sc<4;sc=sc+1)begin
-   if(view==1 && !((st==0||st==5)&&sc>=2) &&
-      in_y>=96+(st/3)*296+260 && in_y<96+(st/3)*296+276 &&
-      in_x>=24+(st%3)*418+24+sc*92 && in_x<24+(st%3)*418+88+sc*92)begin
-    shortcut=1;shortcut_x=(in_x-(24+(st%3)*418+24+sc*92))%8;
-    shortcut_y=in_y-(96+(st/3)*296+260);
-    code=plot_scales[st*4+(sc>=2 ? 2 : 0)+:2];cc=(in_x-(24+(st%3)*418+24+sc*92))/8;
-    case(cc)
-     0:shortcut_char=sc<2 ? `CH_Y : `CH_X;
-     1:shortcut_char=(sc==0||sc==2) ? `CH_MINUS : `CH_PLUS;
-     3:shortcut_char=`CH_0+(4'd1<<code);
-     4:shortcut_char=`CH_X;
-     default:shortcut_char=`CH_SPACE;
-    endcase
-   end
-  end
-  if(view==2 && in_y>=142 && in_y<162)begin
-   for(st=0;st<3;st=st+1)begin
-    if(in_x>=328+st*176 && in_x<440+st*176)begin
-     shortcut=1;shortcut_char=mode_caption(st,(in_x-(328+st*176))/14);
-     shortcut_x=((in_x-(328+st*176))%14)>>1;shortcut_y=(in_y-142)>>1;
-    end
-   end
-  end
- end
- // Three visible mode labels use the existing registered glyph pipeline.
- function [5:0] mode_caption;
-  input [1:0] mode_index;input [3:0] pos;
-  begin
-   mode_caption=`CH_SPACE;
-   case(mode_index)
-    0:case(pos)0:mode_caption=`CH_A;1:mode_caption=`CH_U;2:mode_caption=`CH_D;3:mode_caption=`CH_I;4:mode_caption=`CH_T;5:mode_caption=`CH_I;6:mode_caption=`CH_O;7:mode_caption=`CH_N;endcase
-    1:case(pos)0:mode_caption=`CH_F;1:mode_caption=`CH_O;2,3:mode_caption=`CH_L;4:mode_caption=`CH_O;5:mode_caption=`CH_W;endcase
-    2:case(pos)0:mode_caption=`CH_P;1:mode_caption=`CH_E;2:mode_caption=`CH_R;3:mode_caption=`CH_F;4:mode_caption=`CH_O;5:mode_caption=`CH_R;6:mode_caption=`CH_M;endcase
-   endcase
-  end
- endfunction
+ `include "navigation_shortcuts.vh"
  reg h0,h1,h2,h3;
  reg [23:0] b0,b1,b2,b3,fg0,fg1,fg2,fg3;
  reg [6:0] id0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
