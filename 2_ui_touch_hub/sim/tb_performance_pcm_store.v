@@ -235,6 +235,19 @@ initial begin
  join
  if(requests!=requests_before)$fatal(1,"Read issued after calibration loss during validation");
  repeat(5)step;init_done=1;repeat(6)step;read_one(0,1);
+ // A pipelined write-capacity verdict cannot replace live calibration checks.
+ record_and_check(9);requests_before=requests;begin_record(8);
+ fork
+  begin for(i=0;i<8;i=i+1)send(i);end
+  begin
+   wait(dut.mem_state==dut.M_CHECK_BOUNDS && dut.pending_kind==dut.T_DATA);
+   @(negedge mem_clk);init_done=0;
+  end
+ join
+ wait_done;
+ if(requests!=requests_before || stored_frames!=0 || !storage_error)
+  $fatal(1,"Write issued after calibration loss during bounds staging");
+ repeat(5)step;init_done=1;repeat(6)step;record_and_check(9);
  // A discontinuous frame index terminates an incomplete recording explicitly.
  begin_record(100);send(0);send(2);wait_done;
  if(!protocol_error || stored_frames!=1)$fatal(1,"Index discontinuity not reported");

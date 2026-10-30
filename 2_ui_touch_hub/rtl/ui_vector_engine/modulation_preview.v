@@ -22,7 +22,10 @@ module modulation_preview # (parameter PREVIEW_BASE_TICKS=520833)(
         if(!rst_n) render_active_tab<=0;
         else render_active_tab<=active_tab;
     end
-    wire [20:0] samples;
+    wire [20:0] table_samples;
+    reg [20:0] samples /* synthesis syn_preserve=1 syn_keep=1 */;
+    always @(posedge clk or negedge rst_n)
+        if(!rst_n)samples<=0;else samples<=table_samples;
     wire [38:0] raster_samples;
     integer k;
     always @(posedge clk or negedge rst_n) begin
@@ -36,10 +39,17 @@ module modulation_preview # (parameter PREVIEW_BASE_TICKS=520833)(
     end
     genvar s,n;
     generate for(s=0;s<3;s=s+1) begin: curves
+        // Preview timing is independent of the raster read. Isolate the tab/
+        // phase mux from the table read, then register its seven-bit sample
+        // before the 53-destination scan chooses a source bank.
+        reg [8:0] preview_phase /* synthesis syn_preserve=1 syn_keep=1 */;
+        always @(posedge clk or negedge rst_n)
+            if(!rst_n)preview_phase<=0;
+            else preview_phase<=render_active_tab==s ? active_phase : phase[s];
         lfo_smooth_table u_table(.clk(clk),.rst_n(rst_n),.nodes(nodes[s*49+:49]),
             .stepped(stepped[s]),.raster_index(raster_index),
-            .preview_index(render_active_tab==s ? active_phase : phase[s]),
-            .raster_q6(raster_samples[s*13+:13]),.preview_value(samples[s*7+:7]));
+            .preview_index(preview_phase),
+            .raster_q6(raster_samples[s*13+:13]),.preview_value(table_samples[s*7+:7]));
     end endgenerate
     assign raster_q6=render_active_tab==0 ? raster_samples[12:0] : render_active_tab==1 ? raster_samples[25:13] : raster_samples[38:26];
     // One shared multiplier updates all 53 visual values in 53 clocks (<1 us).

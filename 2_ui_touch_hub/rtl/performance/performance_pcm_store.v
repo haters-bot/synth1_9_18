@@ -173,7 +173,7 @@ module performance_pcm_store #(
         end
     end
 
-    localparam [3:0] M_IDLE=0,M_VALIDATE=1,M_REQUEST=2,M_RESPONSE=3,M_CALCULATE=4,M_FAULT=5,M_COMPLETE=6;
+    localparam [3:0] M_IDLE=0,M_VALIDATE=1,M_REQUEST=2,M_RESPONSE=3,M_CALCULATE=4,M_FAULT=5,M_COMPLETE=6,M_CHECK_BOUNDS=7;
     reg [3:0] mem_state;
     reg session,session_error,last_good;
     reg [28:0] memory_base,last_base;
@@ -182,6 +182,7 @@ module performance_pcm_store #(
     reg [WATCHDOG_BITS-1:0] watchdog;
     reg [31:0] pending_read_index;
     reg pending_read_out_of_range /* synthesis syn_preserve=1 syn_keep=1 */;
+    reg pending_write_invalid /* synthesis syn_preserve=1 syn_keep=1 */;
     reg completion_error;
     reg [31:0] completion_read_data;
     reg [1:0] pending_kind;
@@ -204,7 +205,7 @@ module performance_pcm_store #(
         if(!mem_rst_n)begin
             mem_state<=M_IDLE;session<=0;session_error<=0;poisoned<=0;last_good<=0;
             memory_base<=0;last_base<=0;memory_limit<=0;committed<=0;last_frames<=0;watchdog<=0;
-            pending_read_index<=0;pending_read_out_of_range<=0;completion_error<=0;completion_read_data<=0;
+            pending_read_index<=0;pending_read_out_of_range<=0;pending_write_invalid<=0;completion_error<=0;completion_read_data<=0;
             pending_kind<=0;pending_command_frames<=0;
             pending_command_addr<=0;pending_command_mask<=0;pending_command_data<=0;
             expected_command_addr<=0;pending_end_frame<=0;
@@ -249,6 +250,15 @@ module performance_pcm_store #(
                 // live session/calibration checks stay in M_VALIDATE.
                 pending_read_out_of_range<=pending_command_data[31:29]!=0 ||
                     pending_command_data[31:0]>=last_frames;
+                mem_state<=M_CHECK_BOUNDS;
+            end
+            // The 33-bit end-frame comparison settles before the state/error
+            // mux. Keep live calibration/session checks in M_VALIDATE.
+            if(mem_state==M_CHECK_BOUNDS)begin
+                pending_write_invalid<=pending_command_frames==0 || pending_command_frames>8 ||
+                    pending_command_addr!=expected_command_addr ||
+                    pending_end_frame>{1'b0,memory_limit} ||
+                    pending_command_mask!=(32'hffffffff<<(pending_command_frames*4));
                 mem_state<=M_VALIDATE;
             end
             if(mem_state==M_VALIDATE)begin
@@ -264,10 +274,7 @@ module performance_pcm_store #(
                             mem_state<=M_IDLE;
                             session_error<=1;
                             if(!session_error)begin return_valid<=1;return_data<={R_FAULT,1'b1,committed,32'd0};end
-                        end else if(pending_command_frames==0 || pending_command_frames>8 ||
-                            pending_command_addr!=expected_command_addr ||
-                            pending_end_frame>{1'b0,memory_limit} ||
-                            pending_command_mask!=(32'hffffffff<<(pending_command_frames*4)))begin
+                        end else if(pending_write_invalid)begin
                             // Defer the response one state so the wide limit
                             // compare is not on the DDR status return path.
                             mem_state<=M_FAULT;
