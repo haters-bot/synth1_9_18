@@ -6,6 +6,7 @@ module performance_note_arbiter #(
 )(
     input wire clk,rst_n,
     input wire score_valid,score_on,
+    output wire score_ready,
     input wire [6:0] score_note,score_velocity,
     input wire remote_valid,remote_on,
     input wire [6:0] remote_note,remote_velocity,
@@ -39,6 +40,7 @@ module performance_note_arbiter #(
     wire pop=selected!=3 && output_ready;
     wire sp=pop && selected==0,rp=pop && selected==1,tp=pop && selected==2;
     wire si=score_valid && (sc<DEPTH || sp);
+    assign score_ready=sc<DEPTH;
     wire ri=remote_valid && (rc<DEPTH || rp);
     wire ti=touch_valid && (tc<DEPTH || tp);
     always @(posedge clk)begin

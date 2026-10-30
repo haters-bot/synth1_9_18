@@ -187,7 +187,8 @@ module performance_command_decoder #(
                     TYPE_MODE: begin
                         if (packet_length == 1 && packet_payload[1:0] <= 2'd2) begin
                             performance_mode <= packet_payload[1:0];
-                            if (packet_payload[1:0] == 2'd1) pause_state <= 1'b1;
+                            pause_state <= 1'b0;
+                            stop_pulse <= 1'b1;
                         end else protocol_error <= 1'b1;
                     end
                     TYPE_MANUAL_NOTE: begin
@@ -232,7 +233,7 @@ module performance_command_decoder #(
             end
             if(local_mode_valid && local_mode<=2'd2) begin
                 performance_mode<=local_mode;
-                if(local_mode==2'd1)pause_state<=1'b1;
+                pause_state<=1'b0;stop_pulse<=1'b1;
             end
         end
     end

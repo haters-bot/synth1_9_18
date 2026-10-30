@@ -186,18 +186,27 @@ module lfo_sysex_tx #(
                     sh_once    <= q_once;
                     sh_sources <= q_sources;
                     sh_depths  <= q_depths;
-                    // The difference vectors were registered against the
-                    // pre-LATCH shadow, i.e. exactly this batch's changes.
+                    // Compare the SAME q values being latched above. The
+                    // pipelined difference vectors lag q by one clock: using
+                    // them here can absorb a fresh binding into the shadow
+                    // without ever marking its route dirty (lost forever).
                     for (e = 0; e < 21; e = e + 1)
-                        dirty[e] <= first_boot | dpt_vec[e];
+                        dirty[e] <= first_boot | (q_nodes[e*7+:7] != sh_nodes[e*7+:7]);
                     for (b = 0; b < 3; b = b + 1) begin
-                        dirty[21+b] <= first_boot | dmd_vec[b];
+                        dirty[21+b] <= first_boot |
+                            (q_rates[b*3+:3] != sh_rates[b*3+:3]) |
+                            (q_steps[b] != sh_steps[b]) | (q_once[b] != sh_once[b]);
                         // Curve or mode edits reset that bank's phase in the
                         // UI editor; the audio board must restart as well.
-                        dirty[24+b] <= first_boot | (|dpt_vec[b*7 +: 7]) | dmd_vec[b];
+                        dirty[24+b] <= first_boot |
+                            (q_nodes[b*49+:49] != sh_nodes[b*49+:49]) |
+                            (q_rates[b*3+:3] != sh_rates[b*3+:3]) |
+                            (q_steps[b] != sh_steps[b]) | (q_once[b] != sh_once[b]);
                     end
                     for (t = 0; t < 53; t = t + 1)
-                        dirty[27+t] <= first_boot | drt_vec[t];
+                        dirty[27+t] <= first_boot |
+                            (q_sources[t*2+:2] != sh_sources[t*2+:2]) |
+                            (q_depths[t*8+:8] != sh_depths[t*8+:8]);
                     first_boot <= 1'b0;
                     scan       <= 7'd0;
                     state      <= S_STREAM;

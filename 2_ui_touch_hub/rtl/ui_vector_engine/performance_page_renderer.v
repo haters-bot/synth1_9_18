@@ -10,6 +10,7 @@ module performance_page_renderer #(
     input  wire [KEY_COUNT-1:0] guide_keys,
     input  wire [15:0] song_progress,
     input  wire        song_running,
+    input  wire [1:0]  mode,
   input  wire        song_paused,
     input  wire        gateway_up,
     input  wire        recording,
@@ -74,6 +75,11 @@ module performance_page_renderer #(
                  ((in_x >= 14'd144 && in_x < 14'd151) || (in_x >= 14'd153 && in_x < 14'd160)) ||
                  (in_x >= 14'd216 && in_x < 14'd232)))
                 out_rgb = 24'hE7F1F2;
+            if(in_y>=136 && in_y<168)begin
+                if(in_x>=300 && in_x<468)out_rgb=mode==0 ? 24'h246B68 : 24'h254455;
+                if(in_x>=476 && in_x<644)out_rgb=mode==1 ? 24'h246B68 : 24'h254455;
+                if(in_x>=652 && in_x<820)out_rgb=mode==2 ? 24'h246B68 : 24'h254455;
+            end
             if (in_x >= 14'd840 && in_x < 14'd1000 && in_y >= 14'd140 && in_y < 14'd160)
                 out_rgb = gateway_up ? 24'h2C8C72 : 24'h35495F;
             if (in_x >= 14'd1010 && in_x < 14'd1170 && in_y >= 14'd136 && in_y < 14'd168)

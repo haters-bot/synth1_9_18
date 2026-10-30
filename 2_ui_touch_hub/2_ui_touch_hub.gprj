@@ -90,5 +90,7 @@
         <File path="rtl/ui_touch_hub_top.v" type="file.verilog" enable="1"/>
         <File path="constraints/ui_touch_hub_combined.cst" type="file.cst" enable="1"/>
         <File path="constraints/ui_touch_hub.sdc" type="file.sdc" enable="1"/>
+        <File path="rtl/performance/keyboard_midi_parser.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_score_audio.v" type="file.verilog" enable="1"/>
     </FileList>
 </Project>

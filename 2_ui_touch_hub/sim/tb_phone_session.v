@@ -19,13 +19,14 @@ module tb_phone_session;
  performance_command_decoder #(.MAX_EVENTS(16)) decoder(.clk(clk),.rst_n(rst_n),.tick_1ms(tick_1ms),
   .packet_valid(command_valid),.packet_type(command_type),.packet_length(command_length),.packet_payload(command_payload),
   .local_play(1'b0),.local_pause_toggle(1'b0),.local_stop(1'b0),.local_record_toggle(1'b0),
+  .local_mode_valid(1'b0),.local_mode(2'd2),
   .record_start_accepted(record_start_accepted),.record_start_rejected(record_start_rejected),
   .record_active(record_active),.record_busy(record_busy),.record_done(1'b0),
   .clear_events(clear_events),.event_push(event_push),.event_time_ms(event_time_ms),.event_note(event_note),
   .event_velocity(event_velocity),.event_on(event_on),.start_pulse(start_pulse),.stop_pulse(stop_pulse),
   .record_start_pulse(record_start_pulse),.record_stop_pulse(record_stop_pulse),.pause_state(pause_state),.protocol_error(decoder_error));
  wire [4:0] loaded_events;
- performance_event_scheduler #(.MAX_EVENTS(16)) scheduler(.clk(clk),.rst_n(rst_n),.tick_1ms(tick_1ms),
+ performance_event_scheduler #(.MAX_EVENTS(16)) scheduler(.event_ready(1'b1),.follow_mode(1'b0),.follow_step(1'b0),.clk(clk),.rst_n(rst_n),.tick_1ms(tick_1ms),
   .clear_events(clear_events),.event_push(event_push),.event_time_ms(event_time_ms),.event_note(event_note),
   .event_velocity(event_velocity),.event_on(event_on),.start(start_pulse),.stop(stop_pulse),.pause(pause_state),
   .running(score_running),.load_error(score_error),.loaded_events(loaded_events));
@@ -73,7 +74,7 @@ module tb_phone_session;
   request(8'h13,0,3,0);request(8'h20,0,3,0);
   begin_song(2);batch_good;packet_payload[95:64]=50;request(8'h12,16,1,0);
   if(loaded_events!=0)$fatal(1,"invalid batch partially committed");
-  begin_song(2);batch_good;packet_payload[39:32]=59;request(8'h12,16,1,0);
+  begin_song(2);batch_good;packet_payload[39:32]=28;request(8'h12,16,1,0);
   begin_song(2);batch_good;request(8'h12,16,0,0);request(8'h13,0,0,0);request(8'h20,0,0,0);
   if(!score_running)$fatal(1,"score not started");
   request(8'h10,0,2,0);request(8'h22,0,0,0);

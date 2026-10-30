@@ -75,7 +75,7 @@
             const v=new DataView(b.buffer,b.byteOffset,b.byteLength),at=v.getUint32(0,true),n=b[4],ch=b[5],gen=v.getUint32(6,true);
             if(!n || ch!==p.audio.channels || gen!==p.audio.generation || at<p.audio.offset || at+n>p.audio.offset+p.audio.count || b.length!==10+n*ch*2)
               throw Error("录音数据偏移、声道或录音代次不一致");
-            p.pcm.set(b.slice(10),(at-p.audio.offset)*ch*2);p.seen.fill(1,at-p.audio.offset,at-p.audio.offset+n);this.arm(p);
+            p.pcm.set(b.slice(10),(at-p.audio.offset)*ch*2);p.seen.fill(1,at-p.audio.offset,at-p.audio.offset+n);p.audio.onProgress?.(p.seen.reduce((a,b)=>a+b,0));this.arm(p);
           } else if(packet.type===TYPES.ACK) {
             const s=status(packet.payload);if(s.request!==p.type)continue;
             this.lastStatus=s;this.onStatus(s);

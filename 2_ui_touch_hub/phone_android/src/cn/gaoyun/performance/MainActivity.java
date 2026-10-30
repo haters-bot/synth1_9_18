@@ -23,9 +23,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import org.json.JSONObject;
 import java.io.InputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.UUID;
@@ -44,10 +44,10 @@ public final class MainActivity extends Activity {
     private final ExecutorService writes=Executors.newSingleThreadExecutor();
     private final ExecutorService files=Executors.newSingleThreadExecutor();
     private ValueCallback<Uri[]> fileChoice;
-    private volatile OutputStream wav;
-    private int saveFrames,saveChannels;
-    private long savedBytes,expectedBytes;
-    private boolean saveDialog;
+    private final WavDownloadStore wavStore=new WavDownloadStore();
+    private volatile boolean saveDialog,saveCopying;
+    private File wavCache;
+    private String saveName;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -136,22 +136,24 @@ public final class MainActivity extends Activity {
         }
         if(request==SAVE_WAV){
             saveDialog=false;
-            if(result!=RESULT_OK || data==null || data.getData()==null){event("onNativeSaveError","已取消保存");return;}
+            if(result!=RESULT_OK || data==null || data.getData()==null){event("onNativeSaveError","已取消导出；完整录音缓存保留，可重新下载导出");return;}
             final Uri target=data.getData();
+            saveCopying=true;
             files.execute(()->{
-                try {
-                    wav=getContentResolver().openOutputStream(target,"wt");if(wav==null)throw new Exception("无法写入所选文件");
-                    expectedBytes=(long)saveFrames*saveChannels*2;savedBytes=0;
-                    ByteBuffer header=ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN);
-                    header.put(new byte[]{'R','I','F','F'}).putInt((int)(36+expectedBytes)).put(new byte[]{'W','A','V','E','f','m','t',' '});
-                    header.putInt(16).putShort((short)1).putShort((short)saveChannels).putInt(8000).putInt(8000*saveChannels*2);
-                    header.putShort((short)(saveChannels*2)).putShort((short)16).put(new byte[]{'d','a','t','a'}).putInt((int)expectedBytes);
-                    wav.write(header.array());js("window.onNativeSaveReady && window.onNativeSaveReady();");
-                }catch(Exception e){closeWav();event("onNativeSaveError",e.toString());}
+                try(InputStream input=new FileInputStream(wavCache);
+                    OutputStream output=getContentResolver().openOutputStream(target,"wt")) {
+                    if(output==null)throw new Exception("无法写入所选文件");
+                    byte[] buffer=new byte[16384];long copied=0;int n;
+                    while((n=input.read(buffer))!=-1){output.write(buffer,0,n);copied+=n;}
+                    if(copied!=wavCache.length())throw new Exception("导出长度校验失败");
+                    output.flush();js("window.onNativeWrite && window.onNativeWrite(true,'');");
+                }catch(Exception e){event("onNativeSaveError",e.toString());}
+                finally{saveCopying=false;}
             });
         }
     }
-    private void closeWav(){if(wav!=null)try{wav.close();}catch(Exception ignored){}wav=null;}
+
+    private void closeWav(){try{wavStore.close();}catch(Exception ignored){}}
     public final class PhoneBridge {
         @JavascriptInterface public void chooseDevice(){runOnUiThread(()->MainActivity.this.chooseDevice());}
         @JavascriptInterface public void sendBase64(String encoded){
@@ -163,28 +165,40 @@ public final class MainActivity extends Activity {
                 catch(Exception e){if(target==bluetoothOut){disconnect();event("onNativeDisconnected",e.toString());}else error(e);}});
         }
         @JavascriptInterface public void beginSave(String name,int frames,int channels){
-            runOnUiThread(()->{
-                if(saveDialog || wav!=null || frames<=0 || frames>22369621 || (channels!=1 && channels!=2)){event("onNativeSaveError","保存任务或帧数无效");return;}
-                saveFrames=frames;saveChannels=channels;saveDialog=true;
-                Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/wav").putExtra(Intent.EXTRA_TITLE,name);
-                try{startActivityForResult(intent,SAVE_WAV);}catch(Exception e){saveDialog=false;event("onNativeSaveError",e.toString());}
+            files.execute(()->{
+                try{
+                    if(saveDialog || saveCopying)throw new Exception("已有保存任务");
+                    saveName=name;
+                    // Do not expose a header-only file in Documents while the
+                    // slow HC-07 transfer is still pending. Keep unique caches.
+                    wavStore.begin(getCacheDir(),frames,channels);
+                    js("window.onNativeSaveReady && window.onNativeSaveReady();");
+                }catch(Exception e){closeWav();event("onNativeSaveError",e.toString());}
             });
         }
         @JavascriptInterface public void appendAudio(String encoded){
             files.execute(()->{
                 try {
                     byte[] data=Base64.decode(encoded,Base64.DEFAULT);
-                    if(wav==null || data.length==0 || data.length>4096 || data.length%(saveChannels*2)!=0 || savedBytes+data.length>expectedBytes)throw new Exception("WAV 写入状态／长度无效");
-                    wav.write(data);savedBytes+=data.length;js("window.onNativeWrite && window.onNativeWrite(true,'');");
+                    wavStore.append(data);js("window.onNativeWrite && window.onNativeWrite(true,'');");
                 }catch(Exception e){closeWav();event("onNativeSaveError",e.toString());}
             });
         }
         @JavascriptInterface public void finishSave(){
-            files.execute(()->{try{if(wav==null || savedBytes!=expectedBytes)throw new Exception("WAV 长度不完整，保留文件供检查");wav.flush();closeWav();js("window.onNativeWrite && window.onNativeWrite(true,'');");}
-                catch(Exception e){closeWav();event("onNativeSaveError",e.toString());}});
+            files.execute(()->{
+                try{
+                    wavCache=wavStore.finish();
+                    runOnUiThread(()->{
+                        saveDialog=true;
+                        Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/wav").putExtra(Intent.EXTRA_TITLE,saveName);
+                        try{startActivityForResult(intent,SAVE_WAV);}catch(Exception e){saveDialog=false;event("onNativeSaveError",e.toString());}
+                    });
+                }catch(Exception e){closeWav();event("onNativeSaveError",e.toString());}
+            });
         }
-        @JavascriptInterface public void cancelSave(){files.execute(()->{closeWav();event("onNativeError","下载中断；已保留部分 WAV，请重新下载。不会自动删除文件。");});}
+        @JavascriptInterface public void cancelSave(){files.execute(()->{closeWav();event("onNativeError","下载中断；未导出残缺文件，应用缓存保留。请重新下载。");});}
     }
+
     @Override public void onBackPressed(){new AlertDialog.Builder(this).setMessage("退出将断开蓝牙并中断未完成下载。板端录音继续由板卡控制。").setPositiveButton("退出",(d,w)->finish()).setNegativeButton("取消",null).show();}
     @Override protected void onDestroy(){destroyed=true;disconnect();files.execute(()->closeWav());files.shutdown();writes.shutdown();if(fileChoice!=null)fileChoice.onReceiveValue(null);web.removeJavascriptInterface("PhoneNative");web.destroy();super.onDestroy();}
 }

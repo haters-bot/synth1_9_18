@@ -169,6 +169,10 @@ IO_PORT "hspi_hd[13]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
 IO_PORT "hspi_hd[14]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
 IO_PORT "hspi_hd[15]"     IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
 
+// Passive MIDI keyboard monitor: conversion module TX also feeds audio E19.
+IO_LOC "keyboard_uart_rx" F15;
+IO_PORT "keyboard_uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
 // DDR3 pins and dedicated PHY resources for the Tang Mega 138K UI board.
 // Source: d4338fb1509f724e686d84f7bbac45692632ea3b:constraints/tang_mega_138k_ddr3_standalone.cst
 // Keep this separate from the UI peripheral constraints for review.

@@ -15,7 +15,7 @@ def main():
     ms = Path(os.environ.get('MODELSIM_BIN', 'D:/altera/modelsim_ase/win32aloem'))
     # Independent note-name reference; include both frequency-table endpoints.
     names = ('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B')
-    bases = [21, *range(48, 61), 77]
+    bases = [21, 29, *range(48, 61), 77]
     blocks = []
     for base in bases:
         white = [i for i in range(32) if '#' not in names[(base + i) % 12]]

@@ -30,7 +30,7 @@ def main():
             name=name.strip()
             if not name:continue
             value=name if name in live else f"{bits}'d"+str({'performance_event_on':1,
-                'performance_event_velocity':100,'performance_duration_ms':1000}.get(name,0))
+                'performance_event_velocity':100,'performance_duration_ms':1000,'performance_mode':2}.get(name,0))
             connections.append(f'.{name}({value})')
     connections+=['.performance_led_data(serial)','.out_pixel_data(rgb)','.out_den(den)']
     tb=r'''`timescale 1ns/1ps
@@ -40,7 +40,7 @@ reg [13:0] in_pixel_x=0,in_pixel_y=0,ui_touch_x=0,ui_touch_y=0;
 reg ui_touch_valid=0,ui_touch_down=0;
 reg performance_event_push=0;
 wire performance_start,performance_stop,performance_pause,performance_recording_in;
-reg [6:0] performance_event_note=64;
+reg [6:0] performance_event_note=33;
 wire serial,den;wire [23:0] rgb;
 wire local_play,local_pause,local_stop,local_record;
 wire page_active;
@@ -58,6 +58,7 @@ performance_touch_controls controls(.clk(clk),.rst_n(rst_n),.page_active(page_ac
 performance_command_decoder commands(.clk(clk),.rst_n(rst_n),.tick_1ms(1'b0),
  .packet_valid(1'b0),.packet_type(8'd0),.packet_length(7'd0),.packet_payload(512'd0),
  .local_play(local_play),.local_pause_toggle(local_pause),.local_stop(local_stop),.local_record_toggle(local_record),
+ .local_mode_valid(1'b0),.local_mode(2'd2),
  .record_start_accepted(1'b0),.record_start_rejected(1'b0),.record_active(1'b0),.record_busy(1'b0),.record_done(1'b0),
  .start_pulse(performance_start),.stop_pulse(performance_stop),.pause_state(performance_pause),
  .recording(performance_recording_in));
@@ -103,7 +104,7 @@ initial begin
  packet(0,0,0);receive(0);
  @(negedge clk);performance_event_push=1;
  @(negedge clk);performance_event_push=0;
- fork button(80);receive(24'h4);join // MIDI64 = third white key
+ fork button(80);receive(24'h4);join // MIDI33 = third white key from MIDI29
  button(150);if(!performance_pause)$fatal(1,"pause");
  button(150);if(performance_pause)$fatal(1,"resume");
  button(1040);if(!performance_recording_in)$fatal(1,"record request");
@@ -125,7 +126,7 @@ initial begin
  packet(20,600,1);receive(24'h1);
  fork page(440);receive(0);join // complete all-dark frame after page exit
  if(frames!=7 || checks!=4032 || plays!=1 || pauses!=2 || stops!=1 || records!=2)$fatal(1,"coverage");
- $display("PASS: production renderer, real control clicks preserve page, 7 decoded direct 24-pixel chains, startup dark/touch/release/MIDI64/stop/page-exit dark and 921600 valid output pixels");
+ $display("PASS: production renderer, real controls, 7 decoded 24-pixel chains, MIDI33, startup/touch/release/stop/page-exit and 921600 valid output pixels");
  $finish;
 end
 initial begin #40000000;$fatal(1,"timeout");end

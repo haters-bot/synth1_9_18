@@ -10,7 +10,7 @@ module tb_performance_scheduler;
     wire [31:0] song_time_ms;
     wire [$clog2(CAPACITY+1)-1:0] loaded_events;
     performance_event_scheduler #(.MAX_EVENTS(CAPACITY)) dut(
-      .clk(clk),.rst_n(rst_n),.tick_1ms(tick_1ms),.clear_events(clear_events),
+      .event_ready(1'b1),.follow_mode(1'b0),.follow_step(1'b0),.clk(clk),.rst_n(rst_n),.tick_1ms(tick_1ms),.clear_events(clear_events),
       .event_push(event_push),.event_time_ms(event_time_ms),.event_note(event_note),
       .event_velocity(event_velocity),.event_on(event_on),.start(start),.stop(stop),
       .pause(pause),.running(running),.event_valid(event_valid),.event_on_out(event_on_out),

@@ -1,4 +1,6 @@
-module performance_touch_controls (
+module performance_touch_controls #(
+    parameter integer CONTACT_TIMEOUT_CYCLES=2500000
+)(
     input  wire        clk,
     input  wire        rst_n,
     input  wire        page_active,
@@ -12,6 +14,8 @@ module performance_touch_controls (
     output wire        record_toggle
 );
     reg touch_prev;
+    localparam integer AGE_BITS=$clog2(CONTACT_TIMEOUT_CYCLES+1);
+    reg [AGE_BITS-1:0] contact_age;
     wire touch_edge = touch_valid && touch_down && !touch_prev;
     // The global page-navigation bar owns y=0..43.
     wire button_row = touch_y >= 14'd136 && touch_y < 14'd168;
@@ -26,9 +30,14 @@ module performance_touch_controls (
                            touch_x >= 14'd1010 && touch_x < 14'd1170;
 
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
+        if (!rst_n)begin
             touch_prev <= 1'b0;
-        else if (touch_valid)
-            touch_prev <= touch_down;
+            contact_age <= 0;
+        end else begin
+            if(touch_valid)contact_age<=0;
+            else if(contact_age<CONTACT_TIMEOUT_CYCLES)contact_age<=contact_age+1'b1;
+            if(!page_active || (!touch_valid && contact_age>=CONTACT_TIMEOUT_CYCLES))touch_prev<=0;
+            else if(touch_valid)touch_prev<=touch_down;
+        end
     end
 endmodule

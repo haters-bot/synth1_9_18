@@ -66,7 +66,7 @@ module tb_curve_touch_editor;
     midi_uart_tx #(.CLK_FREQ(1000000),.BAUD(100000)) tx(
         .clk(clk),.rst_n(rst_n),.note_on_req(1'b0),.note_off_req(1'b0),
         .note_number(7'd0),.note_velocity(7'd0),.cc_req(mreq),.cc_param_id(mid),.cc_val(mval),
-        .uart_tx(uart),.tx_busy(busy));
+        .sysex_req(1'b0),.sysex_msgs(48'd0),.uart_tx(uart),.tx_busy(busy));
     // Decode bytes from the actual serial pin, independent of internal FIFO state.
     initial forever begin
         @(negedge uart);
@@ -173,7 +173,7 @@ module tb_curve_touch_editor;
         if(a!=85 || h!=0) $fatal(1,"ENV2 physical/touch knob did not edit active bank: a=%0d h=%0d",a,h);
         env2_a=a;
         drain;
-        if(cc_count!=saved_count) $fatal(1,"Local ENV2/tab changes leaked onto ENV1 MIDI");
+        if(last_cc[32]!=env2_a || last_cc[24]!=env1_a) $fatal(1,"ENV2 must send CC32 without changing ENV1 CC24");
         click(250,385);
         if(tab!=2 || a!=10) $fatal(1,"ENV3 not independent");
         click(168,385);if(a!=env2_a) $fatal(1,"ENV2 values lost on tab switch");
@@ -216,7 +216,7 @@ module tb_curve_touch_editor;
                     $fatal(1,"Inverse scale mismatch at pixel %0d span %0d",j,spans[ny]);
             end
         end
-        $display("PASS: direct FILTER XY/notch, A/H/D/S/R handles, independent ENV banks, no-jump/anchor return, saturation/capture/watchdog, SPI arbitration, real serial MIDI/coalescing, local ENV2/3 isolation");
+        $display("PASS: direct FILTER XY/notch, A/H/D/S/R handles, independent ENV banks, no-jump/anchor return, saturation/capture/watchdog, SPI arbitration, real serial MIDI/coalescing, ENV2 CC32 and local ENV3/Hold");
         $finish;
     end
     initial begin #10000000;$fatal(1,"Curve test timeout");end

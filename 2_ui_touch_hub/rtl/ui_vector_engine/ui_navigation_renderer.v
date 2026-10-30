@@ -4,7 +4,7 @@
 // Five stages after raster entry; native font and PCM-driven visualizations.
 module ui_navigation_renderer #(
  parameter integer PERFORMANCE_KEY_COUNT=32,
- parameter integer PERFORMANCE_BASE_NOTE=60
+ parameter integer PERFORMANCE_BASE_NOTE=29
 )(
  input wire clk,rst_n,
  input wire [13:0] in_x,in_y,
@@ -27,6 +27,7 @@ module ui_navigation_renderer #(
  input wire [15:0] performance_progress,
  input wire        performance_running,
  input wire        performance_paused,
+ input wire [1:0]  performance_mode,
  input wire        performance_gateway_up,
  input wire        performance_recording,
  input wire [3:0]  performance_record_status,
@@ -246,7 +247,7 @@ module ui_navigation_renderer #(
  performance_page_renderer #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_performance_page(
    .in_x(in_x),.in_y(in_y),
    .active_keys(performance_active_keys),.guide_keys(performance_guide_keys),
-   .song_progress(performance_progress),.song_running(performance_running),.song_paused(performance_paused),
+   .song_progress(performance_progress),.song_running(performance_running),.song_paused(performance_paused),.mode(performance_mode),
    .gateway_up(performance_gateway_up),.recording(performance_recording),.record_status(performance_record_status),
    .next_key(performance_next_key),.next_key_valid(performance_next_key_valid),.next_key_y(performance_next_key_y),
    .out_hit(performance_hit),.out_rgb(performance_rgb));
@@ -366,7 +367,27 @@ module ui_navigation_renderer #(
     endcase
    end
   end
+  if(view==2 && in_y>=142 && in_y<162)begin
+   for(st=0;st<3;st=st+1)begin
+    if(in_x>=328+st*176 && in_x<440+st*176)begin
+     shortcut=1;shortcut_char=mode_caption(st,(in_x-(328+st*176))/14);
+     shortcut_x=((in_x-(328+st*176))%14)>>1;shortcut_y=(in_y-142)>>1;
+    end
+   end
+  end
  end
+ // Three visible mode labels use the existing registered glyph pipeline.
+ function [5:0] mode_caption;
+  input [1:0] mode_index;input [3:0] pos;
+  begin
+   mode_caption=`CH_SPACE;
+   case(mode_index)
+    0:case(pos)0:mode_caption=`CH_A;1:mode_caption=`CH_U;2:mode_caption=`CH_D;3:mode_caption=`CH_I;4:mode_caption=`CH_T;5:mode_caption=`CH_I;6:mode_caption=`CH_O;7:mode_caption=`CH_N;endcase
+    1:case(pos)0:mode_caption=`CH_F;1:mode_caption=`CH_O;2,3:mode_caption=`CH_L;4:mode_caption=`CH_O;5:mode_caption=`CH_W;endcase
+    2:case(pos)0:mode_caption=`CH_P;1:mode_caption=`CH_E;2:mode_caption=`CH_R;3:mode_caption=`CH_F;4:mode_caption=`CH_O;5:mode_caption=`CH_R;6:mode_caption=`CH_M;endcase
+   endcase
+  end
+ endfunction
  reg h0,h1,h2,h3;
  reg [23:0] b0,b1,b2,b3,fg0,fg1,fg2,fg3;
  reg [6:0] id0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;

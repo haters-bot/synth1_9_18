@@ -40,7 +40,7 @@
  async function attach(send){
   state.client?.close();state.client=new P.Client(send,{onStatus:refresh});
   badge("gatewayStatus","蓝牙已连，等待板卡 HELLO…");
-  try {const s=await state.client.request(T.HELLO);piano(s.baseNote);log(`双向通信成功。默认音域 ${s.baseNote}–${s.baseNote+s.keyCount-1}；实体最低音仍需按键核对。`);}
+  try {const s=await state.client.request(T.HELLO);piano(s.baseNote);log(`双向通信成功。默认音域 ${s.baseNote}–${s.baseNote+s.keyCount-1}；实体键盘最低音已设为 MIDI 29。`);}
   catch(e){log(e.message);badge("gatewayStatus","蓝牙已连／板卡未应答");}
  }
  window.onNativeConnected=()=>attach(bytes=>native.sendBase64(bytes64(bytes)));
@@ -80,7 +80,7 @@
   try {
    const song=PerformanceMidi.parseMidi(await file.arrayBuffer());song.name=file.name;state.song=song;
    $("songTitle").textContent=file.name;$("songMeta").textContent=`${(song.duration_us/1e6).toFixed(1)} 秒 · ${song.events.length} Note事件`;
-   $("eventStats").textContent=`${song.events.length} events`;log("MIDI 已在手机本地解析。只传时间与按键事件，板卡播放不自动发声。");
+   $("eventStats").textContent=`${song.events.length} events`;log("MIDI 已在手机本地解析。试听模式自动发声，跟弹与弹奏模式由实体琴键发声。");
   }catch(e){state.song=null;log(e.message);}
  };
  $("uploadButton").onclick=()=>work(async()=>{
@@ -97,7 +97,7 @@
   }
   const result=await c.request(T.END);
   if(!result.loaded || result.events!==song.events.length)throw Error("板卡曲谱计数不匹配");
-  log(`板卡确认 ${result.events} 事件完整载入。点击播放开始灯带／屏幕指引，声音由实体琴键演奏。`);
+  log(`板卡确认 ${result.events} 事件完整载入。按所选模式开始试听、跟弹或演奏指引。`);
  });
  $("modeSelect").onchange=()=>work(async()=>{await client().request(T.MODE,Uint8Array.of(Number($("modeSelect").value)));log("板卡已确认演奏模式");});
  for(const [id,type] of [["playButton",T.PLAY],["pauseButton",T.PAUSE],["stopButton",T.STOP]])
@@ -117,15 +117,19 @@
   let saved=0;
   $("progress").style.width="0%";
   $("progressLabel").textContent=`准备读取 ${frames} 帧…`;
-  if(native){
-   state.saving=true;
-   await new Promise((resolve,reject)=>{state.saveWait={resolve,reject};native.beginSave(name,frames,channels);});
-  }else parts.push(P.wavHeader(frames,channels));
   try {
+   if(native){
+    state.saving=true;
+    await new Promise((resolve,reject)=>{state.saveWait={resolve,reject};native.beginSave(name,frames,channels);});
+   }else parts.push(P.wavHeader(frames,channels));
    const started=Date.now();
    for(let at=0;at<frames;at+=1024){
     const n=Math.min(1024,frames-at);
-    const result=await c.request(T.READ,P.join(P.u32(at),P.u16(n),Uint8Array.of(channels)),{offset:at,count:n,channels,generation:s.generation});
+    const result=await c.request(T.READ,P.join(P.u32(at),P.u16(n),Uint8Array.of(channels)),{offset:at,count:n,channels,generation:s.generation,onProgress:received=>{
+     const complete=at+received;
+     $("progress").style.width=`${complete/frames*100}%`;
+     $("progressLabel").textContent=`正在回传 ${complete}/${frames} 帧（${(complete/frames*100).toFixed(1)}%）`;
+    }});
     if(result.pcm.length!==n*channels*2)throw Error(`板卡 PCM 长度错误：应为 ${n*channels*2}，实际 ${result.pcm.length}`);
     if(native)await nativeWrite(result.pcm);else parts.push(result.pcm);
     saved+=n;$("progress").style.width=`${saved/frames*100}%`;
@@ -134,7 +138,7 @@
     log(`下载 ${saved}/${frames} 帧 · 8kHz/${channels}声道 · 预计剩余 ${Math.ceil(remaining)} 秒。串口回传慢于原始演奏。`);
    }
    if(saved!==frames)throw Error(`录音回传未完成：${saved}/${frames} 帧`);
-   if(native)await new Promise((resolve,reject)=>{state.writeWait={resolve,reject};native.finishSave();});
+   if(native){$("progressLabel").textContent="声音数据已完整接收，请选择 WAV 保存位置…";await new Promise((resolve,reject)=>{state.writeWait={resolve,reject};native.finishSave();});}
    else {
     const url=URL.createObjectURL(new Blob(parts,{type:"audio/wav"})),link=document.createElement("a");link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
    }

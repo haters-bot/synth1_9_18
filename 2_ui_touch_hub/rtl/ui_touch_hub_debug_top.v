@@ -40,6 +40,7 @@ module ui_touch_hub_debug_top (
 
     // C14 diagnostic TX; F16 dedicated phone RX (3.3V TTL).
     output wire        debug_uart_tx,
+    input  wire        keyboard_uart_rx,
     input  wire        phone_uart_rx,
     output wire        phone_uart_tx,
 
@@ -87,6 +88,7 @@ ui_touch_hub_top #(.DEBUG_TOUCH_LOG(0),.DEBUG_KNOB_ASCII(1)) u_hub(
     .audio_link_tx(audio_link_tx),
     .debug_uart_tx(debug_uart_tx),
     .performance_led_data(performance_led_data),
+    .keyboard_uart_rx(keyboard_uart_rx),
     .phone_uart_rx(phone_uart_rx),
     .phone_uart_tx(phone_uart_tx),
     .led(led),

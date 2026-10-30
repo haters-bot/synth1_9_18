@@ -29,13 +29,13 @@ wire [23:0] rgb;wire den,hs,vs,capture,dv;wire [7:0] did;wire signed [7:0] delta
 wire note_valid,note_on;wire [6:0] note_number;
 integer note_count=0;reg [31:0] held_notes=0;
 always @(posedge clk)if(note_valid)begin
- if(note_number<60 || note_number>91)$fatal(1,"Touch MIDI out of range");
+ if(note_number<29 || note_number>60)$fatal(1,"Touch MIDI out of range");
  if(note_on)begin
-  if(held_notes[note_number-60])$fatal(1,"Duplicate touch On");
-  held_notes[note_number-60]=1;
+  if(held_notes[note_number-29])$fatal(1,"Duplicate touch On");
+  held_notes[note_number-29]=1;
  end else begin
-  if(!held_notes[note_number-60])$fatal(1,"Unmatched touch Off");
-  held_notes[note_number-60]=0;
+  if(!held_notes[note_number-29])$fatal(1,"Unmatched touch Off");
+  held_notes[note_number-29]=0;
  end
  note_count=note_count+1;
 end
