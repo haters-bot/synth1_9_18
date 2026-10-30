@@ -46,7 +46,7 @@ module modulation_preview # (parameter PREVIEW_BASE_TICKS=520833)(
         always @(posedge clk or negedge rst_n)
             if(!rst_n)preview_phase<=0;
             else preview_phase<=render_active_tab==s ? active_phase : phase[s];
-        lfo_smooth_table u_table(.clk(clk),.rst_n(rst_n),.nodes(nodes[s*49+:49]),
+        lfo_smooth_table #(.PREVIEW_SYNC(1)) u_table(.clk(clk),.rst_n(rst_n),.nodes(nodes[s*49+:49]),
             .stepped(stepped[s]),.raster_index(raster_index),
             .preview_index(preview_phase),
             .raster_q6(raster_samples[s*13+:13]),.preview_value(table_samples[s*7+:7]));

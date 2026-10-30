@@ -1,7 +1,7 @@
 // C1 monotone cubic Hermite with minmod tangents, not Serum proprietary math.
 // Node lookup, secants, tangents and coefficients have separate pipeline stages.
 // Horner intermediates retain precision; only the final Q7.6 result is truncated.
-module lfo_smooth_table(
+module lfo_smooth_table #(parameter PREVIEW_SYNC=0)(
     input wire clk,rst_n,
     input wire [48:0] nodes,
     input wire stepped,
@@ -85,5 +85,18 @@ module lfo_smooth_table(
     always @(posedge clk)
         if(valid3) table_mem[index3]<=h3<0 ? 0 : h3>8128 ? 13'd8128 : h3[12:0];
     assign raster_q6=table_mem[raster_index<=384 ? raster_index : 0];
-    assign preview_value=table_mem[preview_index<=384 ? preview_index : 0]>>6;
+    generate if(PREVIEW_SYNC)begin: synchronous_preview
+        // Mirror only the seven preview bits into a single-write/synchronous-
+        // read RAM. Raster retains its existing asynchronous Q7.6 port. This
+        // avoids a third RAM port and the 385-word combinational preview mux.
+        reg [6:0] preview_mem[0:384];
+        reg [6:0] preview_sample;
+        always @(posedge clk)begin
+            if(valid3)preview_mem[index3]<=h3<0 ? 0 : h3>8128 ? 7'd127 : h3[12:6];
+            preview_sample<=preview_mem[preview_index<=384 ? preview_index : 0];
+        end
+        assign preview_value=preview_sample;
+    end else begin: asynchronous_preview
+        assign preview_value=table_mem[preview_index<=384 ? preview_index : 0]>>6;
+    end endgenerate
 endmodule

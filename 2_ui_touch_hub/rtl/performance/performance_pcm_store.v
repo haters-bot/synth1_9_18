@@ -334,6 +334,14 @@ module performance_pcm_store #(
                 poisoned<=1;mem_state<=M_IDLE;session_error<=1;return_valid<=1;
                 return_data<=req_write ? {R_FAULT,1'b1,committed,32'd0} : {R_READ,1'b1,pending_read_index,32'd0};
             end
+            // Preload the reply KIND independently of live calibration and
+            // success gates. No reply is visible until return_valid, and no
+            // previous reply is outstanding in these states. This removes the
+            // high-fanout DDR reset/calibration net from the kind hold/load mux
+            // without delaying loss detection or changing valid/data timing.
+            if(mem_state==M_VALIDATE)
+                return_data[66:65]<=pending_kind==T_READ ? R_READ : pending_kind==T_END ? R_END : R_FAULT;
+            if(transaction_active)return_data[66:65]<=req_write ? R_FAULT : R_READ;
         end
     end
 endmodule
