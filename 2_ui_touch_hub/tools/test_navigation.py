@@ -199,7 +199,7 @@ endmodule
  log=(out/'simulation.log').read_text(errors='replace')
  if 'PASS:' not in log or '** Fatal:' in log or '** Error:' in log:raise RuntimeError(str(out))
  inputs=files+list((ROOT/'rtl/ui_vector_engine').glob('*.vh'))+[Path(__file__)]
- (out/'result.json').write_text(json.dumps({'passed':True,'key_count':32,'base_note':60,
+ (out/'result.json').write_text(json.dumps({'passed':True,'key_count':32,'base_note':29,
   'source_sha256':{str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}},indent=2))
  print(next(line for line in log.splitlines() if 'PASS:' in line));print(out,flush=True)
 if __name__=='__main__':main()

@@ -31,11 +31,24 @@ module tb_phone_session;
   .event_velocity(event_velocity),.event_on(event_on),.start(start_pulse),.stop(stop_pulse),.pause(pause_state),
   .running(score_running),.load_error(score_error),.loaded_events(loaded_events));
  integer replies=0,audio_packets=0,starts=0,checks=0;
+ integer i,verified_events=0;
+ reg mutate_payload=0,verify_payload=0;
+ reg [511:0] frozen_batch;
+ reg [63:0] expected_event;
  reg [7:0] last_status,last_kind;reg [31:0] last_generation;
  always @(posedge clk)begin
   record_start_accepted<=record_start_pulse;
   if(record_start_pulse)begin record_active<=1;record_busy<=1;starts=starts+1;end
   if(record_stop_pulse)begin record_active<=0;record_busy<=0;end
+  if(verify_payload && command_valid && command_type==8'h12 && command_payload!==frozen_batch)
+   $fatal(1,"session forwarded live input instead of the accepted packet snapshot");
+  if(verify_payload && event_push)begin
+   expected_event=frozen_batch[verified_events*64+:64];
+   if({event_on,event_velocity,event_note,event_time_ms}!==
+      {expected_event[48],expected_event[46:40],expected_event[38:32],expected_event[31:0]})
+    $fatal(1,"frozen batch event %0d mismatch",verified_events);
+   verified_events=verified_events+1;
+  end
   read_data_valid<=read_valid && read_ready;
   if(read_valid && read_ready)begin read_data_index<=read_index;read_data<=32'hffe00020;end
   if(reply_valid && reply_ready)begin
@@ -51,9 +64,18 @@ module tb_phone_session;
    @(negedge clk);packet_type=kind;packet_length=length;
    if(!replay)begin packet_sequence=packet_sequence+1;packet_signature=packet_signature+1;end
    target=replies+1;packet_valid=1;@(negedge clk);packet_valid=0;
+   if(mutate_payload)begin packet_payload=~packet_payload;mutate_payload=0;end
    wait(replies==target);#1;
    if(last_status!=expected_status || last_kind!=kind)$fatal(1,"request %x got status %d expected %d",kind,last_status,expected_status);
    checks=checks+1;repeat(4)@(negedge clk);
+  end
+ endtask
+ task batch_eight(input integer offset);
+  integer j;
+  begin
+   packet_payload=0;
+   for(j=0;j<8;j=j+1)
+    packet_payload[j*64+:64]={8'd0,8'd1,8'd100,8'd29+j[7:0],32'd25*(offset+j+1)};
   end
  endtask
  task begin_song(input integer count);
@@ -78,6 +100,27 @@ module tb_phone_session;
   begin_song(2);batch_good;request(8'h12,16,0,0);request(8'h13,0,0,0);request(8'h20,0,0,0);
   if(!score_running)$fatal(1,"score not started");
   request(8'h10,0,2,0);request(8'h22,0,0,0);
+  // Maximum-sized batch: the final illegal record must reject ALL eight.
+  begin_song(8);batch_eight(0);packet_payload[7*64+32+:8]=61;
+  request(8'h12,64,1,0);
+  if(loaded_events!=0 || dut.received!=0)$fatal(1,"last invalid event partially committed");
+  begin_song(8);batch_eight(0);packet_payload[7*64+:32]=1;
+  request(8'h12,64,1,0);
+  if(loaded_events!=0)$fatal(1,"intra-batch descending time partially committed");
+  // Freeze input at packet acceptance, then change all external payload bits.
+  begin_song(16);batch_eight(0);frozen_batch=packet_payload;
+  verify_payload=1;verified_events=0;mutate_payload=1;
+  request(8'h12,64,0,0);verify_payload=0;
+  if(verified_events!=8 || loaded_events!=8 || dut.received!=8 || dut.last_time!=200)
+   $fatal(1,"maximum batch snapshot/count/time mismatch");
+  packet_payload=frozen_batch;request(8'h12,64,0,1);
+  if(loaded_events!=8 || dut.received!=8)$fatal(1,"full-size retry duplicated events");
+  batch_eight(8);request(8'h12,64,0,0);request(8'h13,0,0,0);
+  if(loaded_events!=16 || dut.received!=16 || dut.last_time!=400)$fatal(1,"cross-batch count/time");
+  // First record of the next packet must not precede the last accepted time.
+  begin_song(16);batch_eight(0);request(8'h12,64,0,0);
+  batch_eight(8);packet_payload[31:0]=199;request(8'h12,64,1,0);
+  if(loaded_events!=8 || dut.received!=8)$fatal(1,"cross-batch order partially committed");
   backend_available=0;request(8'h40,0,2,0);backend_available=1;
   audio_link_up=0;request(8'h40,0,2,0);audio_link_up=1;
   request(8'h40,0,0,0);request(8'h40,0,0,1);

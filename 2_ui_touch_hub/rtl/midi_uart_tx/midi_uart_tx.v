@@ -169,8 +169,11 @@ module midi_uart_tx #(
                                          {8'hBF, 1'b0, map_id_to_cc(cc_param_id), 1'b0,
                                           map_id_value(cc_param_id, safe_cc_val)};
 
-    // SysEx needs two free FIFO slots and yields to a same-cycle Note/CC.
-    wire sysex_push = sysex_req && !note_cc_push && (fifo_count <= 4'd6);
+    // Yield to raw requests, independently of the CC-ID decode. An unsupported
+    // CC only postpones SysEx until that request drops; accept still denotes
+    // the exact FIFO write, so a held request cannot enqueue duplicate frames.
+    wire sysex_push = sysex_req && !(note_on_req || note_off_req || cc_req)
+                      && (fifo_count <= 4'd6);
     assign sysex_accept = sysex_push;
 
     wire in_pop = (seq_state == SEQ_IDLE) && (fifo_count != 4'd0) && !uart_byte_busy;

@@ -23,7 +23,7 @@ module performance_phone_session #(
  output wire read_data_ready
 );
  localparam IDLE=0,CHECK=1,BATCH=2,FORWARD=3,SETTLE=4,RECORD_WAIT=5,
-            COMPOSE=6,SEND=7,EXPORT_WAIT=8;
+            COMPOSE=6,SEND=7,EXPORT_WAIT=8,BATCH_FETCH=9,BATCH_ADVANCE=10;
  reg [3:0] state;
  reg [7:0] kind,seq,status;
  reg [6:0] length;
@@ -45,7 +45,8 @@ module performance_phone_session #(
  wire [7:0] export_error;
  wire [6:0] export_packet_length;
  wire [511:0] export_packet_payload;
- wire [63:0] current_event=payload[batch_index*64+:64];
+ reg [63:0] current_event;
+ reg batch_event_invalid;
  assign upload_active=uploading;
  assign export_busy=exporter_busy || export_start || (state!=IDLE && kind==8'h43);
  assign reply_type=state==EXPORT_WAIT ? 8'h71 : 8'h70;
@@ -71,6 +72,7 @@ module performance_phone_session #(
    kind<=0;seq<=0;length<=0;signature<=0;status<=0;settle<=0;wait_ms<=0;
    cleared<=0;uploading<=0;loaded<=0;expected<=0;received<=0;duration<=0;last_time<=0;check_time<=0;
    generation<=0;batch_index<=0;batch_count<=0;cache_valid<=0;
+   current_event<=0;batch_event_invalid<=0;
    cache_kind<=0;cache_seq<=0;cache_length<=0;cache_signature<=0;cache_reply<=0;
    export_start<=0;reply_sequence<=0;
   end else begin
@@ -107,7 +109,7 @@ module performance_phone_session #(
        if(!uploading || score_running)begin status<=2;state<=COMPOSE;end
        else if(length==0 || length>64 || length[2:0]!=0 || received+(length>>3)>expected)begin
         status<=1;uploading<=0;state<=COMPOSE;
-       end else begin batch_index<=0;batch_count<=length>>3;check_time<=last_time;state<=BATCH;end
+       end else begin batch_index<=0;batch_count<=length>>3;check_time<=last_time;state<=BATCH_FETCH;end
       end
       8'h13:begin
        if(length!=0 || !uploading || received!=expected || score_error)begin
@@ -142,15 +144,25 @@ module performance_phone_session #(
       default:begin status<=1;state<=COMPOSE;end
      endcase
     end
+    // Separate the 512-to-64 mux, validation and counter commit. Forward the
+    // original frozen packet only after EVERY event has passed all checks.
+    BATCH_FETCH:begin
+     current_event<=payload[batch_index*64+:64];state<=BATCH;
+    end
     BATCH:begin
-     // Validate the WHOLE packet before forwarding any record to the scheduler.
-     if(current_event[31:0]<check_time || current_event[31:0]>duration ||
+     batch_event_invalid<=current_event[31:0]<check_time || current_event[31:0]>duration ||
         current_event[39:32]<BASE_NOTE || current_event[39:32]>=BASE_NOTE+KEY_COUNT ||
-        current_event[47:40]>127 || current_event[63:49]!=0)begin
+        current_event[47:40]>127 || current_event[63:49]!=0;
+     state<=BATCH_ADVANCE;
+    end
+    BATCH_ADVANCE:begin
+     if(batch_event_invalid)begin
       status<=1;uploading<=0;loaded<=0;state<=COMPOSE;
      end else if(batch_index+1>=batch_count)begin
       last_time<=current_event[31:0];received<=received+batch_count;state<=FORWARD;
-     end else begin check_time<=current_event[31:0];batch_index<=batch_index+1'b1;end
+     end else begin
+      check_time<=current_event[31:0];batch_index<=batch_index+1'b1;state<=BATCH_FETCH;
+     end
     end
     FORWARD:begin
      command_valid<=1;command_type<=kind;command_length<=length;command_payload<=payload;

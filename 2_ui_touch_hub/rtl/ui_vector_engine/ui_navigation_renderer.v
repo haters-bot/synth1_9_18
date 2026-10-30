@@ -347,7 +347,20 @@ module ui_navigation_renderer #(
  end
  `include "navigation_shortcuts.vh"
  reg h0,h1,h2,h3;
- reg [23:0] b0,b1,b2,b3,fg0,fg1,fg2,fg3;
+ // Stage 0 computes page backgrounds independently. Stage 1 selects their
+ // registered colors, using page/rectangle flags from that SAME pixel. This
+ // uses the existing delay slot and keeps the total raster latency unchanged.
+ reg [23:0] nav_bg0,visual_bg0,performance_bg0,knob_bg0,generic_bg0,cards_bg0;
+ reg [2:0] background_view0;
+ reg background_top0,settings_tab0,settings_tab_selected0,settings_line0;
+ reg plot_shortcut0,settings_knobs0;
+ wire [23:0] settings_bg1=settings_tab0 ?
+  (settings_line0 ? 24'h347B90 : settings_tab_selected0 ? 24'h285064 : 24'h1A2735) :
+  plot_shortcut0 ? 24'h223C4C : settings_knobs0 ? knob_bg0 : generic_bg0;
+ wire [23:0] background1=background_top0 ? nav_bg0 :
+  background_view0==1 ? visual_bg0 : background_view0==2 ? performance_bg0 :
+  background_view0==3 ? settings_bg1 : background_view0==4 ? cards_bg0 : 24'h101318;
+ reg [23:0] b1,b2,b3,fg0,fg1,fg2,fg3;
  reg [6:0] id0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
  reg [5:0] col0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
  reg [5:0] rom_ch1,digit1;
@@ -596,7 +609,13 @@ module ui_navigation_renderer #(
    glyph_valid2<=0;coverage3<=0;
   end
   else begin
-   h0<=hit;b0<=bg;fg0<=text_color;id0<=text_id;col0<=text_col;
+   h0<=hit;fg0<=text_color;id0<=text_id;col0<=text_col;
+   nav_bg0<=nav_bg;visual_bg0<=visual_bg;performance_bg0<=performance_rgb;
+   knob_bg0<=knob_bg;generic_bg0<=generic_settings_bg;cards_bg0<=cards_bg;
+   background_view0<=view;background_top0<=in_y<44;
+   settings_tab0<=settings_tab;settings_tab_selected0<=settings_tab_selected;
+   settings_line0<=in_y==119;plot_shortcut0<=plot_shortcut;
+   settings_knobs0<=render_settings_section_id==1;
    recorder_status0<=performance_record_status;
    recorder_select1<=id0==NAV_RECORDER_STATUS;
    tv0<=text_valid||macro_number||shortcut;number0<=macro_number||shortcut;digit0<=shortcut ? shortcut_char : number_char;
@@ -604,7 +623,7 @@ module ui_navigation_renderer #(
    rx0<=shortcut ? shortcut_x : macro_number ? in_x[3:0] : text_rx;
    ry0<=shortcut ? shortcut_y : macro_number ? ((in_y-248)&63) : text_ry;
    large0<=!macro_number && text_large;
-   h1<=h0;b1<=b0;fg1<=compact0 ? 24'h9ED6D3 : fg0;
+   h1<=h0;b1<=background1;fg1<=compact0 ? 24'h9ED6D3 : fg0;
    tv1<=tv0 && (compact0 ? (rx0<7 && ry0<10) : large0 ? (rx0<14 && ry0<20) : (rx0<12 && ry0<16));
    number1<=number0||audio_number;digit1<=number0 ? digit0 : audio_number_char;
    glyph_x1<=compact0 ? rx0[2:0] : glyph_x(large0,rx0);glyph_y1<=compact0 ? ry0[3:0] : glyph_y(large0,ry0);
