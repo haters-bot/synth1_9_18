@@ -146,9 +146,14 @@ module lfo_sysex_tx #(
             entry_value = 16'd4 + {14'd0, sync_bank[1:0]}; // bank | 0x0004 restart
         end else if (scan >= 7'd21) begin
             entry_id    = ID_MODE0 + mode_bank;
-            entry_value = {11'd0, sh_once [mode_bank[1:0]],
-                           sh_steps[mode_bank[1:0]],
-                           sh_rates[mode_bank[1:0]*3 +: 3]};
+            // Constant slices avoid the same Gowin indexed-read mismatch as
+            // routes: valid q/sh rate bits otherwise became zero in the .vo.
+            case (mode_bank)
+                0: entry_value = {11'd0, sh_once[0], sh_steps[0], sh_rates[2:0]};
+                1: entry_value = {11'd0, sh_once[1], sh_steps[1], sh_rates[5:3]};
+                2: entry_value = {11'd0, sh_once[2], sh_steps[2], sh_rates[8:6]};
+                default: entry_value = 16'd0;
+            endcase
         end else begin
             entry_value = {9'd0, sh_nodes[scan*7 +: 7]};
         end

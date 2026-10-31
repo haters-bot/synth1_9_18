@@ -75,7 +75,7 @@ module tb_lfo_editor;
         for(j=0;j<3;j=j+1) packet(860,620,1);
         if(rate!==3) $fatal(1,"Held rate button repeated unexpectedly");
         packet(860,620,0);
-        click(860,620);click(860,620);click(860,620);
+        click(860,620);click(860,620);click(860,620);click(860,620);click(860,620);
         if(rate!==0) $fatal(1,"Rate wrap failed");
         click(860,620);click(860,620); // default 1 Hz, accelerated test divider
         click(1000,620);

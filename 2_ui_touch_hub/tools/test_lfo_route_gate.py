@@ -31,8 +31,15 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--build', action='store_true')
     mode.add_argument('--netlist-dir', type=Path)
+    parser.add_argument('--rates', action='store_true', help='Use the touch-driven editor/rate probe')
+    parser.add_argument('--testbench', type=Path, help='Explicit bench override when checking an existing .vo')
     parser.add_argument('--output-root', type=Path, default=Path('E:/gaoyun_builds'))
     args = parser.parse_args()
+    if args.rates:
+        FILES.pop('lfo_binding_state.v')
+        FILES['lfo_editor_state.v'] = 'rtl/ui_vector_engine/lfo_editor_state.v'
+        FILES['lfo_route_probe.v'] = 'sim/lfo_rate_probe.v'
+        FILES['tb_lfo_route_probe.v'] = 'sim/tb_lfo_rate_uart.v'
     stamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     args.output_root.mkdir(parents=True, exist_ok=True)
     out = args.output_root / ('lfo_route_gate_test_' + stamp)
@@ -64,7 +71,9 @@ def main():
         probe.mkdir()
         origin = ROOT if args.build else args.netlist_dir.resolve()
         for name, relative in FILES.items():
-            (probe / name).write_bytes((origin / (relative if args.build else name)).read_bytes())
+            source = (args.testbench.resolve() if name == 'tb_lfo_route_probe.v' and args.testbench
+                      else origin / (relative if args.build else name))
+            (probe / name).write_bytes(source.read_bytes())
         hashes = {name: hashlib.sha256((probe / name).read_bytes()).hexdigest() for name in FILES}
         report['source_sha256'] = hashes
         (probe / 'source_manifest.json').write_text(json.dumps(hashes, indent=2))
@@ -102,6 +111,7 @@ def main():
             sources = ([probe / name for name in FILES if name.endswith('.v') and not name.startswith('tb_')]
                        if kind == 'rtl' else [library, netlist])
             run(kind + '_compile', [MS / 'vlog.exe', '-sv', '-work', work,
+                *(['+define+GATE_PROBE'] if kind == 'gate' else []),
                 '+incdir+' + str(probe), *sources, probe / 'tb_lfo_route_probe.v'])
             log = run(kind + '_sim', [MS / 'vsim.exe', '-c', work + '.tb_lfo_route_probe', '-do',
                 'onerror {quit -code 1}; onbreak {quit -code 1 -force}; run -all; quit -f'])

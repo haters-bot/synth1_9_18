@@ -156,7 +156,9 @@ module lfo_panel_renderer(
                     2: case(column) 0:label_char_at=`CH_1; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
                     3: case(column) 0:label_char_at=`CH_2; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
                     4: case(column) 0:label_char_at=`CH_4; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
-                    default: case(column) 0:label_char_at=`CH_8; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
+                    5: case(column) 0:label_char_at=`CH_8; 2:label_char_at=`CH_H; 3:label_char_at=`CH_Z; endcase
+                    6: case(column) 0:label_char_at=`CH_1; 1:label_char_at=`CH_6; 3:label_char_at=`CH_H; 4:label_char_at=`CH_Z; endcase
+                    7: case(column) 0:label_char_at=`CH_3; 1:label_char_at=`CH_2; 3:label_char_at=`CH_H; 4:label_char_at=`CH_Z; endcase
                 endcase end
                 12: begin case(column) 0:label_char_at=once_sel?`CH_O:`CH_F; 1:label_char_at=once_sel?`CH_N:`CH_R; 2:label_char_at=once_sel?`CH_C:`CH_E; 3:label_char_at=once_sel?`CH_E:`CH_E; endcase end
                 13: begin case(column) 0:label_char_at=running_sel?`CH_P:`CH_S; 1:label_char_at=running_sel?`CH_L:`CH_T; 2:label_char_at=running_sel?`CH_A:`CH_O; 3:label_char_at=running_sel?`CH_Y:`CH_P; 4:label_char_at=running_sel?`CH_I:`CH_P; 5:label_char_at=running_sel?`CH_N:`CH_E; 6:label_char_at=running_sel?`CH_G:`CH_D; 7:label_char_at=running_sel?`CH_SPACE:`CH_E; endcase end

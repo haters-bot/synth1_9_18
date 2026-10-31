@@ -163,7 +163,8 @@ module lfo_editor_state #(
                             phase <= 0; tick_count <= 0; running <= 1;
                         end else if(touch_y_r >= 608 && touch_y_r <= 652) begin
                             if(touch_x_r >= 808 && touch_x_r <= 936)
-                                rates[active_tab] <= rate == 5 ? 0 : rate+1'b1;
+                                // Protocol index 0..7 = 0.25,0.5,1,2,4,8,16,32 Hz.
+                                rates[active_tab] <= rate == 7 ? 0 : rate+1'b1;
                             else if(touch_x_r >= 944 && touch_x_r <= 1072)
                                 once_bits[active_tab] <= !once_mode;
                             if(touch_x_r >= 808 && touch_x_r <= 1240) begin
