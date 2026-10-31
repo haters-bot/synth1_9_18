@@ -9,6 +9,9 @@ import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -16,6 +19,9 @@ import android.database.Cursor;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.view.View;
+import android.text.InputType;
+import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -32,10 +38,12 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.UUID;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Local assets only. No microphone, location, Internet or broad-storage access. */
+/** Local UI assets; Android INTERNET is used only for the ESP-01S local TCP link. */
 public final class MainActivity extends Activity {
     private static final int CONNECT_PERMISSION=10, OPEN_MIDI=11, SAVE_WAV=12, ENABLE_BT=13;
     private static final String HOME="file:///android_asset/index.html";
@@ -43,6 +51,8 @@ public final class MainActivity extends Activity {
     private WebView web;
     private volatile BluetoothSocket socket;
     private volatile OutputStream bluetoothOut;
+    private volatile Socket wifiSocket;
+    private volatile OutputStream wifiOut;
     private volatile boolean destroyed;
     private final ExecutorService writes=Executors.newSingleThreadExecutor();
     private final ExecutorService files=Executors.newSingleThreadExecutor();
@@ -149,9 +159,32 @@ public final class MainActivity extends Activity {
             new AlertDialog.Builder(this).setTitle("选择已配对的串口模块").setItems(labels,(dialog,which)->connect(devices.get(which))).setNegativeButton("取消",null).show();
         }catch(Exception e){error(e);}
     }
+    private void chooseConnection() {
+        runOnUiThread(()->new AlertDialog.Builder(this).setTitle("选择通信方式")
+            .setItems(new String[]{"蓝牙串口（HC-07）","Wi-Fi TCP（ESP-01S）"},(dialog,which)->{
+                if(which==0)chooseDevice();else chooseWifi();
+            }).setNegativeButton("取消",null).show());
+    }
+    private void chooseWifi() {
+        EditText host=new EditText(this);host.setSingleLine(true);host.setHint("ESP-01S IP");host.setText("192.168.4.1");
+        host.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);
+        EditText port=new EditText(this);port.setSingleLine(true);port.setHint("TCP端口");port.setText("333");
+        port.setInputType(InputType.TYPE_CLASS_NUMBER);
+        LinearLayout form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);
+        int pad=(int)(20*getResources().getDisplayMetrics().density);form.setPadding(pad,0,pad,0);
+        form.addView(host);form.addView(port);
+        new AlertDialog.Builder(this).setTitle("连接 ESP-01S")
+            .setMessage("先在手机 Wi-Fi 设置中连接 ESP-01S 热点，再输入模块地址。默认桥接地址为 192.168.4.1:333。")
+            .setView(form).setPositiveButton("连接",(dialog,which)->{
+                try{connectWifi(host.getText().toString(),Integer.parseInt(port.getText().toString()));}
+                catch(Exception e){error(e);}
+            }).setNegativeButton("取消",null).show();
+    }
     private void disconnect() {
         BluetoothSocket old=socket;socket=null;bluetoothOut=null;
         if(old!=null)try{old.close();}catch(Exception ignored){}
+        Socket oldWifi=wifiSocket;wifiSocket=null;wifiOut=null;
+        if(oldWifi!=null)try{oldWifi.close();}catch(Exception ignored){}
     }
     private void connect(BluetoothDevice device) {
         disconnect();
@@ -169,6 +202,32 @@ public final class MainActivity extends Activity {
                 if(socket==current)throw new Exception("蓝牙串口已关闭");
             }catch(Exception e){if(socket==current){disconnect();event("onNativeDisconnected",e.getMessage()==null?"蓝牙连接失败":e.getMessage());}}
         },"HC07-RFCOMM").start();
+    }
+    private void connectWifi(String host,int port) {
+        disconnect();
+        new Thread(()->{
+            Socket current=null;
+            try {
+                if(host==null || host.trim().isEmpty() || port<1 || port>65535)throw new Exception("Wi-Fi地址或端口无效");
+                ConnectivityManager connectivity=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+                Network wifi=null;
+                if(connectivity!=null)for(Network candidate:connectivity.getAllNetworks()){
+                    NetworkCapabilities capabilities=connectivity.getNetworkCapabilities(candidate);
+                    if(capabilities!=null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)){wifi=candidate;break;}
+                }
+                if(wifi==null)throw new Exception("手机尚未连接 ESP-01S Wi-Fi 热点；连接热点并选择保持连接后重试");
+                current=wifi.getSocketFactory().createSocket();wifiSocket=current;
+                current.connect(new InetSocketAddress(host.trim(),port),5000);
+                if(wifiSocket!=current){current.close();return;}
+                current.setTcpNoDelay(true);
+                wifiOut=current.getOutputStream();InputStream input=current.getInputStream();
+                event("onNativeConnected","wifi://"+host.trim()+":"+port);
+                byte[] buffer=new byte[4096];int count;
+                while(wifiSocket==current && (count=input.read(buffer))!=-1)
+                    event("onNativeBytes",Base64.encodeToString(buffer,0,count,Base64.NO_WRAP));
+                if(wifiSocket==current)throw new Exception("Wi-Fi TCP连接已关闭");
+            }catch(Exception e){if(wifiSocket==current){disconnect();event("onNativeDisconnected",e.getMessage()==null?"Wi-Fi连接失败":e.getMessage());}}
+        },"ESP8266-TCP").start();
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] granted) {
         super.onRequestPermissionsResult(request,permissions,granted);
@@ -258,13 +317,16 @@ public final class MainActivity extends Activity {
         }
         @JavascriptInterface public void chooseMidi(){runOnUiThread(()->MainActivity.this.chooseMidi());}
         @JavascriptInterface public void chooseDevice(){runOnUiThread(()->MainActivity.this.chooseDevice());}
+        @JavascriptInterface public void chooseConnection(){MainActivity.this.chooseConnection();}
+        @JavascriptInterface public void connectWifi(String host,int port){MainActivity.this.connectWifi(host,port);}
         @JavascriptInterface public void sendBase64(String encoded){
             final byte[] data;
             try{data=Base64.decode(encoded,Base64.DEFAULT);if(data.length<8 || data.length>72)throw new Exception("串口帧长度无效");}
             catch(Exception e){error(e);return;}
-            final OutputStream target=bluetoothOut;
-            writes.execute(()->{try{if(target==null || target!=bluetoothOut)throw new Exception("蓝牙未连接");target.write(data);target.flush();}
-                catch(Exception e){if(target==bluetoothOut){disconnect();event("onNativeDisconnected",e.toString());}else error(e);}});
+            final OutputStream btTarget=bluetoothOut, wifiTarget=wifiOut;
+            final OutputStream target=btTarget!=null?btTarget:wifiTarget;
+            writes.execute(()->{try{if(target==null || (target!=bluetoothOut && target!=wifiOut))throw new Exception("通信模块未连接");target.write(data);target.flush();}
+                catch(Exception e){if(target==bluetoothOut || target==wifiOut){disconnect();event("onNativeDisconnected",e.toString());}else error(e);}});
         }
         @JavascriptInterface public void beginSave(String name,int frames,int channels){
             files.execute(()->{

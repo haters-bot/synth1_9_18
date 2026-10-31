@@ -565,7 +565,8 @@ module ui_touch_hub_top #(
     wire signed [15:0] audio_xy_a,audio_xy_b;
     wire audio_xy_valid,audio_xy_available;
 
-    // HC-07 full-duplex UART: F16 RX, F14 TX, 9600/115200 selected by HELLO.
+    // ESP-01S/HC-07 full-duplex UART: F16 RX, F14 TX. HELLO selects 9600,
+    // 115200, 230400 or 1000000; the external module must use the same UART.
     // Independent of C14 diagnostic TX and audio-board E19 keyboard input.
     reg [15:0] performance_tick_counter;
     wire performance_tick_1ms = performance_tick_counter == 16'd49_999;
@@ -582,7 +583,7 @@ module ui_touch_hub_top #(
     wire [6:0] performance_packet_length;
     wire [511:0] performance_packet_payload;
     wire [15:0] performance_packet_signature;
-    wire phone_reply_valid,phone_reply_ready,phone_fast_baud,phone_turbo_baud,phone_locked,phone_tx_busy;
+    wire phone_reply_valid,phone_reply_ready,phone_fast_baud,phone_turbo_baud,phone_ultra_baud,phone_locked,phone_tx_busy;
     wire phone_recording_discarded;
     wire [7:0] phone_reply_type,phone_reply_sequence;
     wire [6:0] phone_reply_length;
@@ -606,7 +607,7 @@ module ui_touch_hub_top #(
         .note_event_note(keyboard_note_number),.note_event_velocity(keyboard_note_velocity));
     performance_phone_transport u_phone_transport(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),.uart_rx(phone_uart_rx),
-        .hold_lock(phone_export_busy),.fast_baud(phone_fast_baud),.turbo_baud(phone_turbo_baud),.locked(phone_locked),
+        .hold_lock(phone_export_busy),.fast_baud(phone_fast_baud),.turbo_baud(phone_turbo_baud),.ultra_baud(phone_ultra_baud),.locked(phone_locked),
         .packet_valid(performance_packet_valid),.packet_type(performance_packet_type),
         .packet_sequence(performance_packet_sequence),.packet_length(performance_packet_length),
         .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),
@@ -697,7 +698,7 @@ module ui_touch_hub_top #(
         .calibration_epoch(performance_calibration_epoch),.invalidate_score(performance_invalidate),
         .packet_valid(performance_packet_valid),.packet_type(performance_packet_type),
         .packet_sequence(performance_packet_sequence),.packet_length(performance_packet_length),
-        .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),.fast_baud(phone_fast_baud),.turbo_baud(phone_turbo_baud),
+        .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),.fast_baud(phone_fast_baud),.turbo_baud(phone_turbo_baud),.ultra_baud(phone_ultra_baud),
         .command_valid(phone_command_valid),.command_type(phone_command_type),
         .command_length(phone_command_length),.command_payload(phone_command_payload),
         .decoder_error(performance_protocol_error),.score_error(performance_score_error),.score_running(performance_score_running),

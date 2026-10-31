@@ -56,11 +56,11 @@ async function main(){
  const payload=P.eventsPayload(song.events);assert.equal(payload.length,16);assert.equal(new DataView(payload.buffer).getUint32(8,true),500);checks++;
  const base26=P.join(status(T.STATUS),Uint8Array.of(1,2),P.u16(99));base26[2]|=128;
  assert.equal(P.status(base26).calibrated,true);assert.equal(P.status(base26).calibrationEpoch,99);checks++;
- for(let baud=0;baud<3;baud++){
+ for(let baud=0;baud<4;baud++){
   const info=base26.slice();info[1]=T.RECORD_INFO;
   const token=Uint8Array.from({length:16},(_,i)=>i+1);
   const parsed=P.status(P.join(info,Uint8Array.of(1,baud),token));
-  assert.equal(parsed.baud,[9600,115200,230400][baud]);assert.equal(parsed.recordInfoSupported,true);
+  assert.equal(parsed.baud,[9600,115200,230400,1000000][baud]);assert.equal(parsed.recordInfoSupported,true);
   assert.equal(parsed.recordingToken,Buffer.from(token).toString("hex"));assert.equal(parsed.calibrated,true);checks++;
  }
  assert.throws(()=>P.status(P.join(base26,new Uint8Array(18))),/长度/);checks++;

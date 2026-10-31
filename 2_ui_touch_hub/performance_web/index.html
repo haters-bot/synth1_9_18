@@ -5,17 +5,17 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:">
   <title>FPGA Performance</title>
-  <link rel="stylesheet" href="style.css?v=0.2.6">
+  <link rel="stylesheet" href="style.css?v=0.3.0">
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
-        <div class="eyebrow">FPGA PERFORMANCE · 0.2.6</div>
+        <div class="eyebrow">FPGA PERFORMANCE · 0.3.0</div>
         <h1>演奏控制台</h1>
       </div>
       <div class="status-row">
-        <span id="gatewayStatus" class="pill">蓝牙／板卡未连接</span>
+        <span id="gatewayStatus" class="pill">通信模块／板卡未连接</span>
         <span id="songStatus" class="pill muted">未载入曲谱</span>
       </div>
     </header>
@@ -24,7 +24,7 @@
       <div class="file-line">
         <button id="chooseMidiButton" class="file-button">选择 MIDI 曲谱</button>
         <input id="songFile" type="file" accept=".mid,.midi,audio/midi,audio/x-midi" hidden>
-        <button id="connectButton" class="primary">连接蓝牙</button>
+        <button id="connectButton" class="primary">连接设备</button>
         <button id="uploadButton">发送到板卡</button>
       </div>
       <div id="calibrationStatus" class="progress-label action-status" role="status" aria-live="polite">连接后在 UI 板点击 CALIBRATE，按实体键盘最左键完成校准。</div>
@@ -72,7 +72,7 @@
           <button id="refreshRecordingButton" disabled>刷新板上录音</button>
           <button id="discardRecordingButton" disabled>丢弃板上录音</button>
         </div>
-        <p id="speedStatus" class="hint">提速需要配置HC-07的串口，并使用支持相同波特率的UI固件；App不能直接改变模块串口速率。</p>
+        <p id="speedStatus" class="hint">ESP-01S Wi-Fi桥接目标为1 Mbps；手机先连接模块热点，再选择 Wi-Fi TCP。蓝牙仍可继续使用。</p>
       </div>
     </section>
 
@@ -96,8 +96,8 @@
 
     <pre id="log" class="log" aria-live="polite"></pre>
   </main>
-  <script src="protocol.js?v=0.2.6"></script>
-  <script src="midi.js?v=0.2.6"></script>
-  <script src="phone_app.js?v=0.2.6"></script>
+  <script src="protocol.js?v=0.3.0"></script>
+  <script src="midi.js?v=0.3.0"></script>
+  <script src="phone_app.js?v=0.3.0"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@ module tb_performance_calibration_poll;
  performance_phone_session #(.CALIBRATION_ENABLE(1)) dut(
   .clk(clk),.rst_n(rst_n),.tick_1ms(1'b0),.packet_valid(pv),
   .packet_type(kind),.packet_sequence(seq),.packet_length(length),
-  .packet_payload(payload),.packet_signature({8'd0,seq}),.fast_baud(1'b0),
+  .packet_payload(payload),.packet_signature({8'd0,seq}),.fast_baud(1'b0),.ultra_baud(1'b0),
   .local_calibrate(local_cal),.calibration_idle(1'b1),
   .physical_note_valid(nv),.physical_note_on(1'b1),.physical_note(note),.physical_velocity(7'd100),
   .calibrated_base_note(base),.calibration_state(cal),.calibration_epoch(epoch),.invalidate_score(invalid),

@@ -1,7 +1,7 @@
 // Full-duplex response path. Baud is latched per byte and changes only between
 // sessions; no AT traffic or debug text is ever mixed into this UART.
-module performance_uart_tx #(parameter CLK_HZ=50000000,ENABLE_230400=0)(
- input wire clk,rst_n,fast_baud,turbo_baud,valid,input wire [7:0] data,
+module performance_uart_tx #(parameter CLK_HZ=50000000,ENABLE_230400=0,ENABLE_1M=0)(
+ input wire clk,rst_n,fast_baud,turbo_baud,ultra_baud,valid,input wire [7:0] data,
  output wire ready,output reg tx
 );
  reg [9:0] shift;
@@ -14,8 +14,8 @@ module performance_uart_tx #(parameter CLK_HZ=50000000,ENABLE_230400=0)(
   else if(!busy)begin
    tx<=1;
    if(valid)begin
-    divider<=ENABLE_230400 && turbo_baud ? CLK_HZ/230400-1 : fast_baud ? CLK_HZ/115200-1 : CLK_HZ/9600-1;
-    timer<=ENABLE_230400 && turbo_baud ? CLK_HZ/230400-1 : fast_baud ? CLK_HZ/115200-1 : CLK_HZ/9600-1;
+    divider<=ENABLE_1M && ultra_baud ? CLK_HZ/1000000-1 : ENABLE_230400 && turbo_baud ? CLK_HZ/230400-1 : fast_baud ? CLK_HZ/115200-1 : CLK_HZ/9600-1;
+    timer<=ENABLE_1M && ultra_baud ? CLK_HZ/1000000-1 : ENABLE_230400 && turbo_baud ? CLK_HZ/230400-1 : fast_baud ? CLK_HZ/115200-1 : CLK_HZ/9600-1;
     shift<={1'b1,data,1'b0};tx<=0;bit_index<=0;busy<=1;
    end
   end else if(timer!=0)timer<=timer-1'b1;
@@ -26,8 +26,8 @@ module performance_uart_tx #(parameter CLK_HZ=50000000,ENABLE_230400=0)(
  end
 endmodule
 
-module performance_packet_tx #(parameter CLK_HZ=50000000,ENABLE_230400=0)(
- input wire clk,rst_n,fast_baud,turbo_baud,packet_valid,
+module performance_packet_tx #(parameter CLK_HZ=50000000,ENABLE_230400=0,ENABLE_1M=0)(
+ input wire clk,rst_n,fast_baud,turbo_baud,ultra_baud,packet_valid,
  output wire packet_ready,
  input wire [7:0] packet_type,packet_sequence,
  input wire [6:0] packet_length,input wire [511:0] packet_payload,
@@ -53,7 +53,7 @@ module performance_packet_tx #(parameter CLK_HZ=50000000,ENABLE_230400=0)(
    default:byte_data=index==length+6 ? crc[7:0] : index==length+7 ? crc[15:8] : payload[(index-6)*8+:8];
   endcase
  end
- performance_uart_tx #(.CLK_HZ(CLK_HZ),.ENABLE_230400(ENABLE_230400)) bytes(.clk(clk),.rst_n(rst_n),.fast_baud(fast_baud),.turbo_baud(turbo_baud),
+ performance_uart_tx #(.CLK_HZ(CLK_HZ),.ENABLE_230400(ENABLE_230400),.ENABLE_1M(ENABLE_1M)) bytes(.clk(clk),.rst_n(rst_n),.fast_baud(fast_baud),.turbo_baud(turbo_baud),.ultra_baud(ultra_baud),
   .valid(active),.data(byte_data),.ready(byte_ready),.tx(uart_tx));
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin active<=0;kind<=0;sequence_id<=0;length<=0;index<=0;crc<=16'hffff;end

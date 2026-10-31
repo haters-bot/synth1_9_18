@@ -7,7 +7,7 @@ module performance_phone_session #(
  input wire clk,rst_n,tick_1ms,packet_valid,
  input wire [7:0] packet_type,packet_sequence,
  input wire [6:0] packet_length,input wire [511:0] packet_payload,
- input wire [15:0] packet_signature,input wire fast_baud,turbo_baud,
+ input wire [15:0] packet_signature,input wire fast_baud,turbo_baud,ultra_baud,
  input wire local_calibrate,calibration_idle,
  input wire physical_note_valid,physical_note_on,
  input wire [6:0] physical_note,physical_velocity,
@@ -273,7 +273,7 @@ module performance_phone_session #(
      cache_reply[183:176]<=CALIBRATION_ENABLE ? 8'd1 : 8'd0;
      cache_reply[191:184]<={5'd0,calibration_state};cache_reply[207:192]<=calibration_epoch;
      cache_reply[215:208]<=1;
-     cache_reply[223:216]<=turbo_baud ? 8'd2 : fast_baud ? 8'd1 : 8'd0;
+     cache_reply[223:216]<=(ultra_baud === 1'b1) ? 8'd3 : turbo_baud ? 8'd2 : fast_baud ? 8'd1 : 8'd0;
      cache_reply[351:224]<=recording_token;
      cache_valid<=1;cache_kind<=kind;cache_seq<=seq;cache_length<=length;cache_signature<=signature;state<=SEND;
     end

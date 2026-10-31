@@ -46,7 +46,7 @@
       calibrationEpoch:data.length>=26?v.getUint16(24,true):0,
       calibrated:data.length>=26 && data[22]===1 && data[23]===2 && !!(data[2]&128),
       recordInfoSupported:extended,
-      baud:extended?[9600,115200,230400][data[27]]:((data[2]&16)?115200:9600),
+      baud:extended?[9600,115200,230400,1000000][data[27]]:((data[2]&16)?115200:9600),
       recordingToken:extended?Array.from(data.slice(28,44),b=>b.toString(16).padStart(2,"0")).join(""):null};
   }
   const errors={1:"格式或音域错误",2:"板卡忙或音源／DDR未就绪",3:"曲谱不完整或调度拒绝",4:"录音范围无效",5:"DDR读取错误",6:"板卡处理超时",7:"请在 UI 板重新校准最左键后上传，校准状态已改变"};
@@ -101,7 +101,7 @@
       }
     }
     finish(p,error,result) {if(this.pending!==p)return;clearTimeout(p.timer);this.pending=null;error?p.reject(error):p.resolve(result);}
-    close() {this.closed=true;if(this.pending)this.finish(this.pending,Error("蓝牙连接中断；曲谱请重新上传，录音可按原偏移重试"));}
+    close() {this.closed=true;if(this.pending)this.finish(this.pending,Error("蓝牙连接断开或Wi-Fi连接中断；曲谱请重新上传，录音可按原偏移重试"));}
   }
   function eventsPayload(events) {
     if(!events.length || events.length>8)throw Error("事件批量范围错误");

@@ -27,7 +27,7 @@ module tb_performance_calibration;
   .play(lplay),.pause_toggle(lpause),.stop(lstop),.record_toggle(lrecord),.calibrate(lcal));
  performance_phone_session #(.MAX_EVENTS(16),.CALIBRATION_ENABLE(1)) session(
   .clk(clk),.rst_n(rst_n),.tick_1ms(tick),.packet_valid(pv),.packet_type(kind),.packet_sequence(seq),
-  .packet_length(length),.packet_payload(payload),.packet_signature({8'd0,seq}),.fast_baud(1'b0),
+  .packet_length(length),.packet_payload(payload),.packet_signature({8'd0,seq}),.fast_baud(1'b0),.ultra_baud(1'b0),
   .local_calibrate(lcal),.calibration_idle(!notes_busy && !tx_busy),
   .physical_note_valid(nv),.physical_note_on(non),.physical_note(nn),.physical_velocity(nvel),
   .calibrated_base_note(base),.calibration_state(cal),.calibration_epoch(epoch),.invalidate_score(invalid),

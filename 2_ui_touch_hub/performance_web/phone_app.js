@@ -2,7 +2,7 @@
  "use strict";
  const P=PerformanceProtocol,T=P.TYPES,$=id=>document.getElementById(id);
  const state={client:null,socket:null,song:null,status:null,working:false,selecting:false,saving:false,saveWait:null,writeWait:null,linkConnected:false,helloPayload:null,handshakePromise:null,handshakeAttempts:0,link:null,
-  device:"",baud:null,recordInfo:null,recordCapabilities:false,downloads:[],downloading:false,pauseDownload:false};
+  device:"",transport:"蓝牙",baud:null,recordInfo:null,recordCapabilities:false,downloads:[],downloading:false,pauseDownload:false};
  const native=window.PhoneNative;
  const durable=!!native?.downloadAction,downloadRequests=new Map();let downloadRequest=0;
  function nativeAction(action,data={}){
@@ -37,7 +37,7 @@
  function calibrated(s){return !!s?.calibrationSupported && s.calibrated;}
  function controls(){
   const ready=calibrated(state.status),s=state.status;
-  $("connectButton").textContent=state.linkConnected && !s?"重试板卡应答":"连接蓝牙";
+  $("connectButton").textContent=state.linkConnected && !s?"重试板卡应答":"连接设备";
   $("connectButton").disabled=state.working || !!state.handshakePromise;
   $("uploadButton").disabled=state.working || state.selecting || !ready || !state.song || state.song.noteMax-state.song.noteMin>=32;
   $("playButton").disabled=state.working || !ready || !s.loaded;
@@ -60,13 +60,13 @@
   const baud=state.baud||s.baud|| (s.fast?115200:9600);
   // Legacy status has only one fast bit; it cannot distinguish the two fast
   // dividers. Keep the last INFO rate, never guess 115200 during a busy take.
-  const rateLabel=durable && s.fast && !state.baud?"115200／230400（待查询）":baud;
+  const rateLabel=durable && s.fast && !state.baud?"115200及以上（待查询）":baud;
   badge("gatewayStatus",`板卡已应答 · ${rateLabel} baud`);
   if($("recordingStatus"))$("recordingStatus").textContent=s.storedFrames?
    `板上当前录音：第 ${s.generation} 段 · ${(s.storedFrames/s.sampleRate).toFixed(2)} 秒 · 原始双声道PCM ${(s.storedFrames*4/1048576).toFixed(2)} MiB${s.busy?" · 写入中":""}。板卡仅保留一段，新录音覆盖旧录音；断电／重配会失效。`:
    "板上没有可下载录音。DDR是易失性单段缓冲，不是会不断堆积歌曲的文件系统。";
   if($("speedStatus"))$("speedStatus").textContent=baud===9600?
-   "当前9600：8kHz单声道有效PCM理论上限约720B/s，32秒录音仅串口就至少约12分钟。115200约1分钟，230400约半分钟；模块和板端须同时支持。":
+   "当前9600：8kHz单声道有效PCM理论上限约720B/s，32秒录音仅串口就至少约12分钟。115200约1分钟、230400约半分钟、1 Mbps约7秒；理论值未计处理和无线开销。":
    `当前${rateLabel}：保持8kHz/16bit导出。实际速度受协议、DDR、手机和无线链路影响；下方显示实测速度与剩余时间。`;
   badge("songStatus",s.loaded?`板卡已载入 ${s.events} 事件`:"板卡曲谱未就绪");
   const message=!s.calibrationSupported?"UI 固件不支持起音校准，请更新固件后上传；录音功能仍可使用。":
@@ -100,9 +100,9 @@
  }
  function disconnected(message){
   state.linkConnected=false;state.client?.close();state.client=null;state.status=null;state.handshakePromise=null;state.helloPayload=null;
-  $("calibrationStatus").textContent="蓝牙断开；下次连接后请重新在 UI 板校准。";
+  $("calibrationStatus").textContent=`${state.transport}连接断开；下次连接后请重新在 UI 板校准。`;
   state.baud=null;state.recordInfo=null;state.recordCapabilities=false;
-  badge("gatewayStatus","蓝牙／板卡未连接");$("downloadButton").disabled=true;log(message);controls();
+  badge("gatewayStatus","通信模块／板卡未连接");$("downloadButton").disabled=true;log(message);controls();
   if(state.saveWait){state.saveWait.reject(Error(message));state.saveWait=null;}
   if(state.writeWait){state.writeWait.reject(Error(message));state.writeWait=null;}
  }
@@ -111,7 +111,7 @@
   if(state.handshakePromise)return state.handshakePromise;
   if(manual)state.handshakeAttempts=0;
   const c=state.client;state.handshakeAttempts++;
-  badge("gatewayStatus",`蓝牙已连，等待板卡 HELLO（${state.handshakeAttempts}/3）…`);
+  badge("gatewayStatus",`${state.transport}已连，等待板卡 HELLO（${state.handshakeAttempts}/3）…`);
   state.handshakePromise=(async()=>{
    try {
     // Reuse the connection nonce across retries: a lost ACK must not erase a
@@ -125,7 +125,7 @@
    }catch(e){
     if(state.client!==c || !state.linkConnected)return;
     const rejected=c.lastStatus?.request===T.HELLO && c.lastStatus.code;
-    badge("gatewayStatus",rejected?"板卡已应答／握手被拒绝":state.link.rxBytes?"蓝牙已连／返回数据未通过协议校验":"蓝牙已连／未收到板卡返回");
+    badge("gatewayStatus",rejected?"板卡已应答／握手被拒绝":state.link.rxBytes?`${state.transport}已连／返回数据未通过协议校验`:`${state.transport}已连／未收到板卡返回`);
     log(`${e.message}。${state.handshakeAttempts<3?"将自动重试；也可点“重试板卡应答”。":"自动重试已暂停，可点“重试板卡应答”继续。"}${state.link.rxBytes?"已有返回字节，请查看下方收发诊断。":"RX=0：尚不能确定是接线、模块串口波特率还是板端接收问题。"}`);
    }finally{if(state.client===c){state.handshakePromise=null;controls();}}
   })();
@@ -138,9 +138,9 @@
   const c=new P.Client(send,{onStatus:s=>{if(state.client===c && (s.request!==T.HELLO || !s.code))refresh(s);},onTrace:event=>{if(state.client===c)linkTrace(event);}});
   state.client=c;controls();return handshake();
  }
- window.onNativeConnected=address=>{state.device=String(address||"");return attach(bytes=>native.sendBase64(bytes64(bytes)));};
+ window.onNativeConnected=address=>{state.device=String(address||"");state.transport=state.device.startsWith("wifi://")?"Wi-Fi TCP":"蓝牙";return attach(bytes=>native.sendBase64(bytes64(bytes)));};
  window.onNativeBytes=data=>state.client?.receive(decode64(data));
- window.onNativeDisconnected=message=>disconnected(message||"蓝牙连接已断开");
+ window.onNativeDisconnected=message=>disconnected(message||"通信连接已断开");
  window.onNativeError=message=>log(message);
  window.onNativeSaveReady=()=>{state.saveWait?.resolve();state.saveWait=null;};
  window.onNativeWrite=(ok,message)=>{const p=state.writeWait;state.writeWait=null;if(p)(ok?p.resolve():p.reject(Error(message)));};
@@ -151,8 +151,8 @@
  };
  async function connect(){
   if(state.working)throw Error("请先等待当前操作结束");
-  if(native){if(state.linkConnected && !state.status)return handshake(true);native.chooseDevice();return;}
-  if(location.protocol==="file:")throw Error("此离线网页可解析 MIDI；安卓请安装配套 APK 直连 HC-07");
+  if(native){if(state.linkConnected && !state.status)return handshake(true);if(native.chooseConnection)native.chooseConnection();else native.chooseDevice();return;}
+  if(location.protocol==="file:")throw Error("此离线网页可解析 MIDI；安卓请安装配套 APK 连接蓝牙或ESP-01S Wi-Fi桥");
   state.socket?.close();
   const socket=new WebSocket(`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`);
   state.socket=socket;socket.binaryType="arraybuffer";
@@ -375,6 +375,6 @@
   if(state.status)state.client.request(T.STATUS).catch(e=>log(e.message));
   else if(state.handshakeAttempts<3)return handshake();
  },2500);
- piano();controls();log(native?"先在安卓系统配对模块，再点连接，选择已配对的设备；连接后在 UI 板校准最左键。":"此网页可离线解析 MIDI；手机直连 HC-07 需要配套安卓 APK。");
+ piano();controls();log(native?"可选蓝牙串口或ESP-01S Wi-Fi TCP；连接后在 UI 板校准最左键。Wi-Fi方式需先连接ESP热点。":"此网页可离线解析 MIDI；蓝牙或ESP-01S直连需配套安卓 APK。");
  if(durable)loadDownloads().catch(e=>log(e.message));
 })();
