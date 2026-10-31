@@ -126,6 +126,7 @@ module lfo_sysex_tx #(
     wire [6:0] mode_bank = scan - 7'd21;   // 0..2 when scan is 21..23
     wire [6:0] sync_bank = scan - 7'd24;   // 0..2 when scan is 24..26
     wire [6:0] route_idx = scan - 7'd27;   // 0..52 when scan is 27..79
+    integer route_select;
     always @(*) begin
         entry_id    = ID_POINT0 + scan[6:0];
         entry_value = 16'd0;
@@ -133,8 +134,13 @@ module lfo_sysex_tx #(
             entry_id    = ID_ROUTE0 + route_idx;
             // 14-bit payload layout: source occupies value[9:8], while the
             // signed depth keeps its raw two's-complement pattern in [7:0].
-            entry_value = {6'd0, sh_sources[route_idx*2 +: 2],
-                           sh_depths [route_idx*8 +: 8]};
+            // Elaborate constant slices: Gowin 1.9.11.03 produced zero route
+            // payloads for the variable-index slices despite valid shadows.
+            // Keep the RTL/post-PnR UART comparison in test_lfo_route_gate.py.
+            for (route_select = 0; route_select < 53; route_select = route_select + 1)
+                if (route_idx == route_select[6:0])
+                    entry_value = {6'd0, sh_sources[route_select*2 +: 2],
+                                   sh_depths[route_select*8 +: 8]};
         end else if (scan >= 7'd24) begin
             entry_id    = ID_SYNC;
             entry_value = 16'd4 + {14'd0, sync_bank[1:0]}; // bank | 0x0004 restart

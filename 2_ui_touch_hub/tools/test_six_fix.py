@@ -25,7 +25,16 @@ def main():
     sources = [out/'src'/p.relative_to(ROOT) for p in sources]
     print(out, flush=True)
     def run(label, args):
-        r = subprocess.run(list(map(str,args)), cwd=out, capture_output=True, text=True, errors='replace', timeout=240)
+        try:
+            r = subprocess.run(list(map(str,args)), cwd=out, capture_output=True, text=True, errors='replace', timeout=240)
+        except subprocess.TimeoutExpired as error:
+            def decoded(value):
+                return value.decode(errors='replace') if isinstance(value, bytes) else (value or '')
+            log = decoded(error.stdout) + decoded(error.stderr)
+            (out/f'{label}.log').write_text(log + '\nTIMEOUT: wall-clock limit 240 seconds\n')
+            (out/'failure.json').write_text(json.dumps({'passed': False, 'stage': label,
+                'reason': 'wall_clock_timeout', 'timeout_seconds': 240}, indent=2))
+            raise RuntimeError(f'{label} timed out; partial output preserved: {out}') from error
         log = r.stdout+r.stderr
         (out/f'{label}.log').write_text(log)
         if r.returncode or any(s in log for s in ('** Error:', '** Fatal:', 'FATAL:', 'FAIL:')):

@@ -179,8 +179,11 @@ module tb_lfo_sysex_tx;
         exp_once[0] = 0; exp_once[1] = 1; exp_once[2] = 0;
         cfg_sources = 106'd0; cfg_depths = 424'd0;
         for (k = 0; k < 53; k = k + 1) begin
-            exp_src[k] = 2'd0; exp_dep[k] = 8'd64;
-            cfg_depths[k*8 +: 8] = 8'd64;
+            // Distinct depths across all 53 targets catch shifted/truncated
+            // selectors; cycle all four sources and both depth sign ranges.
+            exp_src[k] = k % 4; exp_dep[k] = (k * 37 + 11) % 256;
+            cfg_sources[k*2 +: 2] = exp_src[k];
+            cfg_depths[k*8 +: 8] = exp_dep[k];
         end
         cfg_sources[10*2 +: 2] = 2'd1;
         exp_src[10] = 2'd1;
