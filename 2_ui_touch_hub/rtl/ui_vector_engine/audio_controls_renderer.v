@@ -106,9 +106,10 @@ module audio_controls_renderer(
   wire [6:0] value=read_value(id,extra_values,legacy_values);
   always @(posedge clk)begin
    cell_values[g]<=value;cell_labels[g]<=caption(id);cell_sources[g]<=fx_source(id,sources);
-   // Decimal conversion stays on the control plane, before raster selection.
-   cell_numbers[g]<=number_line(value);
-   bar_width[g]<=({8'd0,value}*15'd154)>>7;
+   // Split page/id/value selection from decimal conversion and bar scaling.
+   // Only control display settling gains a cycle; raster latency is unchanged.
+   cell_numbers[g]<=number_line(cell_values[g]);
+   bar_width[g]<=({8'd0,cell_values[g]}*15'd154)>>7;
   end
  end endgenerate
  reg [13:0] x0,y0;
@@ -202,8 +203,8 @@ module audio_controls_renderer(
  reg hit2,valid2;reg [23:0] bg2;reg [5:0] ch2;reg [2:0] rx2;reg [3:0] ry2;
  reg hit3;reg [23:0] bg3;reg [1:0] coverage3;
  always @(posedge clk)begin
-  hit1<=hit;valid1<=text_hit && tx<192;bg1<=bg;line1<=line;tx1<=tx;ty1<=ty;
-  hit2<=hit1;valid2<=valid1;bg2<=bg1;ch2<=char_at(line1,tx1[7:3]);rx2<=tx1[2:0];ry2<=ty1[3:0];
+  hit1<=hit;valid1<=text_hit;bg1<=bg;line1<=line;tx1<=tx;ty1<=ty;
+  hit2<=hit1;valid2<=valid1 && tx1<192;bg2<=bg1;ch2<=char_at(line1,tx1[7:3]);rx2<=tx1[2:0];ry2<=ty1[3:0];
   hit3<=hit2;bg3<=bg2;coverage3<=valid2 ? get_font_7x10(ch2,rx2,ry2) : 0;
  end
  always @(posedge clk or negedge rst_n)begin

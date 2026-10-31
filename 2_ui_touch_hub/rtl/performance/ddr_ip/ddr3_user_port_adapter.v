@@ -81,14 +81,22 @@ module ddr3_user_port_adapter #(
             rsp_valid <= 1'b0;
             rsp_error <= 1'b0;
 
+            // Sample payload on every idle edge, including acceptance, then
+            // hold it throughout the transaction. Keep the wide load enable
+            // off accept_request: ready/valid must not drive all 317 payload
+            // registers as well as both FSMs. Idle samples without req_valid
+            // are never exposed as commands.
+            if (!busy) begin
+                address_latched    <= req_addr;
+                write_data_latched <= req_wdata;
+                write_mask_latched <= req_wmask;
+            end
+
             if (accept_request) begin
                 busy               <= 1'b1;
                 request_is_write   <= req_write;
                 command_pending    <= 1'b1;
                 write_data_pending <= req_write;
-                address_latched    <= req_addr;
-                write_data_latched <= req_wdata;
-                write_mask_latched <= req_wmask;
             end else begin
                 if (accept_command)
                     command_pending <= 1'b0;
