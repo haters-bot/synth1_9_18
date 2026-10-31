@@ -59,5 +59,61 @@
     return { format, division, duration_us, events };
   }
 
-  if(typeof module !== "undefined" && module.exports) module.exports = {parseMidi}; else root.PerformanceMidi = {parseMidi};
+  // Keep the original song immutable. Pitch adaptation runs only on the upload
+  // copy, against the range acknowledged by the FPGA.
+  function adaptToRange(song, base, count) {
+    const last = base + count - 1;
+    if (!Number.isInteger(base) || !Number.isInteger(count) || base < 0 || last > 127 || count < 12)
+      throw new Error("板卡音域无效，至少需要一个完整八度");
+    if (!song.events.length) throw new Error("曲谱没有 Note 事件");
+    let low = 127, high = 0;
+    const sounding = song.events.filter(e => e.on && e.velocity > 0);
+    if (!sounding.length) throw new Error("曲谱没有 Note On 事件");
+    for (const e of sounding) { low = Math.min(low, e.note); high = Math.max(high, e.note); }
+    const width = high - low + 1;
+    if (width > count) throw new Error(`曲谱音域 MIDI ${low}–${high}，含两端共${width}键，超过本次校准的${count}键；不能整体移调容纳，已禁止传输。请另行导出音域较小的编曲`);
+    let shift = 0, strategy = "original";
+    if (low < base || high > last) {
+      const minShift = base - low, maxShift = last - high;
+      if (minShift <= maxShift) {
+        // Prefer whole octaves: the key signature and intervals stay intact.
+        const firstOct = Math.ceil(minShift / 12), lastOct = Math.floor(maxShift / 12);
+        shift = firstOct <= lastOct ? Math.max(firstOct, Math.min(0, lastOct)) * 12 :
+          (minShift > 0 ? minShift : maxShift);
+        strategy = "transpose";
+      }
+    }
+    const mapNote = note => note + shift;
+    // Tracks may share a physical key. Keep it down until all owners release it.
+    const active = new Map(), held = new Map(), events = [];
+    let foldedOn = 0, mergedOn = 0, orphanOff = 0, closedNotes = 0;
+    const ordered = song.events.slice().sort((a,b) => a.time_us-b.time_us || Number(a.on)-Number(b.on));
+    for (const e of ordered) {
+      const note = mapNote(e.note), key = `${e.track || 0}:${e.channel || 1}:${e.note}`;
+      const refs = active.get(note) || 0, own = held.get(key) || 0;
+      if (e.on) {
+        if (note !== e.note + shift) foldedOn++;
+        held.set(key, own + 1); active.set(note, refs + 1);
+        if (!refs) events.push({...e, note}); else mergedOn++;
+      } else if (own) {
+        held.set(key, own - 1); active.set(note, refs - 1);
+        if (refs === 1) events.push({...e, note});
+      } else orphanOff++;
+    }
+    for (const [note, refs] of active) if (refs) {
+      events.push({time_us:song.duration_us, note, velocity:0, on:false}); closedNotes++;
+    }
+    let mappedLow = 127, mappedHigh = 0;
+    for (const e of events) { mappedLow = Math.min(mappedLow, e.note); mappedHigh = Math.max(mappedHigh, e.note); }
+    const pitchText = strategy === "original" ? "保持原调" :
+      `整曲${shift > 0 ? "升" : "降"}${Math.abs(shift)}个半音`;
+    const details = [pitchText, `MIDI ${low}–${high} → ${mappedLow}–${mappedHigh}`];
+    if (mergedOn) details.push(`合并${mergedOn}个重叠同键音`);
+    if (orphanOff) details.push(`忽略${orphanOff}个无对应按下的松键`);
+    if (closedNotes) details.push(`末尾补齐${closedNotes}个松键`);
+    return {...song, events, adaptation:{strategy, shift, foldedOn, mergedOn, orphanOff, closedNotes,
+      originalLow:low, originalHigh:high, mappedLow, mappedHigh, summary:details.join("；")}};
+  }
+
+  if(typeof module !== "undefined" && module.exports) module.exports = {parseMidi, adaptToRange}; else root.PerformanceMidi = {parseMidi, adaptToRange};
 })(typeof globalThis !== "undefined" ? globalThis : this);

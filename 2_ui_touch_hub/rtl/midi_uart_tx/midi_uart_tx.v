@@ -50,10 +50,46 @@ module midi_uart_tx #(
     // --------------------------------------------------------------------------
     // 1. UI parameter ID to the audio-engine CC map (protocol v1)
     // --------------------------------------------------------------------------
+    `include "audio_extra_controls.vh"
     function [6:0] map_id_to_cc;
         input [7:0] id;
         begin
             case (id)
+                `PARAM_ID_OSCA_WARP_MODE: map_id_to_cc=7'd38;
+                `PARAM_ID_OSCB_WARP_MODE: map_id_to_cc=7'd40;
+                `PARAM_ID_OSCA_WT_INDEX: map_id_to_cc=7'd49;
+                `PARAM_ID_OSCB_WT_INDEX: map_id_to_cc=7'd50;
+                `PARAM_ID_EFFECT_MODE: map_id_to_cc=7'd51;
+                `PARAM_ID_DIST_ENABLE: map_id_to_cc=7'd58;
+                `PARAM_ID_DIST_TYPE: map_id_to_cc=7'd59;
+                `PARAM_ID_DIST_DRIVE: map_id_to_cc=7'd60;
+                `PARAM_ID_DIST_TONE: map_id_to_cc=7'd61;
+                `PARAM_ID_DIST_MIX: map_id_to_cc=7'd62;
+                `PARAM_ID_CHORUS_ENABLE: map_id_to_cc=7'd63;
+                `PARAM_ID_CHORUS_RATE: map_id_to_cc=7'd64;
+                `PARAM_ID_CHORUS_DEPTH: map_id_to_cc=7'd65;
+                `PARAM_ID_CHORUS_DELAY: map_id_to_cc=7'd66;
+                `PARAM_ID_CHORUS_FEEDBACK: map_id_to_cc=7'd67;
+                `PARAM_ID_CHORUS_MIX: map_id_to_cc=7'd68;
+                `PARAM_ID_PHASER_ENABLE: map_id_to_cc=7'd69;
+                `PARAM_ID_PHASER_RATE: map_id_to_cc=7'd70;
+                `PARAM_ID_PHASER_DEPTH: map_id_to_cc=7'd71;
+                `PARAM_ID_PHASER_CENTER: map_id_to_cc=7'd72;
+                `PARAM_ID_PHASER_FEEDBACK: map_id_to_cc=7'd73;
+                `PARAM_ID_PHASER_MIX: map_id_to_cc=7'd74;
+                `PARAM_ID_COMP_ENABLE: map_id_to_cc=7'd75;
+                `PARAM_ID_COMP_THRESH: map_id_to_cc=7'd76;
+                `PARAM_ID_COMP_RATIO: map_id_to_cc=7'd77;
+                `PARAM_ID_COMP_ATTACK: map_id_to_cc=7'd78;
+                `PARAM_ID_COMP_RELEASE: map_id_to_cc=7'd79;
+                `PARAM_ID_COMP_MAKEUP: map_id_to_cc=7'd80;
+                `PARAM_ID_COMP_MIX: map_id_to_cc=7'd81;
+                `PARAM_ID_VIB_ENABLE: map_id_to_cc=7'd82;
+                `PARAM_ID_VIB_RATE: map_id_to_cc=7'd83;
+                `PARAM_ID_VIB_DEPTH: map_id_to_cc=7'd84;
+                `PARAM_ID_PORTA_ENABLE: map_id_to_cc=7'd85;
+                `PARAM_ID_PORTA_TIME: map_id_to_cc=7'd86;
+
                 `PARAM_ID_OSCA_WT_POS:  map_id_to_cc = 7'd20; // OSC A WT Position
                 `PARAM_ID_OSCB_WT_POS:  map_id_to_cc = 7'd28; // OSC B WT Position
                 `PARAM_ID_OSCA_WAVE:    map_id_to_cc = 7'd21; // OSC A waveform
@@ -104,6 +140,41 @@ module midi_uart_tx #(
         input [7:0] id;
         begin
             case (id)
+                `PARAM_ID_OSCA_WARP_MODE,
+                `PARAM_ID_OSCB_WARP_MODE,
+                `PARAM_ID_OSCA_WT_INDEX,
+                `PARAM_ID_OSCB_WT_INDEX,
+                `PARAM_ID_EFFECT_MODE,
+                `PARAM_ID_DIST_ENABLE,
+                `PARAM_ID_DIST_TYPE,
+                `PARAM_ID_DIST_DRIVE,
+                `PARAM_ID_DIST_TONE,
+                `PARAM_ID_DIST_MIX,
+                `PARAM_ID_CHORUS_ENABLE,
+                `PARAM_ID_CHORUS_RATE,
+                `PARAM_ID_CHORUS_DEPTH,
+                `PARAM_ID_CHORUS_DELAY,
+                `PARAM_ID_CHORUS_FEEDBACK,
+                `PARAM_ID_CHORUS_MIX,
+                `PARAM_ID_PHASER_ENABLE,
+                `PARAM_ID_PHASER_RATE,
+                `PARAM_ID_PHASER_DEPTH,
+                `PARAM_ID_PHASER_CENTER,
+                `PARAM_ID_PHASER_FEEDBACK,
+                `PARAM_ID_PHASER_MIX,
+                `PARAM_ID_COMP_ENABLE,
+                `PARAM_ID_COMP_THRESH,
+                `PARAM_ID_COMP_RATIO,
+                `PARAM_ID_COMP_ATTACK,
+                `PARAM_ID_COMP_RELEASE,
+                `PARAM_ID_COMP_MAKEUP,
+                `PARAM_ID_COMP_MIX,
+                `PARAM_ID_VIB_ENABLE,
+                `PARAM_ID_VIB_RATE,
+                `PARAM_ID_VIB_DEPTH,
+                `PARAM_ID_PORTA_ENABLE,
+                `PARAM_ID_PORTA_TIME: cc_id_supported=1;
+
                 `PARAM_ID_OSCA_PHASE,
                 `PARAM_ID_OSCA_RAND,
                 `PARAM_ID_OSCB_PHASE,
@@ -144,11 +215,13 @@ module midi_uart_tx #(
             // UI waveform enum: 0=sine, 1=saw, 2=square, 3=triangle.
             // Audio CC uses the center of each documented value band.
             if ((id == `PARAM_ID_OSCA_WAVE) || (id == `PARAM_ID_OSCB_WAVE)) begin
-                case (value[1:0])
+                case (value)
                     2'd0: map_id_value = 7'd0;
                     2'd1: map_id_value = 7'd96;
                     2'd2: map_id_value = 7'd64;
-                    default: map_id_value = 7'd32;
+                    7'd3: map_id_value = 7'd32;
+                    7'd4: map_id_value = 7'd127; // SD/DDR bank (Acid fallback in audio)
+                    default: map_id_value = 7'd0;
                 endcase
             end else begin
                 map_id_value = value;

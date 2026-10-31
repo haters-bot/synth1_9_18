@@ -1,5 +1,7 @@
 # 手机演奏页（2026-10-30 安卓直连版）
 
+> **2026-10-31当前规则（覆盖下文临时默认起音/旧协议说明）：** App0.2.4/code6每次连接先HELLO nonce；在UI演奏页点击CALIBRATE、待LEFTKEY后按实体最左键，F15捕获0x29/0x35/0x41/0x4D。板端回报校准OK、32键范围和epoch后才能上传。App保留原MIDI，对上传副本整体移调：原调可用则保留，否则优先八度再整体半音；最高−最低＋1≤32允许，>32警告且拒传，不折八度/丢音/截断。新生产协议STATUS26、BEGIN8携带epoch，必须配套新UI固件；旧板不能仅靠安装APK启用校准。音频Note/CC/LFO协议和接线不变。19颗白键灯亮、最后5灯灭；改八度后重新校准/传曲。详见 `doc/MIDI_RANGE_ADAPTATION_2026-10-31.md`、`CODEX_HANDOFF.md` 顶部。此轮源码/仿真/APK不等于已经综合或上板。
+
 **当前入口**：`index.html`加载`protocol.js`、`midi.js`、`phone_app.js`；Android本地壳通过RFCOMM连接已配对HC-07，使用板卡真实ACK、MIDI完整性校验和I²S录音8k WAV分块下载。模块RXD接F14、TXD接F16、共地。灯带DIN为F13，C14仅调试；不是旧C14灯带方案。
 
 完整协议／供电边界／上板验收：`doc/HC07_PHONE_PROTOCOL_AND_ACCEPTANCE_2026-10-30.md`。APK构建：`python tools/build_phone_apk.py`，输出唯一`impl/phone_apk_*/FPGA-Performance.apk`。MIDI容量16384，32键音域从板卡状态获取；默认最低音60临时，需实体确认。不静默裁剪曲谱。

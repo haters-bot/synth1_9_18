@@ -34,14 +34,18 @@
     }
   }
   function status(data) {
-    if(data.length!==22)throw Error("板卡状态帧长度错误");
+    if(data.length!==22 && data.length!==26)throw Error("板卡状态帧长度错误");
     const v=new DataView(data.buffer,data.byteOffset,data.byteLength);
     return {code:data[0],request:data[1],flags:data[2],recordStatus:data[3],storedFrames:v.getUint32(4,true),
       events:v.getUint16(8,true),baseNote:data[10],keyCount:data[11],sampleRate:v.getUint32(12,true),
       generation:v.getUint32(16,true),maxEvents:v.getUint16(20,true),
-      recording:!!(data[2]&1),busy:!!(data[2]&2),backend:!!(data[2]&4),loaded:!!(data[2]&8),fast:!!(data[2]&16)};
+      recording:!!(data[2]&1),busy:!!(data[2]&2),backend:!!(data[2]&4),loaded:!!(data[2]&8),fast:!!(data[2]&16),
+      calibrationSupported:data.length===26 && data[22]===1,
+      calibrationState:data.length===26?data[23]:0,
+      calibrationEpoch:data.length===26?v.getUint16(24,true):0,
+      calibrated:data.length===26 && data[22]===1 && data[23]===2 && !!(data[2]&128)};
   }
-  const errors={1:"格式或音域错误",2:"板卡忙或音源／DDR未就绪",3:"曲谱不完整或调度拒绝",4:"录音范围无效",5:"DDR读取错误",6:"板卡处理超时"};
+  const errors={1:"格式或音域错误",2:"板卡忙或音源／DDR未就绪",3:"曲谱不完整或调度拒绝",4:"录音范围无效",5:"DDR读取错误",6:"板卡处理超时",7:"请在 UI 板重新校准最左键后上传，校准状态已改变"};
   class Client {
     constructor(send, options={}) {this.send=send;this.decoder=new Decoder();this.sequence=0;this.tail=Promise.resolve();this.pending=null;
       this.timeout=options.timeout||3500;this.retryLimit=options.retries||3;this.onStatus=options.onStatus||(()=>{});this.lastStatus=null;this.closed=false;}

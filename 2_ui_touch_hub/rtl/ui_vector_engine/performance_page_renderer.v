@@ -2,7 +2,8 @@
 // independent semitone columns; key pitch class is based on BASE_NOTE.
 module performance_page_renderer #(
     parameter integer KEY_COUNT = 32,
-    parameter integer BASE_NOTE = 29
+    parameter integer BASE_NOTE = 7'h29,
+    parameter CALIBRATION_ENABLE=0
 )(
     input  wire [13:0] in_x,
     input  wire [13:0] in_y,
@@ -13,6 +14,7 @@ module performance_page_renderer #(
     input  wire [1:0]  mode,
   input  wire        song_paused,
     input  wire        gateway_up,
+    input wire [2:0] calibration_state,
     input  wire        recording,
     input  wire [3:0]  record_status,
     input  wire [5:0]  next_key,
@@ -82,6 +84,8 @@ module performance_page_renderer #(
             end
             if (in_x >= 14'd840 && in_x < 14'd1000 && in_y >= 14'd140 && in_y < 14'd160)
                 out_rgb = gateway_up ? 24'h2C8C72 : 24'h35495F;
+            if(CALIBRATION_ENABLE && in_x>=840 && in_x<1000 && in_y>=136 && in_y<168)
+                out_rgb=calibration_state==2 ? 24'h246B68 : calibration_state==3 ? 24'hA7464B : 24'h8A6737;
             if (in_x >= 14'd1010 && in_x < 14'd1170 && in_y >= 14'd136 && in_y < 14'd168)
                 out_rgb = record_status >= 4'd6 ? 24'hA7464B :
                           record_status == 4'd2 ? 24'hA7464B :

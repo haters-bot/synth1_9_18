@@ -23,6 +23,32 @@ function [5:0] mode_caption;
   endcase
  end
 endfunction
+function [5:0] calibration_caption;
+ input integer pos;
+ begin case(pos)
+  0:calibration_caption=`CH_C;1:calibration_caption=`CH_A;2:calibration_caption=`CH_L;
+  3:calibration_caption=`CH_I;4:calibration_caption=`CH_B;5:calibration_caption=`CH_R;
+  6:calibration_caption=`CH_A;7:calibration_caption=`CH_T;8:calibration_caption=`CH_E;
+  default:calibration_caption=`CH_SPACE;
+ endcase end
+endfunction
+function [5:0] calibration_status_caption;
+ input [2:0] state;input [6:0] base;input integer pos;
+ reg [55:0] label;reg [7:0] letter;
+ reg [3:0] hex_digit;
+ begin
+  case(state)
+   1:label="LEFTKEY";2:label="OK 0X00";3:label="RETRY  ";4:label="WAIT   ";default:label="NEEDCAL";
+  endcase
+  letter=label>>(48-pos*8);
+  calibration_status_caption=letter>=65 && letter<=90 ? letter-64 :
+      letter>=48 && letter<=57 ? `CH_0+letter-48 : `CH_SPACE;
+  if(state==2 && pos>=5)begin
+   hex_digit=pos==5 ? {1'b0,base[6:4]} : base[3:0];
+   calibration_status_caption=hex_digit<10 ? `CH_0+hex_digit : `CH_A+hex_digit-10;
+  end
+ end
+endfunction
 wire [63:0] shortcut_hits;
 wire [14:0] shortcut_tree[1:127];
 genvar shortcut_tile,shortcut_column,shortcut_mode,shortcut_cell,shortcut_node;
@@ -55,9 +81,17 @@ generate
     {mode_caption(MODE,CELL),1'b0,dx[3:1],dy[5:1]};
   end
  end
- for(shortcut_node=48;shortcut_node<64;shortcut_node=shortcut_node+1)begin: shortcut_unused
-  assign shortcut_hits[shortcut_node]=1'b0;
-  assign shortcut_tree[64+shortcut_node]=15'd0;
+ for(shortcut_node=48;shortcut_node<64;shortcut_node=shortcut_node+1)begin: shortcut_calibration
+  localparam integer CELL=shortcut_node<57 ? shortcut_node-48 : shortcut_node-57;
+  localparam [13:0] X=shortcut_node<57 ? 856+CELL*14 : 670+CELL*14;
+  localparam [13:0] Y=shortcut_node<57 ? 142 : 100;
+  wire [13:0] dx=in_x-X,dy=in_y-Y;
+  wire [5:0] ch=shortcut_node<57 ? calibration_caption(CELL) :
+     calibration_status_caption(performance_calibration_state,performance_base_note,CELL);
+  assign shortcut_hits[shortcut_node]=PERFORMANCE_CALIBRATION_ENABLE && view==2 &&
+      in_x>=X && in_x<X+14 && in_y>=Y && in_y<Y+20;
+  assign shortcut_tree[64+shortcut_node]={15{shortcut_hits[shortcut_node]}} &
+      {ch,1'b0,dx[3:1],dy[5:1]};
  end
  for(shortcut_node=1;shortcut_node<64;shortcut_node=shortcut_node+1)begin: shortcut_merge
   assign shortcut_tree[shortcut_node]=shortcut_tree[shortcut_node*2]|shortcut_tree[shortcut_node*2+1];

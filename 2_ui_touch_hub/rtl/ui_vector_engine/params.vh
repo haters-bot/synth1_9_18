@@ -53,7 +53,7 @@
 `define PARAM_ID_OSCA_BLEND   8'h15
 `define PARAM_ID_OSCA_PHASE   8'h16
 `define PARAM_ID_OSCA_WT_POS  8'h17 // CC20
-`define PARAM_ID_OSCA_WARP    8'h18 // CC21
+`define PARAM_ID_OSCA_WARP    8'h18 // CC39 Amount (mode uses separate internal ID)
 `define PARAM_ID_OSCA_PAN     8'h19 // CC91: OSC A pan
 `define PARAM_ID_OSCA_VOL     8'h1A
 `define PARAM_ID_OSCA_RAND    8'h1B
@@ -88,11 +88,11 @@
 `define PARAM_ID_FLT_KEYTRACK 8'h3A
 
 // Envelope 1 (ADSR)
-`define PARAM_ID_ENV1_ATTACK  8'h40 // CC73
+`define PARAM_ID_ENV1_ATTACK  8'h40 // CC24
 `define PARAM_ID_ENV1_HOLD    8'h41
-`define PARAM_ID_ENV1_DECAY   8'h42 // CC75
-`define PARAM_ID_ENV1_SUSTAIN 8'h43 // CC76
-`define PARAM_ID_ENV1_RELEASE 8'h44 // CC72
+`define PARAM_ID_ENV1_DECAY   8'h42 // CC25
+`define PARAM_ID_ENV1_SUSTAIN 8'h43 // CC26
+`define PARAM_ID_ENV1_RELEASE 8'h44 // CC27
 `define PARAM_ID_ENV2_ATTACK  8'h58 // CC32
 `define PARAM_ID_ENV2_HOLD    8'h59 // local only
 `define PARAM_ID_ENV2_DECAY   8'h5A // CC33
@@ -118,6 +118,43 @@
 `define PARAM_ID_SLOT4_BYPASS 8'h57
 
 // ------------------------------------------------------------------------------
+// BEGIN AUDIO EXTENSION IDS
+`define PARAM_ID_OSCA_WARP_MODE       8'hA0 // CC38
+`define PARAM_ID_OSCB_WARP_MODE       8'hA1 // CC40
+`define PARAM_ID_OSCA_WT_INDEX        8'hA2 // CC49
+`define PARAM_ID_OSCB_WT_INDEX        8'hA3 // CC50
+`define PARAM_ID_EFFECT_MODE          8'hA4 // CC51
+`define PARAM_ID_DIST_ENABLE          8'hA5 // CC58
+`define PARAM_ID_DIST_TYPE            8'hA6 // CC59
+`define PARAM_ID_DIST_DRIVE           8'hA7 // CC60
+`define PARAM_ID_DIST_TONE            8'hA8 // CC61
+`define PARAM_ID_DIST_MIX             8'hA9 // CC62
+`define PARAM_ID_CHORUS_ENABLE        8'hAA // CC63
+`define PARAM_ID_CHORUS_RATE          8'hAB // CC64
+`define PARAM_ID_CHORUS_DEPTH         8'hAC // CC65
+`define PARAM_ID_CHORUS_DELAY         8'hAD // CC66
+`define PARAM_ID_CHORUS_FEEDBACK      8'hAE // CC67
+`define PARAM_ID_CHORUS_MIX           8'hAF // CC68
+`define PARAM_ID_PHASER_ENABLE        8'hB0 // CC69
+`define PARAM_ID_PHASER_RATE          8'hB1 // CC70
+`define PARAM_ID_PHASER_DEPTH         8'hB2 // CC71
+`define PARAM_ID_PHASER_CENTER        8'hB3 // CC72
+`define PARAM_ID_PHASER_FEEDBACK      8'hB4 // CC73
+`define PARAM_ID_PHASER_MIX           8'hB5 // CC74
+`define PARAM_ID_COMP_ENABLE          8'hB6 // CC75
+`define PARAM_ID_COMP_THRESH          8'hB7 // CC76
+`define PARAM_ID_COMP_RATIO           8'hB8 // CC77
+`define PARAM_ID_COMP_ATTACK          8'hB9 // CC78
+`define PARAM_ID_COMP_RELEASE         8'hBA // CC79
+`define PARAM_ID_COMP_MAKEUP          8'hBB // CC80
+`define PARAM_ID_COMP_MIX             8'hBC // CC81
+`define PARAM_ID_VIB_ENABLE           8'hBD // CC82
+`define PARAM_ID_VIB_RATE             8'hBE // CC83
+`define PARAM_ID_VIB_DEPTH            8'hBF // CC84
+`define PARAM_ID_PORTA_ENABLE         8'hC0 // CC85
+`define PARAM_ID_PORTA_TIME           8'hC1 // CC86
+// END AUDIO EXTENSION IDS
+
 // 3. Panel Bounding Boxes (1280x720 Canvas Coordinates)
 // ------------------------------------------------------------------------------
 // Header Bar

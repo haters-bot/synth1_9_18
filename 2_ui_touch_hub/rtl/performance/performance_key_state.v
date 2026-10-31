@@ -1,10 +1,13 @@
 // Maps scheduled MIDI events and local piano touches to key/guide masks.
 module performance_key_state #(
     parameter integer KEY_COUNT = 32,
-    parameter integer BASE_NOTE = 29
+    parameter integer BASE_NOTE = 7'h29,
+    parameter RUNTIME_BASE_ENABLE=0
 )(
     input  wire                    clk,
     input  wire                    rst_n,
+    input wire [6:0] base_note,
+    input wire clear_all,
     input  wire                    event_valid,
     input  wire                    event_on,
     input  wire [6:0]              event_note,
@@ -22,13 +25,14 @@ module performance_key_state #(
     reg [KEY_COUNT-1:0] scheduled_active;
     reg [KEY_COUNT-1:0] manual_active;
     reg [KEY_COUNT-1:0] remote_active;
+    wire [6:0] effective_base=RUNTIME_BASE_ENABLE ? base_note : BASE_NOTE;
 
     function integer note_index;
         input [6:0] note;
         integer index;
         begin
-            index = note - BASE_NOTE;
-            if ((note >= BASE_NOTE) && (index < KEY_COUNT))
+            index = note - effective_base;
+            if ((note >= effective_base) && (index < KEY_COUNT))
                 note_index = index;
             else
                 note_index = -1;
@@ -41,6 +45,8 @@ module performance_key_state #(
             scheduled_active <= {KEY_COUNT{1'b0}};
             manual_active    <= {KEY_COUNT{1'b0}};
             remote_active    <= {KEY_COUNT{1'b0}};
+        end else if(clear_all===1'b1)begin
+            scheduled_active<=0;manual_active<=0;remote_active<=0;
         end else begin
             if (clear_scheduled) begin
                 scheduled_active <= {KEY_COUNT{1'b0}};

@@ -22,8 +22,8 @@ module osc_panel_renderer (
     // OSC Parameters
     input  wire        val_osca_power,
     input  wire        val_oscb_power,
-    input  wire [1:0]  val_osca_wave,
-    input  wire [1:0]  val_oscb_wave,
+    input  wire [2:0]  val_osca_wave,
+    input  wire [2:0]  val_oscb_wave,
     input  wire [6:0]  wt_pos_a,
     input  wire [6:0]  wt_pos_b,
 
@@ -42,7 +42,7 @@ module osc_panel_renderer (
     reg [8:0]  s0_phase_a;
     reg [8:0]  s0_phase_b;
     reg [6:0]  s0_wt_a, s0_wt_b;
-    reg [1:0]  s0_wave_a, s0_wave_b;
+    reg [2:0]  s0_wave_a, s0_wave_b;
     reg        s0_pwr_a, s0_pwr_b;
     reg [13:0] s0_x, s0_y;
 
@@ -116,7 +116,8 @@ module osc_panel_renderer (
             2'd0: chosen_off_a = morph_sine_a;
             2'd1: chosen_off_a = saw_off_a;
             2'd2: chosen_off_a = sq_off_a;
-            2'd3: chosen_off_a = tri_off_a;
+            3'd3: chosen_off_a = tri_off_a;
+            default: chosen_off_a=0;
         endcase
     end
 
@@ -139,7 +140,8 @@ module osc_panel_renderer (
             2'd0: chosen_off_b = morph_sine_b;
             2'd1: chosen_off_b = saw_off_b;
             2'd2: chosen_off_b = sq_off_b;
-            2'd3: chosen_off_b = tri_off_b;
+            3'd3: chosen_off_b = tri_off_b;
+            default: chosen_off_b=0;
         endcase
     end
     // Keep the historical signed arithmetic exactly: 6'sd46 is -18 and

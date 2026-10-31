@@ -480,6 +480,10 @@ module touch_event_router (
         for(region_index=1;region_index<=11;region_index=region_index+1)
             decoded_regions=decoded_regions|region_value[region_index];
         {comb_is_knob,comb_knob_id,comb_is_btn,comb_btn_id,comb_btn_act}=decoded_regions;
+        // Reserve the oscillator footer for WARP menu / SD bank selectors.
+        if(s0_ty>=212 && s0_ty<236 && ((s0_tx>=40 && s0_tx<412)||(s0_tx>=456 && s0_tx<828)))begin
+            comb_is_knob=0;comb_knob_id=0;comb_is_btn=0;comb_btn_id=0;comb_btn_act=0;
+        end
     end
 
     always @(posedge clk or negedge rst_n) begin

@@ -1,11 +1,16 @@
 // Logical parameter adapter. External protocol/framing is intentionally separate.
 // Values are normalized 0..127; touch owns its captured parameter until release.
-module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
+module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000,parameter AUX_ENABLE=0)(
     input wire clk,rst_n,touch_valid,touch_down,
     input wire [13:0] touch_x,touch_y,
     input wire external_valid,
     input wire [7:0] external_id,
     input wire [6:0] external_value,
+    // Optional second writer for the new FX page. Independent SPI events must
+    // survive a simultaneous touch edit to a different parameter.
+    input wire aux_valid,aux_owner_valid,
+    input wire [7:0] aux_id,aux_owner_id,
+    input wire [6:0] aux_value,
     output wire [132:0] values,
     output reg [10:0] switches,
     output reg focus_valid,
@@ -27,6 +32,9 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
     reg [13:0] packet_x,packet_y;
     reg [7:0] packet_external_id;
     reg [6:0] packet_external_value;
+    reg packet_aux_valid,packet_owner_valid;
+    reg [7:0] packet_aux_id,packet_owner_id;
+    reg [6:0] packet_aux_value;
     reg [18:0] target_hits;
     reg [3:0] toggle_id;
     reg [7:0] target;
@@ -71,11 +79,15 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
         if(!rst_n) begin
             packet_valid<=0;packet_down<=0;packet_x<=0;packet_y<=0;toggle_id<=15;
             external_pending<=0;packet_external_id<=0;packet_external_value<=0;
+            packet_aux_valid<=0;packet_aux_id<=0;packet_aux_value<=0;
+            packet_owner_valid<=0;packet_owner_id<=0;
         end else begin
             packet_valid<=touch_valid;packet_down<=touch_down;
             packet_x<=touch_x;packet_y<=touch_y;toggle_id<=toggle_next;
             external_pending<=external_valid;packet_external_id<=external_id;
             packet_external_value<=external_value;
+            packet_aux_valid<=AUX_ENABLE && aux_valid;packet_aux_id<=aux_id;packet_aux_value<=aux_value;
+            packet_owner_valid<=AUX_ENABLE && aux_owner_valid;packet_owner_id<=aux_owner_id;
         end
     end
     always @(posedge clk or negedge rst_n) begin
@@ -90,6 +102,9 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
             if(watchdog<WATCHDOG_CYCLES) watchdog<=watchdog+1'b1;
             else begin finger<=0;drag<=0;end
             if(external_pending && packet_external_id>=8'h60 && packet_external_id<=8'h72 &&
+               !(packet_owner_valid && (packet_external_id==packet_owner_id ||
+                 (switches[4] && (packet_owner_id==8'h61 || packet_owner_id==8'h62) &&
+                  (packet_external_id==8'h61 || packet_external_id==8'h62)))) &&
                !(drag && (packet_external_id==8'h60+captured ||
                  (switches[4] && (captured==1 || captured==2) &&
                   (packet_external_id==8'h61 || packet_external_id==8'h62))))) begin
@@ -104,6 +119,12 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000)(
                 event_valid<=1;event_id<=packet_external_id;
                 event_value<=(packet_external_id==8'h87 || packet_external_id==8'h88) ?
                     (packet_external_value>=2 ? 7'd2 : packet_external_value) : packet_external_value!=0;
+            end
+            if(packet_aux_valid && packet_aux_id>=8'h60 && packet_aux_id<=8'h72)begin
+                params[packet_aux_id-8'h60]<=packet_aux_value;
+                if(switches[4] && packet_aux_id==8'h61)params[2]<=packet_aux_value;
+                if(switches[4] && packet_aux_id==8'h62)params[1]<=packet_aux_value;
+                event_valid<=1;event_id<=packet_aux_id;event_value<=packet_aux_value;
             end
             if(packet_valid) begin
                 watchdog<=0;

@@ -31,8 +31,8 @@ module button_vector_unit (
     input  wire        val_osca_power,
     input  wire        val_oscb_power,
     input  wire        val_flt_power,
-    input  wire [1:0]  val_osca_wave,
-    input  wire [1:0]  val_oscb_wave,
+    input  wire [2:0]  val_osca_wave,
+    input  wire [2:0]  val_oscb_wave,
     input  wire [3:0]  val_osca_oct,
     input  wire [4:0]  val_osca_semi,
     input  wire [6:0]  val_osca_fine,
@@ -425,11 +425,13 @@ module button_vector_unit (
     // parallel instead of selecting an origin from Y and then subtracting it
     // from X before another string/column mux in the same clock.
     function [47:0] wave_caption;
-        input [1:0] wave;
+        input [2:0] wave;
         begin case(wave)
             0:wave_caption={`CH_S,`CH_I,`CH_N,`CH_E,24'd0};
             1:wave_caption={`CH_S,`CH_A,`CH_W,30'd0};
             2:wave_caption={`CH_P,`CH_U,`CH_L,`CH_S,`CH_E,18'd0};
+            4:wave_caption={`CH_S,`CH_D,`CH_SPACE,`CH_B,`CH_A,`CH_N,`CH_K,`CH_SPACE};
+            default:wave_caption=0;
             3:wave_caption={`CH_T,`CH_R,`CH_I,`CH_A,`CH_N,`CH_G,`CH_L,`CH_E};
         endcase end
     endfunction

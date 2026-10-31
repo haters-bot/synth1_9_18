@@ -6,14 +6,18 @@ import json
 import shutil
 import subprocess
 import zipfile
+import argparse
 
 ROOT=Path(__file__).resolve().parents[1]
 
 
 def main():
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--output-root',type=Path,default=ROOT/'impl')
+    args=parser.parse_args()
     config=json.loads(Path("D:/tools/android_hc07/runtime_20261030/toolchain.json").read_text())
     jdk,platform,tools=(Path(config[key]) for key in ("jdk","platform","build_tools"))
-    out=ROOT/"impl"/("phone_apk_"+datetime.now().strftime("%Y%m%d_%H%M%S"));out.mkdir()
+    out=args.output_root/("phone_apk_"+datetime.now().strftime("%Y%m%d_%H%M%S_%f"));out.mkdir(parents=True)
     classes=out/"classes";classes.mkdir();dex=out/"dex";dex.mkdir()
     def run(command,name):
         result=subprocess.run([str(v) for v in command],cwd=out,capture_output=True,text=True,errors="replace",timeout=180)

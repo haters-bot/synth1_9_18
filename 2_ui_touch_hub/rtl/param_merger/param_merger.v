@@ -86,8 +86,8 @@ module param_merger (
     output reg         val_osca_power,
     output reg         val_oscb_power,
     output reg         val_flt_power,
-    output reg  [1:0]  val_osca_wave,
-    output reg  [1:0]  val_oscb_wave,
+    output reg  [2:0]  val_osca_wave,
+    output reg  [2:0]  val_oscb_wave,
     output reg  [3:0]  val_osca_oct,
     output reg  [4:0]  val_osca_semi,
     output reg  [6:0]  val_osca_fine,
@@ -209,7 +209,7 @@ module param_merger (
     assign static_cc_values[0+:7]=val_master_vol; // MASTER_VOL
     assign static_cc_values[7+:7]=val_flt_pan; // FLT_PAN
     assign static_cc_values[14+:7]=(val_osca_power ? 7'd127 : 7'd0); // OSCA_POWER
-    assign static_cc_values[21+:7]={5'd0,val_osca_wave}; // OSCA_WAVE
+    assign static_cc_values[21+:7]={4'd0,val_osca_wave}; // OSCA_WAVE
     assign static_cc_values[28+:7]=val_osca_unison; // OSCA_UNISON
     assign static_cc_values[35+:7]=val_osca_detune; // OSCA_DETUNE
     assign static_cc_values[42+:7]=val_osca_phase; // OSCA_PHASE
@@ -219,7 +219,7 @@ module param_merger (
     assign static_cc_values[70+:7]=val_osca_pan; // OSCA_PAN
     assign static_cc_values[77+:7]=val_osca_vol; // OSCA_VOL
     assign static_cc_values[84+:7]=(val_oscb_power ? 7'd127 : 7'd0); // OSCB_POWER
-    assign static_cc_values[91+:7]={5'd0,val_oscb_wave}; // OSCB_WAVE
+    assign static_cc_values[91+:7]={4'd0,val_oscb_wave}; // OSCB_WAVE
     assign static_cc_values[98+:7]=val_oscb_unison; // OSCB_UNISON
     assign static_cc_values[105+:7]=val_oscb_detune; // OSCB_DETUNE
     assign static_cc_values[112+:7]=val_oscb_phase; // OSCB_PHASE
@@ -372,22 +372,18 @@ module param_merger (
                     end
 
                     `PARAM_ID_OSCA_WAVE: begin
-                        if (event_btn_tap_action == 2'd2) begin
-                            val_osca_wave <= val_osca_wave - 2'd1;
-                            midi_cc_val   <= {5'd0, val_osca_wave - 2'd1};
-                        end else begin
-                            val_osca_wave <= val_osca_wave + 2'd1;
-                            midi_cc_val   <= {5'd0, val_osca_wave + 2'd1};
-                        end
+                        // Five sources: sine/saw/pulse/triangle/SD. Explicit wrap.
+                        new_v = event_btn_tap_action==2'd2 ?
+                            (val_osca_wave==0 ? 7'd4 : {4'd0,val_osca_wave}-7'd1) :
+                            (val_osca_wave==4 ? 7'd0 : {4'd0,val_osca_wave}+7'd1);
+                        val_osca_wave<=new_v[2:0];midi_cc_val<=new_v;
                     end
                     `PARAM_ID_OSCB_WAVE: begin
-                        if (event_btn_tap_action == 2'd2) begin
-                            val_oscb_wave <= val_oscb_wave - 2'd1;
-                            midi_cc_val   <= {5'd0, val_oscb_wave - 2'd1};
-                        end else begin
-                            val_oscb_wave <= val_oscb_wave + 2'd1;
-                            midi_cc_val   <= {5'd0, val_oscb_wave + 2'd1};
-                        end
+                        // Five sources: sine/saw/pulse/triangle/SD. Explicit wrap.
+                        new_v = event_btn_tap_action==2'd2 ?
+                            (val_oscb_wave==0 ? 7'd4 : {4'd0,val_oscb_wave}-7'd1) :
+                            (val_oscb_wave==4 ? 7'd0 : {4'd0,val_oscb_wave}+7'd1);
+                        val_oscb_wave<=new_v[2:0];midi_cc_val<=new_v;
                     end
 
                     `PARAM_ID_OSCA_OCT: begin

@@ -8,6 +8,7 @@ module performance_command_decoder #(
     input  wire                    clk,
     input  wire                    rst_n,
     input  wire                    tick_1ms,
+    input  wire                    invalidate_score,
     input  wire                    packet_valid,
     input  wire [7:0]              packet_type,
     input  wire [6:0]              packet_length,
@@ -234,6 +235,11 @@ module performance_command_decoder #(
             if(local_mode_valid && local_mode<=2'd2) begin
                 performance_mode<=local_mode;
                 pause_state<=1'b0;stop_pulse<=1'b1;
+            end
+            if(invalidate_score===1'b1)begin
+                clear_events<=1;stop_pulse<=1;start_pulse<=0;
+                song_loaded<=0;pause_state<=0;batch_active<=0;
+                event_push<=0;manual_valid<=0;
             end
         end
     end

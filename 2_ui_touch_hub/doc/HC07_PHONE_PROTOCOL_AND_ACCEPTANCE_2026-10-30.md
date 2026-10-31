@@ -1,5 +1,18 @@
 # HC-07 安卓直连：协议、接线与验收
 
+## 2026-10-31 校准协议扩展（当前源码；尚未部署）
+
+本节覆盖下文旧起音、旧APK和旧固定长度约定；旧条目保留作历史。接线仍RXD←F14、TXD→F16、灯F13、实体MIDI F15。音频Note/CC协议未变。
+
+- HELLO载荷：4字节小端nonce，每次App重新连接换nonce，同nonce重试不清校准；新nonce清校准/旧曲，释放已接受Note。0字节HELLO仍可接收，但每次都会失效校准，供旧客户端提示升级。
+- 生产STATUS/控制ACK长度：26字节，前22字节偏移不变。flags(byte2) bit7=calibrated；byte22 schema=1；byte23校准状态；byte24..25小端epoch。客户端也能读取旧22字节，但旧固件禁止新App上传/播放，录音下载保留。
+- 状态：0需校准；1等待实体最左键；2成功；3不安全起音；4释放旧音等待排空。显式UI CALIBRATE后仅接受F15非零力度Note On。安全起音0x29/0x35/0x41/0x4D，0x59禁止。
+- BEGIN载荷：8字节，`duration_ms:u32 + event_count:u16 + calibration_epoch:u16`，均小端。生产必须匹配当前epoch；内部decoder仍接原6字节，不改曲谱存储格式。
+- 状态码7：未校准或BEGIN epoch已过期；不得开始上传。EVENTS按当前base验证，原STOP/CLEAR/批次/END和录音包格式保持。
+- App先校验曲谱音域宽度`max-min+1≤32`和容量再发STOP/CLEAR/BEGIN；整曲移调，超宽拒传，不折八度。完整规则见 `MIDI_RANGE_ADAPTATION_2026-10-31.md`。
+
+验收必须包含：每次重连重新校准；调整八度后重新校准/重传；32键允许/33键拒绝；STATUS到BEGIN间epoch改变被拒；旧曲清音采用原绝对音高；19白灯/5暗灯；未校准仍能下载旧录音。源码/协议仿真通过不代表HC-07/DDR/手机已实物验收；本轮未EDA/烧录。
+
 日期：2026-10-30。源码实现与仿真不等于手机、蓝牙模块和板卡已经联调通过。以本轮完整 Gowin 审计和后续实板记录分别验收。
 
 **20:44 部署更新：** 本轮候选已按用户明确指令完成一次UI SRAM operation2，PROGRAMMER_EXIT=0、User Code0x00001521、Status0x00026230。本地/远端SHA256均 `4BA5FD918FAAE9B52CE3099B33F8E23453F90FAF722606736F0C74D6199B3525`。日志在 `impl/deploy_runs/20261030_204315_R16_stereo_hc07_F14_F16`；摄像头朝天花板，显示和功能待现场确认。以下未烧录/旧固件措辞为部署前历史；真实手机与模块联调仍未验收。

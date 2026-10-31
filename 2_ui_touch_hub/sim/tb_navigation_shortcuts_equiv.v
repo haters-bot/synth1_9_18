@@ -52,6 +52,8 @@ module shortcut_reference(input wire [13:0] in_x,in_y,input wire [2:0] view,
 endmodule
 module shortcut_production(input wire [13:0] in_x,in_y,input wire [2:0] view,
  input wire [23:0] plot_scales,output wire [15:0] result);
+ localparam PERFORMANCE_CALIBRATION_ENABLE=0;
+ wire [6:0] performance_base_note=41;wire [2:0] performance_calibration_state=0;
  `include "navigation_shortcuts.vh"
  assign result={shortcut,shortcut_char,shortcut_x,shortcut_y};
 endmodule

@@ -25,9 +25,16 @@ def main():
         q.write_bytes(p.read_bytes())
     sources = [out/'src'/p.relative_to(ROOT) for p in sources]
     references = {}
+    if 'tb_audio_protocol_alignment' in names:
+        commit='dbffe3768fa29405ad50845d4e915577d1c16557'
+        for filename in ('synth_control_router.v','midi_note_parser.v'):
+            blob=subprocess.check_output(['git','show',commit+':src/'+filename],cwd=ROOT)
+            golden=out/'src/sim'/filename
+            golden.write_bytes(blob);sources.append(golden)
+            references[filename]={'commit':commit,'sha256':hashlib.sha256(blob).hexdigest()}
     if 'tb_modulation_audio_equivalence' in names:
         # Read-only golden audio RTL, pinned rather than dependent on moving HEAD.
-        commit = '52242799c1bc8b0ee411a2de39600408472b3219'
+        commit = 'dbffe3768fa29405ad50845d4e915577d1c16557'
         blob = subprocess.check_output(['git', 'show', commit+':src/lfo_target_router_v2.v'], cwd=ROOT)
         golden = out/'src/sim/audio_router_reference.v'
         golden.write_bytes(blob)

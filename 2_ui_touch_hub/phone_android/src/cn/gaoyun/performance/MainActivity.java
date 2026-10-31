@@ -12,6 +12,8 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.view.View;
 import android.webkit.JavascriptInterface;
@@ -44,6 +46,7 @@ public final class MainActivity extends Activity {
     private final ExecutorService writes=Executors.newSingleThreadExecutor();
     private final ExecutorService files=Executors.newSingleThreadExecutor();
     private ValueCallback<Uri[]> fileChoice;
+    private boolean nativeMidiChoice;
     private final WavDownloadStore wavStore=new WavDownloadStore();
     private volatile boolean saveDialog,saveCopying;
     private File wavCache;
@@ -84,6 +87,30 @@ public final class MainActivity extends Activity {
     }
     private void event(String name,String value) {js("window."+name+" && window."+name+"("+JSONObject.quote(value)+");");}
     private void error(Exception error) {event("onNativeError",error.getMessage()==null?error.toString():error.getMessage());}
+    private void chooseMidi() {
+        if(nativeMidiChoice){event("onNativeMidiError","文件选择正在进行，请稍候");return;}
+        nativeMidiChoice=true;
+        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);
+        try{startActivityForResult(intent,OPEN_MIDI);}
+        catch(Exception e){nativeMidiChoice=false;event("onNativeMidiError",e.toString());}
+    }
+    private void readMidi(final Uri uri) {
+        files.execute(()->{
+            try {
+                String name="selected.mid";
+                try(Cursor cursor=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)) {
+                    if(cursor!=null && cursor.moveToFirst() && !cursor.isNull(0))name=cursor.getString(0);
+                }
+                final byte[] bytes;
+                try(InputStream input=getContentResolver().openInputStream(uri)) {
+                    bytes=MidiDocumentReader.read(input);
+                }
+                js("window.onNativeMidiSelected && window.onNativeMidiSelected("+JSONObject.quote(name)+","+
+                    JSONObject.quote(Base64.encodeToString(bytes,Base64.NO_WRAP))+");");
+            }catch(Exception e){event("onNativeMidiError",e.getMessage()==null?e.toString():e.getMessage());}
+            finally{runOnUiThread(()->nativeMidiChoice=false);}
+        });
+    }
     private BluetoothAdapter adapter() {
         BluetoothManager manager=(BluetoothManager)getSystemService(BLUETOOTH_SERVICE);
         return manager==null?null:manager.getAdapter();
@@ -131,6 +158,11 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data) {
         super.onActivityResult(request,result,data);
         if(request==ENABLE_BT){if(result==RESULT_OK)chooseDevice();return;}
+        if(request==OPEN_MIDI && nativeMidiChoice){
+            if(result==RESULT_OK && data!=null && data.getData()!=null)readMidi(data.getData());
+            else {nativeMidiChoice=false;event("onNativeMidiError","已取消选择 MIDI，请重新选择曲谱");}
+            return;
+        }
         if(request==OPEN_MIDI && fileChoice!=null){
             fileChoice.onReceiveValue(result==RESULT_OK && data!=null && data.getData()!=null?new Uri[]{data.getData()}:null);fileChoice=null;return;
         }
@@ -155,6 +187,7 @@ public final class MainActivity extends Activity {
 
     private void closeWav(){try{wavStore.close();}catch(Exception ignored){}}
     public final class PhoneBridge {
+        @JavascriptInterface public void chooseMidi(){runOnUiThread(()->MainActivity.this.chooseMidi());}
         @JavascriptInterface public void chooseDevice(){runOnUiThread(()->MainActivity.this.chooseDevice());}
         @JavascriptInterface public void sendBase64(String encoded){
             final byte[] data;

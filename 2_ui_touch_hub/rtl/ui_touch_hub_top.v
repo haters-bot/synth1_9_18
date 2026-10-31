@@ -23,7 +23,7 @@ module ui_touch_hub_top #(
     // Disable the separate WS2812 output only for diagnostics.
     parameter PERFORMANCE_LED_ENABLE=1,
     // Provisional until the physical keyboard's lowest MIDI note is captured.
-    parameter integer PERFORMANCE_BASE_NOTE=29,
+    parameter integer PERFORMANCE_BASE_NOTE=7'h29, // MIDI 41; keyboard reports hexadecimal 29
     parameter integer PERFORMANCE_MAX_EVENTS=16384
 )(
     input  wire        clk,             // 板载 50MHz 有源晶振 (V22)
@@ -403,7 +403,7 @@ module ui_touch_hub_top #(
     wire [6:0]  val_fx_reverb, val_fx_delay, val_fx_chorus, val_portamento;
 
     wire        val_osca_power, val_oscb_power, val_flt_power;
-    wire [1:0]  val_osca_wave, val_oscb_wave;
+    wire [2:0]  val_osca_wave, val_oscb_wave;
     wire [3:0]  val_osca_oct, val_oscb_oct;
     wire [4:0]  val_osca_semi, val_oscb_semi;
     wire [6:0]  val_osca_fine, val_oscb_fine;
@@ -415,7 +415,8 @@ module ui_touch_hub_top #(
     wire        btn_flash_active;
 
     wire [237:0] static_cc_values;
-    wire [279:0] audio_static_values;
+    wire [517:0] audio_static_values;
+    wire [237:0] audio_extra_values;
     wire startup_sync_done,static_cc_req,static_cc_accept;
     wire [7:0] static_cc_param_id;
     wire [6:0] static_cc_val;
@@ -628,16 +629,21 @@ module ui_touch_hub_top #(
     wire [1:0] performance_mode;
     wire performance_local_mode_valid;
     wire [1:0] performance_local_mode;
+    wire performance_local_calibrate,performance_invalidate,performance_notes_busy;
+    wire [6:0] performance_calibrated_base;
+    wire [2:0] performance_calibration_state;
+    wire [15:0] performance_calibration_epoch;
     performance_touch_controls u_performance_touch_controls(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.page_active(performance_page_active),
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .play(performance_local_play),.pause_toggle(performance_local_pause),.stop(performance_local_stop),
-        .record_toggle(performance_local_record));
+        .record_toggle(performance_local_record),.calibrate(performance_local_calibrate));
     performance_command_decoder #(.MAX_PAYLOAD(64),.MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.GATEWAY_TIMEOUT_MS(10000)) u_performance_commands(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),
         .packet_valid(phone_command_valid),.packet_type(phone_command_type),
         .packet_length(phone_command_length),.packet_payload(phone_command_payload),
-        .local_play(performance_local_play && performance_song_loaded && !phone_upload_active),.local_pause_toggle(performance_local_pause),
+        .invalidate_score(performance_invalidate),
+        .local_play(performance_local_play && performance_song_loaded && !phone_upload_active && performance_calibration_state==2),.local_pause_toggle(performance_local_pause),
         .local_stop(performance_local_stop),.local_record_toggle(performance_local_record && !phone_export_busy &&
             !(performance_packet_valid && performance_packet_type==8'h43)),
         .local_mode_valid(performance_local_mode_valid),.local_mode(performance_local_mode),
@@ -681,8 +687,13 @@ module ui_touch_hub_top #(
     wire performance_record_read_valid,performance_record_read_data_ready;
     wire [31:0] performance_record_read_index;
     wire [31:0] performance_record_read_data,performance_record_read_data_index;
-    performance_phone_session #(.MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_phone_session(
+    performance_phone_session #(.MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.BASE_NOTE(PERFORMANCE_BASE_NOTE),.CALIBRATION_ENABLE(1)) u_phone_session(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),
+        .local_calibrate(performance_local_calibrate),.calibration_idle(!performance_notes_busy && !midi_tx_busy),
+        .physical_note_valid(keyboard_note_valid),.physical_note_on(keyboard_note_on),
+        .physical_note(keyboard_note_number),.physical_velocity(keyboard_note_velocity),
+        .calibrated_base_note(performance_calibrated_base),.calibration_state(performance_calibration_state),
+        .calibration_epoch(performance_calibration_epoch),.invalidate_score(performance_invalidate),
         .packet_valid(performance_packet_valid),.packet_type(performance_packet_type),
         .packet_sequence(performance_packet_sequence),.packet_length(performance_packet_length),
         .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),.fast_baud(phone_fast_baud),
@@ -745,12 +756,15 @@ module ui_touch_hub_top #(
         .link_up   (audio_vis_link_up)
     );
 
-    ui_top_renderer #(.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.PERFORMANCE_USE_NOTE_READY(1)) u_render (
+    ui_top_renderer #(.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_RUNTIME_BASE(1),.PERFORMANCE_MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.PERFORMANCE_USE_NOTE_READY(1)) u_render (
+        .performance_base_note(performance_calibrated_base),.performance_calibration_state(performance_calibration_state),
+        .performance_invalidate(performance_invalidate),.performance_notes_busy(performance_notes_busy),
         .performance_score_error_out(performance_score_error),.performance_running_out(performance_score_running),
         .navigation_capture(navigation_capture),.navigation_delta_valid(navigation_delta_valid),
         .navigation_delta_id(navigation_delta_id),.navigation_delta_value(navigation_delta_value),
         .display_env_snapshot(display_env_values),
         .external_param_valid(physical_fx_valid),.external_param_id(physical_fx_id),.external_param_value(physical_fx_value),
+        .audio_extra_snapshot(audio_extra_values),
         .fx_parameter_snapshot(fx_parameter_snapshot),.fx_touch_focus_valid(fx_touch_focus_valid),.fx_touch_focus_id(fx_touch_focus_id),
         .binding_capture(binding_capture),
         .fx_event_valid(fx_event_valid),.fx_event_id(fx_event_id),.fx_event_value(fx_event_value),
@@ -904,6 +918,7 @@ module ui_touch_hub_top #(
     assign audio_static_values[259+:7]=fx_parameter_snapshot[42+:7]; // REVERB_SIZE
     assign audio_static_values[266+:7]=fx_parameter_snapshot[49+:7]; // REVERB_DECAY
     assign audio_static_values[273+:7]=fx_parameter_snapshot[84+:7]; // REVERB_MIX
+    assign audio_static_values[280+:238]=audio_extra_values;
     static_cc_sync u_static_cc_sync(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.values(audio_static_values),
         .cc_accept(static_cc_accept),.uart_busy(midi_tx_busy),

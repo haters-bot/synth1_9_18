@@ -4,7 +4,8 @@
 // Five stages after raster entry; native font and PCM-driven visualizations.
 module ui_navigation_renderer #(
  parameter integer PERFORMANCE_KEY_COUNT=32,
- parameter integer PERFORMANCE_BASE_NOTE=29
+ parameter integer PERFORMANCE_BASE_NOTE=7'h29,
+ parameter PERFORMANCE_CALIBRATION_ENABLE=0
 )(
  input wire clk,rst_n,
  input wire [13:0] in_x,in_y,
@@ -29,6 +30,8 @@ module ui_navigation_renderer #(
  input wire        performance_paused,
  input wire [1:0]  performance_mode,
  input wire        performance_gateway_up,
+ input wire [6:0] performance_base_note,
+ input wire [2:0] performance_calibration_state,
  input wire        performance_recording,
  input wire [3:0]  performance_record_status,
  input wire [5:0]  performance_next_key,
@@ -244,7 +247,8 @@ module ui_navigation_renderer #(
  end endgenerate
  wire performance_hit;
  wire [23:0] performance_rgb;
- performance_page_renderer #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_performance_page(
+ performance_page_renderer #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE),.CALIBRATION_ENABLE(PERFORMANCE_CALIBRATION_ENABLE)) u_performance_page(
+   .calibration_state(performance_calibration_state),
    .in_x(in_x),.in_y(in_y),
    .active_keys(performance_active_keys),.guide_keys(performance_guide_keys),
    .song_progress(performance_progress),.song_running(performance_running),.song_paused(performance_paused),.mode(performance_mode),

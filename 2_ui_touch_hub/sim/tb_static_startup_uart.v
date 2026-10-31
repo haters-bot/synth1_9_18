@@ -19,7 +19,7 @@ module tb_static_startup_uart;
  // Same exported live banks as the production top; assertions below use an
  // independent table of wire CC numbers and defaults, not decoder functions.
  assign values={fx_values[84+:7],fx_values[49+:7],fx_values[42+:7],fx_values[35+:7],fx_values[7+:7],fx_values[0+:7],bank_values};
- static_cc_sync sync(.clk(clk),.rst_n(rst_n),.values(values),.cc_accept(accept),.uart_busy(busy),
+ static_cc_sync #(.COUNT(40)) sync(.clk(clk),.rst_n(rst_n),.values(values),.cc_accept(accept),.uart_busy(busy),
   .cc_req(req),.cc_param_id(id),.cc_val(val),.startup_sync_done(done));
  lfo_sysex_tx #(.HOLD_CYCLES(20),.FIRST_HOLD_CYCLES(20)) sx(.clk(clk),.rst_n(rst_n && done),
   .cfg_nodes(147'd0),.cfg_rates(9'b010010010),.cfg_steps(3'd0),.cfg_once(3'd0),

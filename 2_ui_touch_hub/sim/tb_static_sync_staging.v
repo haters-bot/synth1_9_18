@@ -5,7 +5,7 @@ module tb_static_sync_staging;
  reg [279:0] values=0;
  wire cc_req,done;wire [7:0] id;wire [6:0] val;
  always #10 clk=~clk;
- static_cc_sync dut(.clk(clk),.rst_n(rst_n),.values(values),.cc_accept(cc_accept),.uart_busy(uart_busy),
+ static_cc_sync #(.COUNT(40)) dut(.clk(clk),.rst_n(rst_n),.values(values),.cc_accept(cc_accept),.uart_busy(uart_busy),
   .cc_req(cc_req),.cc_param_id(id),.cc_val(val),.startup_sync_done(done));
  integer i,count=0,race_slot=12;reg [6:0] previous;
  task wait_request;integer n;begin
@@ -14,7 +14,7 @@ module tb_static_sync_staging;
  end endtask
  task accept_value(input integer expected_slot,input [6:0] expected_value);begin
   wait_request;
-  if(dut.scan!==expected_slot[5:0] || val!==expected_value)
+  if(dut.scan!==expected_slot[6:0] || val!==expected_value)
    $fatal(1,"staged mismatch slot=%0d expected=%0d val=%0d expected=%0d",dut.scan,expected_slot,val,expected_value);
   cc_accept=1;@(negedge clk);cc_accept=0;count=count+1;
   if(dut.sent[expected_slot]!==expected_value)$fatal(1,"accepted payload ownership lost");

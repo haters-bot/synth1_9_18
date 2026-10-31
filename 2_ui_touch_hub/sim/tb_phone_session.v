@@ -9,6 +9,10 @@ module tb_phone_session;
  reg record_active=0,record_busy=0,record_start_accepted=0,record_start_rejected=0;
  reg backend_available=1,audio_link_up=1;reg [3:0] record_status=4;
  reg [31:0] stored_frames=144;
+ wire local_calibrate=0,calibration_idle=1,physical_note_valid=0,physical_note_on=0;
+ wire [6:0] physical_note=0,physical_velocity=0;
+ wire [6:0] calibrated_base_note;
+ wire [2:0] calibration_state;wire [15:0] calibration_epoch;wire invalidate_score;
  wire upload_active,export_busy,reply_valid;reg reply_ready=1;
  wire [7:0] reply_type,reply_sequence;wire [6:0] reply_length;wire [511:0] reply_payload;
  wire read_valid;reg read_ready=1;wire [31:0] read_index;
@@ -54,6 +58,7 @@ module tb_phone_session;
   if(reply_valid && reply_ready)begin
    if(reply_type==8'h70)begin
     if(reply_sequence!=packet_sequence || reply_length!=22)$fatal(1,"ACK header");
+    if(reply_payload[87:80]!==8'h29 || reply_payload[95:88]!==8'd32)$fatal(1,"default keyboard must be hex29/decimal41, 32 keys");
     last_status=reply_payload[7:0];last_kind=reply_payload[15:8];last_generation=reply_payload[159:128];replies=replies+1;
    end else if(reply_type==8'h71)audio_packets=audio_packets+1;else $fatal(1,"reply type");
   end
@@ -75,7 +80,7 @@ module tb_phone_session;
   begin
    packet_payload=0;
    for(j=0;j<8;j=j+1)
-    packet_payload[j*64+:64]={8'd0,8'd1,8'd100,8'd29+j[7:0],32'd25*(offset+j+1)};
+    packet_payload[j*64+:64]={8'd0,8'd1,8'd100,8'd41+j[7:0],32'd25*(offset+j+1)};
   end
  endtask
  task begin_song(input integer count);
@@ -96,12 +101,12 @@ module tb_phone_session;
   request(8'h13,0,3,0);request(8'h20,0,3,0);
   begin_song(2);batch_good;packet_payload[95:64]=50;request(8'h12,16,1,0);
   if(loaded_events!=0)$fatal(1,"invalid batch partially committed");
-  begin_song(2);batch_good;packet_payload[39:32]=28;request(8'h12,16,1,0);
+  begin_song(2);batch_good;packet_payload[39:32]=40;request(8'h12,16,1,0);
   begin_song(2);batch_good;request(8'h12,16,0,0);request(8'h13,0,0,0);request(8'h20,0,0,0);
   if(!score_running)$fatal(1,"score not started");
   request(8'h10,0,2,0);request(8'h22,0,0,0);
   // Maximum-sized batch: the final illegal record must reject ALL eight.
-  begin_song(8);batch_eight(0);packet_payload[7*64+32+:8]=61;
+  begin_song(8);batch_eight(0);packet_payload[7*64+32+:8]=73;
   request(8'h12,64,1,0);
   if(loaded_events!=0 || dut.received!=0)$fatal(1,"last invalid event partially committed");
   begin_song(8);batch_eight(0);packet_payload[7*64+:32]=1;

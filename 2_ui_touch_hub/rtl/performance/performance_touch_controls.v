@@ -11,7 +11,8 @@ module performance_touch_controls #(
     output wire        play,
     output wire        pause_toggle,
     output wire        stop,
-    output wire        record_toggle
+    output wire        record_toggle,
+    output wire        calibrate
 );
     reg touch_prev;
     localparam integer AGE_BITS=$clog2(CONTACT_TIMEOUT_CYCLES+1);
@@ -28,6 +29,8 @@ module performance_touch_controls #(
                   touch_x >= 14'd192 && touch_x < 14'd256;
     assign record_toggle = page_active && touch_edge && button_row &&
                            touch_x >= 14'd1010 && touch_x < 14'd1170;
+    assign calibrate = page_active && touch_edge && button_row &&
+                       touch_x >= 14'd840 && touch_x < 14'd1000;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n)begin

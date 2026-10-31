@@ -12,7 +12,8 @@
 `include "font_3x5.vh"
 
 module ui_top_renderer #(
-    parameter integer PERFORMANCE_BASE_NOTE = 29,
+    parameter integer PERFORMANCE_BASE_NOTE = 7'h29,
+    parameter PERFORMANCE_RUNTIME_BASE=0,
     parameter integer PERFORMANCE_KEY_COUNT = 32,
     parameter integer PERFORMANCE_LED_COUNT = 24,
     parameter integer PERFORMANCE_MAX_EVENTS = 16384,
@@ -47,8 +48,8 @@ module ui_top_renderer #(
     input  wire        val_osca_power,
     input  wire        val_oscb_power,
     input  wire        val_flt_power,
-    input  wire [1:0]  val_osca_wave,
-    input  wire [1:0]  val_oscb_wave,
+    input  wire [2:0]  val_osca_wave,
+    input  wire [2:0]  val_oscb_wave,
     input  wire [3:0]  val_osca_oct,
     input  wire [4:0]  val_osca_semi,
     input  wire [6:0]  val_osca_fine,
@@ -101,6 +102,10 @@ module ui_top_renderer #(
     // Phone/gateway performance transport, already byte-framed and decoded
     // in the top-level clock domain. E19 is not involved in this path.
     input wire        performance_tick_1ms,
+    input wire [6:0]  performance_base_note,
+    input wire [2:0]  performance_calibration_state,
+    input wire        performance_invalidate,
+    output wire       performance_notes_busy,
     input wire        performance_clear_events,
     input wire        performance_event_push,
     input wire [31:0] performance_event_time_ms,
@@ -141,6 +146,7 @@ module ui_top_renderer #(
     output wire [7:0] route_event_target,
     output wire [1:0] route_event_source,
     output wire signed [7:0] route_event_depth,
+    output wire [237:0] audio_extra_snapshot,
     output wire [132:0] fx_parameter_snapshot,
     output wire [10:0] fx_switch_snapshot,
     output wire [146:0] lfo_node_snapshot,
@@ -199,6 +205,9 @@ module ui_top_renderer #(
     wire [23:0] navigation_rgb;
     localparam integer PERFORMANCE_KEY_BITS = (PERFORMANCE_KEY_COUNT <= 2) ? 1 : $clog2(PERFORMANCE_KEY_COUNT);
     localparam integer PERFORMANCE_KEY_WIDTH = 1280 / PERFORMANCE_KEY_COUNT;
+    wire [6:0] performance_effective_base=PERFORMANCE_RUNTIME_BASE ? performance_base_note : PERFORMANCE_BASE_NOTE;
+    wire performance_calibrated=!PERFORMANCE_RUNTIME_BASE || performance_calibration_state==2;
+    wire performance_reset_keys=PERFORMANCE_RUNTIME_BASE && performance_invalidate;
     wire [PERFORMANCE_KEY_COUNT-1:0] performance_active_keys;
     wire [PERFORMANCE_KEY_COUNT-1:0] performance_nonphysical_keys;
     wire [PERFORMANCE_KEY_COUNT-1:0] performance_guide_keys;
@@ -219,15 +228,15 @@ module ui_top_renderer #(
     wire [31:0] performance_next_time_ms;
     wire performance_next_on_valid;
     wire        performance_remote_key_valid =
-        (performance_remote_note >= PERFORMANCE_BASE_NOTE) &&
-        (performance_remote_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
+        (performance_remote_note >= performance_effective_base) &&
+        (performance_remote_note < (performance_effective_base + PERFORMANCE_KEY_COUNT));
     wire [PERFORMANCE_KEY_BITS-1:0] performance_remote_key =
-        performance_remote_note - PERFORMANCE_BASE_NOTE;
-    wire performance_physical_key_valid = performance_physical_note_valid &&
-        (performance_physical_note >= PERFORMANCE_BASE_NOTE) &&
-        (performance_physical_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
+        performance_remote_note - performance_effective_base;
+    wire performance_physical_key_valid = performance_physical_note_valid && performance_calibrated &&
+        (performance_physical_note >= performance_effective_base) &&
+        (performance_physical_note < (performance_effective_base + PERFORMANCE_KEY_COUNT));
     wire [PERFORMANCE_KEY_BITS-1:0] performance_physical_key =
-        performance_physical_note - PERFORMANCE_BASE_NOTE;
+        performance_physical_note - performance_effective_base;
     reg [PERFORMANCE_KEY_COUNT-1:0] performance_physical_keys;
     // Hits are consumed once, and expire when score time advances. Chord
     // notes arriving in a different order can still satisfy the same onset;
@@ -235,24 +244,24 @@ module ui_top_renderer #(
     reg [PERFORMANCE_KEY_COUNT-1:0] performance_follow_hits;
     reg [31:0] performance_follow_hit_time;
     wire performance_follow_target_in_range =
-        performance_scheduler_next_note >= PERFORMANCE_BASE_NOTE &&
-        performance_scheduler_next_note < PERFORMANCE_BASE_NOTE+PERFORMANCE_KEY_COUNT;
+        performance_scheduler_next_note >= performance_effective_base &&
+        performance_scheduler_next_note < performance_effective_base+PERFORMANCE_KEY_COUNT;
     wire [PERFORMANCE_KEY_BITS-1:0] performance_follow_target =
-        performance_scheduler_next_note-PERFORMANCE_BASE_NOTE;
+        performance_scheduler_next_note-performance_effective_base;
     wire performance_follow_step = performance_next_on_valid &&
         performance_follow_target_in_range && performance_follow_hits[performance_follow_target];
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n) begin performance_follow_hits<=0;performance_follow_hit_time<=0;end
         else begin
             performance_follow_hit_time<=performance_song_time_ms;
-            if(performance_start || performance_stop || !performance_running ||
+            if(performance_reset_keys || performance_start || performance_stop || !performance_running ||
                performance_mode!=2'd1 || performance_pause ||
                performance_follow_hit_time!=performance_song_time_ms) performance_follow_hits<=0;
             else begin
                 if(performance_scheduled_valid && performance_scheduled_on &&
-                   performance_scheduled_note>=PERFORMANCE_BASE_NOTE &&
-                   performance_scheduled_note<PERFORMANCE_BASE_NOTE+PERFORMANCE_KEY_COUNT)
-                    performance_follow_hits[performance_scheduled_note-PERFORMANCE_BASE_NOTE]<=0;
+                   performance_scheduled_note>=performance_effective_base &&
+                   performance_scheduled_note<performance_effective_base+PERFORMANCE_KEY_COUNT)
+                    performance_follow_hits[performance_scheduled_note-performance_effective_base]<=0;
                 if(performance_physical_key_valid)
                     performance_follow_hits[performance_physical_key]<=performance_physical_note_on;
             end
@@ -260,6 +269,7 @@ module ui_top_renderer #(
     end
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n)performance_physical_keys<={PERFORMANCE_KEY_COUNT{1'b0}};
+        else if(performance_reset_keys)performance_physical_keys<=0;
         else if(performance_physical_key_valid)
             performance_physical_keys[performance_physical_key]<=performance_physical_note_on;
     end
@@ -309,6 +319,8 @@ module ui_top_renderer #(
             performance_touch_prev<=1'b0;performance_touch_key<={PERFORMANCE_KEY_BITS{1'b0}};
             performance_touch_press_pending<=1'b0;performance_touch_pending_key<={PERFORMANCE_KEY_BITS{1'b0}};
             performance_manual_valid<=1'b0;performance_manual_down<=1'b0;performance_manual_key<={PERFORMANCE_KEY_BITS{1'b0}};
+        end else if(!performance_calibrated || performance_reset_keys)begin
+            performance_manual_valid<=0;performance_touch_prev<=0;performance_touch_press_pending<=0;
         end else begin
             performance_manual_valid<=1'b0;
             if(navigation_view!=3'd2 || performance_quiet_release)begin
@@ -371,8 +383,9 @@ module ui_top_renderer #(
     end
     wire performance_score_clear=performance_start || performance_stop ||
         (performance_pause && !performance_previous_pause) || performance_previous_mode!=performance_mode;
-    performance_score_audio #(.BASE_NOTE(PERFORMANCE_BASE_NOTE),.KEY_COUNT(PERFORMANCE_KEY_COUNT)) u_score_audio(
+    performance_score_audio #(.BASE_NOTE(PERFORMANCE_BASE_NOTE),.KEY_COUNT(PERFORMANCE_KEY_COUNT),.RUNTIME_BASE_ENABLE(PERFORMANCE_RUNTIME_BASE)) u_score_audio(
         .clk(clk),.rst_n(rst_n),.clear(performance_score_clear),
+        .base_note(performance_effective_base),.discard(performance_reset_keys),
         .in_valid((PERFORMANCE_SCORE_AUDIO_ENABLE || performance_mode==0) && performance_scheduled_valid),
         .in_on(performance_scheduled_on),.in_note(performance_scheduled_note),.in_velocity(performance_scheduled_velocity),
         .in_ready(performance_score_in_ready),.out_ready(performance_score_queue_ready),
@@ -418,12 +431,13 @@ module ui_top_renderer #(
         end
     end
     wire performance_next_key_valid = performance_cue_visible[1] &&
-        (performance_scheduler_next_note >= PERFORMANCE_BASE_NOTE) &&
-        (performance_scheduler_next_note < (PERFORMANCE_BASE_NOTE + PERFORMANCE_KEY_COUNT));
+        (performance_scheduler_next_note >= performance_effective_base) &&
+        (performance_scheduler_next_note < (performance_effective_base + PERFORMANCE_KEY_COUNT));
     assign performance_next_key = performance_next_key_valid ?
-        performance_scheduler_next_note - PERFORMANCE_BASE_NOTE : 6'd0;
+        performance_scheduler_next_note - performance_effective_base : 6'd0;
     assign performance_active_keys=performance_nonphysical_keys | performance_physical_keys;
-    performance_key_state #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_performance_keys(
+    performance_key_state #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE),.RUNTIME_BASE_ENABLE(PERFORMANCE_RUNTIME_BASE)) u_performance_keys(
+        .base_note(performance_effective_base),.clear_all(performance_reset_keys),
         .clk(clk),.rst_n(rst_n),.event_valid(performance_scheduled_valid),.event_on(performance_scheduled_on),
         .clear_scheduled(performance_stop || (performance_clear_events && !performance_running) || performance_start),
         .event_note(performance_scheduled_note),.manual_valid(performance_manual_valid),
@@ -432,14 +446,14 @@ module ui_top_renderer #(
         .remote_down(performance_remote_note_on),.remote_key(performance_remote_key),
         .active_keys(performance_nonphysical_keys),.guide_keys(performance_guide_keys));
     performance_note_arbiter u_performance_note_arbiter(
-        .clk(clk),.rst_n(rst_n),
+        .clk(clk),.rst_n(rst_n),.flush(performance_reset_keys),.busy(performance_notes_busy),
         .score_valid(performance_score_out_valid),.score_on(performance_score_out_on),
         .score_note(performance_score_out_note),.score_velocity(performance_score_out_velocity),
         .score_ready(performance_score_queue_ready),
         .remote_valid(performance_remote_note_valid),.remote_on(performance_remote_note_on),
         .remote_note(performance_remote_note),.remote_velocity(performance_remote_velocity),
         .touch_valid(performance_manual_valid),.touch_on(performance_manual_down),
-        .touch_note(PERFORMANCE_BASE_NOTE+performance_manual_key),.touch_velocity(performance_manual_down ? 7'd100 : 7'd0),
+        .touch_note(performance_effective_base+performance_manual_key),.touch_velocity(performance_manual_down ? 7'd100 : 7'd0),
         .note_ready(PERFORMANCE_USE_NOTE_READY ? performance_note_ready : 1'b1),
         .note_valid(performance_note_valid),.note_on(performance_note_on),
         .note_number(performance_note_number),.note_velocity(performance_note_velocity),
@@ -529,7 +543,8 @@ module ui_top_renderer #(
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .view(navigation_view),.section(settings_section_id),.knob_steps(user_knob_steps),
         .knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales));
-    ui_navigation_renderer #(.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE)) u_navigation_render(.clk(clk),.rst_n(rst_n),
+    ui_navigation_renderer #(.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_CALIBRATION_ENABLE(PERFORMANCE_RUNTIME_BASE)) u_navigation_render(.clk(clk),.rst_n(rst_n),
+        .performance_base_note(performance_effective_base),.performance_calibration_state(performance_calibration_state),
         .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
         .show_diagnostics(show_diagnostics),.usb_connected(usb_connected),.usb_error(usb_conn_err),
         .macro_values({val_macro4,val_macro3,val_macro2,val_macro1}),
@@ -570,6 +585,17 @@ module ui_top_renderer #(
 
 
     wire [132:0] fx_values;
+    wire [2:0] audio_fx_page;
+    wire [1:0] audio_warp_menu;
+    wire audio_legacy_valid;
+    wire [7:0] audio_legacy_id;
+    wire [6:0] audio_legacy_value;
+    wire audio_legacy_owner;
+    wire [7:0] audio_legacy_owner_id;
+    wire audio_focus_valid,legacy_focus_valid;
+    wire [7:0] audio_focus_id,legacy_focus_id;
+    assign fx_touch_focus_valid=audio_focus_valid || legacy_focus_valid;
+    assign fx_touch_focus_id=audio_focus_valid ? audio_focus_id : legacy_focus_id;
     wire [10:0] fx_switches;
     wire [105:0] mod_sources;
     wire [423:0] mod_depths;
@@ -646,15 +672,44 @@ module ui_top_renderer #(
             fx_touch_x<=ui_touch_x;fx_touch_y<=ui_touch_y;
         end
     end
-    fx_editor_state u_fx_state(.clk(clk),.rst_n(rst_n),
-        .touch_valid(fx_touch_valid),.touch_down(fx_touch_down),
+    fx_editor_state #(.AUX_ENABLE(1)) u_fx_state(.clk(clk),.rst_n(rst_n),
+        .touch_valid(1'b0),.touch_down(1'b0),
         .touch_x(fx_touch_x),.touch_y(fx_touch_y),
         .external_valid(external_param_valid),.external_id(external_param_id),.external_value(external_param_value),
-        .values(fx_values),.switches(fx_switches),.focus_valid(fx_touch_focus_valid),.focus_id(fx_touch_focus_id),
+        .aux_valid(audio_legacy_valid),.aux_id(audio_legacy_id),.aux_value(audio_legacy_value),
+        .aux_owner_valid(audio_legacy_owner),.aux_owner_id(audio_legacy_owner_id),
+        .values(fx_values),.switches(fx_switches),.focus_valid(legacy_focus_valid),.focus_id(legacy_focus_id),
         .event_valid(fx_event_valid),.event_id(fx_event_id),.event_value(fx_event_value));
+    audio_controls_state u_audio_controls(.clk(clk),.rst_n(rst_n),.cancel(navigation_capture),
+        .touch_valid(fx_touch_valid),.touch_down(fx_touch_down),.touch_x(fx_touch_x),.touch_y(fx_touch_y),
+        .external_valid(external_param_valid),.external_id(external_param_id),.external_value(external_param_value),
+        .legacy_values(fx_values),.extra_values(audio_extra_snapshot),.fx_page(audio_fx_page),.warp_menu(audio_warp_menu),
+        .focus_valid(audio_focus_valid),.focus_id(audio_focus_id),
+        .legacy_owner_valid(audio_legacy_owner),.legacy_owner_id(audio_legacy_owner_id),
+        .legacy_valid(audio_legacy_valid),.legacy_id(audio_legacy_id),.legacy_value(audio_legacy_value));
+    // Preserve the six existing Delay/Reverb modulation destinations by ID.
+    // Other new effect controls are static only; old EQ slots stay NC.
+    reg [13:0] binding_x,binding_y;
+    always @(*)begin
+        binding_x=ui_touch_x;binding_y=ui_touch_y;
+        if(ui_touch_x>=420 && ui_touch_x<=780 && ui_touch_y>=368 && ui_touch_y<=707)begin
+            binding_x=0;binding_y=0;
+            if(audio_fx_page==3)begin
+                if(ui_touch_x>=432 && ui_touch_x<598)begin
+                    if(ui_touch_y>=450 && ui_touch_y<488)begin binding_x=504;binding_y=416;end
+                    else if(ui_touch_y>=494 && ui_touch_y<532)begin binding_x=728;binding_y=416;end
+                    else if(ui_touch_y>=538 && ui_touch_y<576)begin binding_x=492;binding_y=524;end
+                end else if(ui_touch_x>=608 && ui_touch_x<774)begin
+                    if(ui_touch_y>=450 && ui_touch_y<488)begin binding_x=448;binding_y=416;end
+                    else if(ui_touch_y>=494 && ui_touch_y<532)begin binding_x=444;binding_y=524;end
+                    else if(ui_touch_y>=538 && ui_touch_y<576)begin binding_x=732;binding_y=524;end
+                end
+            end
+        end
+    end
     lfo_binding_state #(.ENABLE_CANCEL(1),.WATCHDOG_CYCLES(BIND_WATCHDOG_CYCLES)) u_binding(.clk(clk),.rst_n(rst_n),
         .cancel(navigation_capture),
-        .touch_valid(ui_touch_valid),.touch_down(synth_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .touch_valid(ui_touch_valid),.touch_down(synth_touch_down),.touch_x(binding_x),.touch_y(binding_y),
         .active_tab(lfo_tab),.armed(mod_armed),.dragging(mod_dragging),.capture_active(binding_capture),
         .selected_target(mod_selected),.hover_target(mod_hover),.sources(mod_sources),.depths(mod_depths),
         .event_valid(route_event_valid),.event_target(route_event_target),
@@ -664,8 +719,10 @@ module ui_top_renderer #(
         .active_tab(lfo_tab),.active_phase(lfo_phase),.raster_index(lfo_raster_index),
         .sources(mod_sources),.depths(mod_depths),.base_values(mod_base),
         .preview_values(mod_preview),.raster_q6(lfo_curve_q6));
-    fx_strip_renderer u_fx_strip(.clk(clk),.rst_n(rst_n),.in_x(raster_x[1]),.in_y(raster_y[1]),
-        .values(mod_preview[238+:133]),.switches(fx_switches),.selected_id(hud_selected_id),.out_hit(hit_fx_strip),.out_rgb(fx_strip_rgb));
+    audio_controls_renderer u_audio_controls_renderer(.clk(clk),.rst_n(rst_n),.in_x(raster_x[1]),.in_y(raster_y[1]),
+        .extra_values(audio_extra_snapshot),.legacy_values(mod_preview[238+:133]),.fx_page(audio_fx_page),
+        .warp_menu(audio_warp_menu),.wave_a(val_osca_wave),.wave_b(val_oscb_wave),.sources(mod_sources),
+        .out_hit(hit_fx_strip),.out_rgb(fx_strip_rgb));
     modulation_overlay u_mod_overlay(.clk(clk),.rst_n(rst_n),.in_x(raster_x[2]),.in_y(raster_y[2]),
         .sources(mod_sources),.depths(mod_depths),.preview_values(mod_preview),
         .armed(mod_armed),.dragging(mod_dragging),.hover_target(mod_hover),.selected_target(mod_selected),
@@ -937,8 +994,8 @@ module ui_top_renderer #(
             `PARAM_ID_OSCB_OCT:     sel_val_comb = {3'b000, val_oscb_oct};
             `PARAM_ID_OSCB_SEMI:    sel_val_comb = {2'b00, val_oscb_semi};
             `PARAM_ID_OSCB_FINE:    sel_val_comb = val_oscb_fine;
-            `PARAM_ID_OSCA_WAVE:    sel_val_comb = {5'd0, val_osca_wave};
-            `PARAM_ID_OSCB_WAVE:    sel_val_comb = {5'd0, val_oscb_wave};
+            `PARAM_ID_OSCA_WAVE:    sel_val_comb = {4'd0, val_osca_wave};
+            `PARAM_ID_OSCB_WAVE:    sel_val_comb = {4'd0, val_oscb_wave};
             `PARAM_ID_FLT_TYPE:     sel_val_comb = {5'd0, val_flt_type};
             `PARAM_ID_ENV_TAB:      sel_val_comb = {5'd0, val_env_tab};
             default:                sel_val_comb = hud_selected_id>=8'h60 && hud_selected_id<=8'h72 ? mod_preview[(34+hud_selected_id-8'h60)*7+:7] : 7'd64;
@@ -1452,7 +1509,7 @@ module ui_top_renderer #(
         end
     end
     wire [23:0] composed_pixel=navigation_hit ? navigation_rgb : base_diagnostic ? base_pixel :
-        hit_mod ? mod_rgb : hit_fx_strip ? fx_strip_rgb : base_pixel;
+        hit_fx_strip ? fx_strip_rgb : hit_mod ? mod_rgb : base_pixel;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             out_hsync      <= 1'b0;

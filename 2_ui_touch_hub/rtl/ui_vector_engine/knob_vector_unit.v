@@ -238,7 +238,9 @@ module knob_vector_unit (
             s1_dx_abs <= dx_abs_local;
             s1_dy_abs <= dy_abs_local;
             s1_r2     <= dx_square + dy_square;
-            {s1_ux, s1_uy} <= get_needle_vector(s0_val[6:3]);
+            // PAN=64 is true center; the old 16-way lookup drew +9 degrees.
+            {s1_ux, s1_uy} <= ((s0_id==`PARAM_ID_OSCA_PAN || s0_id==`PARAM_ID_OSCB_PAN || s0_id==`PARAM_ID_FLT_PAN) && s0_val==64) ?
+                {6'sd0,-6'sd31} : get_needle_vector(s0_val[6:3]);
         end else begin
             s1_dx     <= 6'sd0;
             s1_dy     <= 6'sd0;
@@ -303,7 +305,8 @@ module knob_vector_unit (
     wire [5:0] label_x0=row0_0 ? text_dx0+6'd12 : text_dx0+6'd24;
     wire [5:0] label_y0=row0_0 ? text_dy0-6'd14 : text_dy0-6'd19;
     wire [2:0] label_col0=row0_0 ? label_x0[4:2] : label_x0[5:3];
-    wire signed [5:0] value_start0=s0_val>=100 ? -6'sd11 : s0_val>=10 ? -6'sd7 : -6'sd3;
+    wire pan_center0=(s0_id==`PARAM_ID_OSCA_PAN || s0_id==`PARAM_ID_OSCB_PAN || s0_id==`PARAM_ID_FLT_PAN) && s0_val==64;
+    wire signed [5:0] value_start0=pan_center0 ? -6'sd3 : s0_val>=100 ? -6'sd11 : s0_val>=10 ? -6'sd7 : -6'sd3;
     wire [5:0] value_x0=text_dx0-value_start0;
     wire [5:0] value_y0=text_dy0-6'd1;
     reg [5:0] label_ch0,value_ch0;
@@ -326,6 +329,10 @@ module knob_vector_unit (
             endcase
         end else if(s0_val>=10 && value_x0[4:3]==0)
             value_ch0=`CH_0+((s0_val%100)/10);
+        if(pan_center0)begin
+            value_ch0=`CH_C;
+            value_valid0=s0_active && text_dy0>=1 && text_dy0<=10 && text_dx0>=-3 && text_dx0<=3;
+        end
         if(row0_0) begin
             value_valid0=s0_active && text_dy0>=3 && text_dy0<=7;
             if(text_dx0>=-5 && text_dx0<=-3) begin
