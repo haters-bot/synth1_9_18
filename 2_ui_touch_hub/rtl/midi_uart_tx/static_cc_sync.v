@@ -6,38 +6,58 @@ module static_cc_sync(
     input wire clk,rst_n,
     input wire [279:0] values,
     input wire cc_accept,uart_busy,
-    output wire cc_req,
-    output wire [7:0] cc_param_id,
-    output wire [6:0] cc_val,
+    output reg cc_req,
+    output reg [7:0] cc_param_id,
+    output reg [6:0] cc_val,
     output reg startup_sync_done
 );
     `include "static_cc_slots.vh"
     reg [5:0] scan;
     reg [39:0] initial_pending;
     reg [6:0] sent[0:39];
-    reg [6:0] selected_value;
-    integer slot;
+    wire [6:0] selected_value,selected_sent;
+    wire [39:0] selected_pending;
+    wire [39:0] value_bits[0:6],sent_bits[0:6];
+    genvar slot,bit_index;
     integer i;
-    assign cc_param_id=static_cc_id(scan);
     // Constant slices follow the proven sender workaround for Gowin's
-    // variable indexed-read miscompile. Keep the existing slot order.
-    always @(*) begin
-        selected_value=0;
-        for(slot=0;slot<STATIC_CC_COUNT;slot=slot+1)
-            if(scan==slot) selected_value=values[slot*7+:7];
+    // variable indexed-read miscompile. Reductions avoid a priority mux.
+    generate for(slot=0;slot<STATIC_CC_COUNT;slot=slot+1)begin: select_slot
+        wire selected=scan==slot;
+        assign selected_pending[slot]=selected && initial_pending[slot];
+        for(bit_index=0;bit_index<7;bit_index=bit_index+1)begin: select_bit
+            assign value_bits[bit_index][slot]=selected && values[slot*7+bit_index];
+            assign sent_bits[bit_index][slot]=selected && sent[slot][bit_index];
+        end
     end
-    assign cc_val=selected_value;
-    assign cc_req=rst_n && (initial_pending[scan] || cc_val!=sent[scan]);
+    for(bit_index=0;bit_index<7;bit_index=bit_index+1)begin: reduce_bit
+        assign selected_value[bit_index]=|value_bits[bit_index];
+        assign selected_sent[bit_index]=|sent_bits[bit_index];
+    end endgenerate
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n) begin
             scan<=0;initial_pending<={40{1'b1}};startup_sync_done<=0;
+            cc_req<=0;cc_param_id<=0;cc_val<=0;
             for(i=0;i<40;i=i+1) sent[i]<=0;
         end else begin
             // Acceptance denotes the exact FIFO write, never merely TX idle.
-            if(cc_accept) begin
+            if(cc_req && cc_accept) begin
                 sent[scan]<=cc_val;initial_pending[scan]<=0;
+                cc_req<=0;
+                scan<=scan==STATIC_CC_COUNT-1 ? 0 : scan+1'b1;
+            end else if(cc_req)begin
+                // Under backpressure replace the staged value with the latest
+                // bank value. Acceptance records the OLD staged payload, exactly
+                // the word written to UART that edge; a simultaneous later edit
+                // remains different from sent[] and is reconciled on the next lap.
+                cc_val<=selected_value;
+            end else begin
+                // Cut scan/value selection from MIDI ID decode/FIFO/arbitration.
+                cc_param_id<=static_cc_id(scan);cc_val<=selected_value;
+                cc_req<=(|selected_pending) || selected_value!=selected_sent;
+                if(!((|selected_pending) || selected_value!=selected_sent))
+                    scan<=scan==STATIC_CC_COUNT-1 ? 0 : scan+1'b1;
             end
-            if(!cc_req || cc_accept) scan<=scan==STATIC_CC_COUNT-1 ? 0 : scan+1'b1;
             // Sticky completion means initial values have actually left UART.
             // LFO starts afterwards; further real edits retain Note > CC > SysEx.
             if(initial_pending==0 && !uart_busy && !cc_req) startup_sync_done<=1;

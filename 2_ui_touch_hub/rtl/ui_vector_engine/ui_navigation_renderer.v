@@ -362,7 +362,20 @@ module ui_navigation_renderer #(
   background_view0==3 ? settings_bg1 : background_view0==4 ? cards_bg0 : 24'h101318;
  reg [23:0] b1,b2,b3,fg0,fg1,fg2,fg3;
  reg [6:0] id0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
- reg [5:0] col0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ // Split the 127-label reduction across the existing raster/ROM boundary.
+ // Each group belongs to the SAME pixel; the ROM still reads on stage 1.
+ reg [5:0] col_group0[0:7] /* synthesis syn_preserve=1 syn_keep=1 */;
+ wire [5:0] col0=col_group0[0]|col_group0[1]|col_group0[2]|col_group0[3]|
+                  col_group0[4]|col_group0[5]|col_group0[6]|col_group0[7];
+ genvar col_group,col_bit;
+ generate for(col_group=0;col_group<8;col_group=col_group+1)begin: text_column_group
+  localparam WIDTH=col_group==7 ? 15 : 16;
+  always @(posedge clk)begin
+   col_group0[col_group]<={|nav_col_b5[col_group*16+:WIDTH],|nav_col_b4[col_group*16+:WIDTH],
+    |nav_col_b3[col_group*16+:WIDTH],|nav_col_b2[col_group*16+:WIDTH],
+    |nav_col_b1[col_group*16+:WIDTH],|nav_col_b0[col_group*16+:WIDTH]};
+  end
+ end endgenerate
  reg [5:0] rom_ch1,digit1;
  reg number1;
  reg [3:0] recorder_status0;
@@ -609,7 +622,7 @@ module ui_navigation_renderer #(
    glyph_valid2<=0;coverage3<=0;
   end
   else begin
-   h0<=hit;fg0<=text_color;id0<=text_id;col0<=text_col;
+   h0<=hit;fg0<=text_color;id0<=text_id;
    nav_bg0<=nav_bg;visual_bg0<=visual_bg;performance_bg0<=performance_rgb;
    knob_bg0<=knob_bg;generic_bg0<=generic_settings_bg;cards_bg0<=cards_bg;
    background_view0<=view;background_top0<=in_y<44;

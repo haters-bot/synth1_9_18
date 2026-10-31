@@ -30,15 +30,20 @@ module tb_navigation_background_pipeline;
   .performance_next_key_valid(performance_next_key_valid),.performance_next_key_y(performance_next_key_y),.out_hit(),.out_rgb());
  reg [23:0] bg_previous,bg_expected;
  reg hit_previous,hit_expected;
+ reg [5:0] expected_col,expected_rom;
  integer warm=0,checks=0,i,x,y,section;
  always @(posedge clk)if(rst_n)begin
   bg_expected=bg_previous;bg_previous=dut.bg;
   hit_expected=hit_previous;hit_previous=dut.hit;
+  expected_col=dut.text_col;
+  expected_rom=dut.navigation_char(dut.id0,dut.col0);
   warm=warm+1;
   #1;
   if(warm>1)begin
    if(dut.b1!==bg_expected || dut.h1!==hit_expected)
     $fatal(1,"background retiming changed pixel color/hit: actual=%h expected=%h",dut.b1,bg_expected);
+   if(dut.col0!==expected_col || dut.rom_ch1!==expected_rom)
+    $fatal(1,"grouped column changed pixel/ROM alignment: col=%h expected=%h char=%h expected=%h",dut.col0,expected_col,dut.rom_ch1,expected_rom);
    checks=checks+1;
   end
  end
@@ -62,7 +67,7 @@ module tb_navigation_background_pipeline;
    end
   end
   repeat(4)@(negedge clk);
-  $display("PASS: %0d changing pixels match original backgrounds and hit flags at unchanged pipeline latency",checks);
+  $display("PASS: %0d changing pixels match original backgrounds/hit and grouped text columns/ROM at unchanged pipeline latency",checks);
   $finish;
  end
  initial begin #10000000;$fatal(1,"background pipeline watchdog");end
