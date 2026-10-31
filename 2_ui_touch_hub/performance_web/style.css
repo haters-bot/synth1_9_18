@@ -41,6 +41,7 @@ label { color: var(--muted); display: grid; gap: 7px; }
 .progress { height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), var(--amber)); transition: width .15s linear; }
 .progress-label { min-height: 1.2em; margin-top: 4px; color: var(--muted); font-size: .8rem; }
 .action-status { overflow-wrap: anywhere; }
+#linkDiagnostic { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 10em; overflow-y: auto; font-size: .72rem; line-height: 1.4; }
 .action-status[data-state="error"] { color: var(--red); }
 .action-status[data-state="success"] { color: var(--green); }
 .action-status[data-state="info"] { color: var(--cyan); }

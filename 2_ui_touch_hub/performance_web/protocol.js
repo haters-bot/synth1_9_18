@@ -48,7 +48,8 @@
   const errors={1:"格式或音域错误",2:"板卡忙或音源／DDR未就绪",3:"曲谱不完整或调度拒绝",4:"录音范围无效",5:"DDR读取错误",6:"板卡处理超时",7:"请在 UI 板重新校准最左键后上传，校准状态已改变"};
   class Client {
     constructor(send, options={}) {this.send=send;this.decoder=new Decoder();this.sequence=0;this.tail=Promise.resolve();this.pending=null;
-      this.timeout=options.timeout||3500;this.retryLimit=options.retries||3;this.onStatus=options.onStatus||(()=>{});this.lastStatus=null;this.closed=false;}
+      this.timeout=options.timeout||3500;this.retryLimit=options.retries||3;this.onStatus=options.onStatus||(()=>{});this.onTrace=options.onTrace||(()=>{});this.lastStatus=null;this.closed=false;}
+    trace(kind,detail) {try{this.onTrace({kind,...detail});}catch(_){} }
     request(type,payload=new Uint8Array(),audio=null) {
       const run=()=>this.perform(type,payload,audio);
       const promise=this.tail.then(run);this.tail=promise.catch(()=>{});return promise;
@@ -68,10 +69,12 @@
       if(++p.attempt>this.retryLimit) {this.finish(p,Error("未收到完整板卡应答；检查模块配对、交叉接线和波特率"));return;}
       // A truncated response from an earlier attempt must not hide the retry's ACK.
       this.decoder=new Decoder();
-      try {this.send(p.wire);this.arm(p);}catch(e){this.finish(p,e);}
+      try {this.send(p.wire);this.trace("tx",{bytes:p.wire,attempt:p.attempt});this.arm(p);}catch(e){this.finish(p,e);}
     }
     receive(bytes) {
-      for(const packet of this.decoder.feed(bytes)) {
+      const badBefore=this.decoder.bad,packets=this.decoder.feed(bytes);
+      this.trace("rx",{bytes,validFrames:packets.length,badFrames:this.decoder.bad-badBefore});
+      for(const packet of packets) {
         const p=this.pending;if(!p || p.seq!==packet.seq)continue;
         try {
           if(packet.type===TYPES.AUDIO && p.audio) {

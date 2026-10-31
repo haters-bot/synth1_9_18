@@ -1,10 +1,18 @@
 (() => {
  "use strict";
  const P=PerformanceProtocol,T=P.TYPES,$=id=>document.getElementById(id);
- const state={client:null,socket:null,song:null,status:null,working:false,selecting:false,saving:false,saveWait:null,writeWait:null};
+ const state={client:null,socket:null,song:null,status:null,working:false,selecting:false,saving:false,saveWait:null,writeWait:null,linkConnected:false,helloPayload:null,handshakePromise:null,handshakeAttempts:0,link:null};
  const native=window.PhoneNative;
  let helloNonce=(Date.now() ^ Math.floor(Math.random()*4294967296))>>>0;
  const log=message=>{$("log").textContent=String(message);};
+ function linkTrace(event){
+  const d=state.link;if(!d)return;
+  const hex=bytes=>Array.from(bytes.slice(-48),b=>b.toString(16).padStart(2,"0").toUpperCase()).join(" ");
+  if(event.kind==="tx"){d.txFrames++;d.txBytes+=event.bytes.length;d.tx=hex(event.bytes);}
+  else {d.rxBytes+=event.bytes.length;d.validFrames+=event.validFrames;d.badFrames+=event.badFrames;d.rx=hex(event.bytes);}
+  const target=$("linkDiagnostic");
+  if(target)target.textContent=`App TX ${d.txFrames}帧/${d.txBytes}B · RX ${d.rxBytes}B · 有效帧 ${d.validFrames} · 坏帧 ${d.badFrames}\n最近TX: ${d.tx}\n最近RX: ${d.rx}`;
+ }
  function badge(id,text){$(id).textContent=text;}
  function feedback(message,kind=""){
   const target=$("actionStatus");target.textContent=String(message);target.dataset.state=kind;
@@ -14,6 +22,8 @@
  function calibrated(s){return !!s?.calibrationSupported && s.calibrated;}
  function controls(){
   const ready=calibrated(state.status),s=state.status;
+  $("connectButton").textContent=state.linkConnected && !s?"重试板卡应答":"连接蓝牙";
+  $("connectButton").disabled=state.working || !!state.handshakePromise;
   $("uploadButton").disabled=state.working || state.selecting || !ready || !state.song || state.song.noteMax-state.song.noteMin>=32;
   $("playButton").disabled=state.working || !ready || !s.loaded;
   $("pauseButton").disabled=state.working || !ready || !s.loaded;
@@ -57,18 +67,40 @@
   }
  }
  function disconnected(message){
-  state.client?.close();state.client=null;state.status=null;
+  state.linkConnected=false;state.client?.close();state.client=null;state.status=null;state.handshakePromise=null;state.helloPayload=null;
   $("calibrationStatus").textContent="蓝牙断开；下次连接后请重新在 UI 板校准。";controls();
   badge("gatewayStatus","蓝牙／板卡未连接");$("downloadButton").disabled=true;log(message);
   if(state.saveWait){state.saveWait.reject(Error(message));state.saveWait=null;}
   if(state.writeWait){state.writeWait.reject(Error(message));state.writeWait=null;}
  }
+ function handshake(manual=false){
+  if(!state.linkConnected || !state.client)return Promise.resolve();
+  if(state.handshakePromise)return state.handshakePromise;
+  if(manual)state.handshakeAttempts=0;
+  const c=state.client;state.handshakeAttempts++;
+  badge("gatewayStatus",`蓝牙已连，等待板卡 HELLO（${state.handshakeAttempts}/3）…`);
+  state.handshakePromise=(async()=>{
+   try {
+    // Reuse the connection nonce across retries: a lost ACK must not erase a
+    // calibration/score that the FPGA has already accepted for this session.
+    await c.request(T.HELLO,state.helloPayload);
+    if(state.client!==c || !state.linkConnected)return;
+    log("双向通信成功。请在 UI 板演奏页点击 CALIBRATE，再按实体键盘最左键。每次重连或调整八度后都须校准并重新传曲。");
+   }catch(e){
+    if(state.client!==c || !state.linkConnected)return;
+    const rejected=c.lastStatus?.request===T.HELLO && c.lastStatus.code;
+    badge("gatewayStatus",rejected?"板卡已应答／握手被拒绝":state.link.rxBytes?"蓝牙已连／返回数据未通过协议校验":"蓝牙已连／未收到板卡返回");
+    log(`${e.message}。${state.handshakeAttempts<3?"将自动重试；也可点“重试板卡应答”。":"自动重试已暂停，可点“重试板卡应答”继续。"}${state.link.rxBytes?"已有返回字节，请查看下方收发诊断。":"RX=0：尚不能确定是接线、模块串口波特率还是板端接收问题。"}`);
+   }finally{if(state.client===c){state.handshakePromise=null;controls();}}
+  })();
+  controls();return state.handshakePromise;
+ }
  async function attach(send){
-  state.client?.close();state.client=new P.Client(send,{onStatus:refresh});
-  state.status=null;controls();
-  badge("gatewayStatus","蓝牙已连，等待板卡 HELLO…");
-  try {await state.client.request(T.HELLO,P.u32(++helloNonce));log("双向通信成功。请在 UI 板演奏页点击 CALIBRATE，再按实体键盘最左键。每次重连或调整八度后都须校准并重新传曲。");}
-  catch(e){log(e.message);badge("gatewayStatus","蓝牙已连／板卡未应答");}
+  state.client?.close();state.handshakePromise=null;state.status=null;
+  state.linkConnected=true;state.handshakeAttempts=0;state.helloPayload=P.u32(++helloNonce);
+  state.link={txFrames:0,txBytes:0,rxBytes:0,validFrames:0,badFrames:0,tx:"—",rx:"—"};
+  const c=new P.Client(send,{onStatus:s=>{if(state.client===c && (s.request!==T.HELLO || !s.code))refresh(s);},onTrace:event=>{if(state.client===c)linkTrace(event);}});
+  state.client=c;controls();return handshake();
  }
  window.onNativeConnected=()=>attach(bytes=>native.sendBase64(bytes64(bytes)));
  window.onNativeBytes=data=>state.client?.receive(decode64(data));
@@ -83,7 +115,7 @@
  };
  async function connect(){
   if(state.working)throw Error("请先等待当前操作结束");
-  if(native){native.chooseDevice();return;}
+  if(native){if(state.linkConnected && !state.status)return handshake(true);native.chooseDevice();return;}
   if(location.protocol==="file:")throw Error("此离线网页可解析 MIDI；安卓请安装配套 APK 直连 HC-07");
   state.socket?.close();
   const socket=new WebSocket(`${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`);
@@ -211,8 +243,9 @@
   finally {state.saving=false;}
  });
  setInterval(()=>{
-  if(state.client && state.status && !state.working && !state.client.pending)
-   state.client.request(T.STATUS).catch(e=>log(e.message));
+  if(!state.client || !state.linkConnected || state.working || state.client.pending || state.handshakePromise)return;
+  if(state.status)state.client.request(T.STATUS).catch(e=>log(e.message));
+  else if(state.handshakeAttempts<3)return handshake();
  },2500);
  piano();controls();log(native?"先在安卓系统配对模块，再点连接，选择已配对的设备；连接后在 UI 板校准最左键。":"此网页可离线解析 MIDI；手机直连 HC-07 需要配套安卓 APK。");
 })();
