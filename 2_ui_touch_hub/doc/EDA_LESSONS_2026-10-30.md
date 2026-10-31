@@ -1,5 +1,7 @@
 # UI 演奏功能 EDA 经验与后续执行规则
 
+2026-10-31 22:44统一版本追加经验：第一轮211342有15 setup、第二轮215327有271 setup，均未部署；根因是DDR请求/读完成宽使能和UI坐标乘法/文字链。仅把宽使能从accept_request挪到busy会转移扇出，不能视为根治。最终按32位bank独立保留idle寄存器、读返回每拍采样并保持rsp_valid资格、坐标常量选择及利用原像素流水分级；未改外部握手、页面或音频协议。第三轮222517 / 59a5f28经33种bench/像素等价/normal-debug及116输入一致性验证后，五类时序全过，pixel53.671/50MHz、DDR112.458/100MHz，124引脚匹配；唯一UI SRAM2完成、UserCode0x171D/Status0x26230，见UNIFIED_RELEASE记录。实际一直是gowinsynthesis/place3/route1，未换模式或放宽约束。今后优先查STA中的扇出、DSP和组合级数；每次新输入仍须全审计，不承诺一次过、不原样重复构建。所有失败证据保留。
+
 日期：2026-10-30。适用工程：D:/github/synth1_9_18/2_ui_touch_hub。
 这是项目文件中的持久记录；没有通过 Hindsight 写入工具确认独立长期记忆入库。
 

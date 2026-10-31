@@ -1,5 +1,11 @@
 # 统一功能版时序修补（2026-10-31）
 
+## 最终结果（22:44）
+
+第三轮 `E:/gaoyun_builds/R16A_build_20261031_222517` / 源码59a5f28于22:41:49退出0。审计 `audit_20261031_224158_165067.json`：五类全部通过，最差setup/hold/recovery/removal/pulse余量+0.642/+0.141/+0.372/+0.384/+0.451ns；七时钟全过，pixel53.671/50MHz、DDR112.458/100MHz；116输入/124引脚匹配。保持gowinsynthesis/place3/route1，未降低时钟或放宽约束。完整33种bench、normal/debug和八张画面等价证明功能/输入一致；不能替代板上功能验收。
+
+22:42唯一UI SRAM2部署成功，双端FS SHA256=96F32E5317254CDCE89806B1A61E9A004468222A8F7E0F62E60C25EFCB8568FD，Programmer退出0且有完成标记；烧后只读UserCode0x0000171D/Status0x00026230。证据在`impl/deploy_runs/20261031_224251_UI_UNIFIED_PITCH_CAL_20261031/completion_record.json`。本轮两失败目录全部保留，未写Flash/音频板，不原样重跑。本版闭合不保证以后一次过；以后改动继续按实际STA路径修复，不能因退出0或RTL仿真通过而跳过审计。
+
 ## 首轮证据
 
 源码97d2b37；normal工程`2_ui_touch_hub.gprj`、顶层`ui_touch_hub_top`。构建`E:/gaoyun_builds/R16A_build_20261031_211342`，审计`audit_20261031_213750_461223.json`：15个setup端点，最差-1.302ns；pixel46.944/50MHz、DDR88.640/100MHz未达标。其余四类检查通过；124引脚、116项输入一致。该位流未部署，原目录和全部证据保留。

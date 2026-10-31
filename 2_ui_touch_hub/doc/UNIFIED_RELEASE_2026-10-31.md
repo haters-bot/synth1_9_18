@@ -2,11 +2,17 @@
 
 ## 状态
 
-功能整合检查点`97d2b37`，时序局部修补检查点：`7bf3b6006bc6ed654acc3a402ed59ff372419236`，integration/dual-138k-uart-phase1，本地保存，未推送。正常工程：`2_ui_touch_hub.gprj` / `ui_touch_hub_top`。
+功能整合检查点`97d2b37`，当前时序修补检查点：`59a5f282f163c1cbe51f936c624317b1786226cd`，integration/dual-138k-uart-phase1，本地保存，未推送。正常工程：`2_ui_touch_hub.gprj` / `ui_touch_hub_top`。
 
-第二轮构建：`E:/gaoyun_builds/R16A_build_20261031_215327` / 7bf3b60，于22:16结束，**时序审计失败，未烧录**：271 setup，worst -3.105ns；DDR76.306/100MHz、pixel48.414/50MHz，其他四类/116输入/124引脚一致。进一步定位为busy宽扇出与坐标乘法DSP；已追加局部修补，9项相关RTL、八张画面逐字节等价及normal/debug展开通过，24项完整协议回归仍在收取。下一构建须重新完整审计，通过后按持续授权仅UI SRAM2。失败证据全部保留。
+第三轮构建`E:/gaoyun_builds/R16A_build_20261031_222517`于22:41:49退出0，**完整审计通过，已完成UI SRAM2烧录**。116输入与Git/工作区/冻结一致，完整33项回归、normal/debug、八张画面等价和手机/APK哈希验证全PASS；证据在functional_evidence.json。Gowin和Programmer进程均已结束。
 
-首轮构建：`E:/gaoyun_builds/R16A_build_20261031_211342`，21:37完成但**审计失败，未烧录**：15个setup端点，worst -1.302ns，pixel46.944/50MHz及DDR88.640/100MHz不通过；其他四类、124引脚及116输入一致。证据完整保留，正在按负路径局部修补并重跑相关回归。板上原版仍为173812 / 83ed585 / UserCode 0x3056。后续以CODEX_HANDOFF顶部和新构建目录的审计、部署记录为准。
+- 审计：`audit_20261031_224158_165067.json`，setup/hold违例0；setup/hold/recovery/removal/pulse最差余量分别+0.642/+0.141/+0.372/+0.384/+0.451ns；七时钟全过，pixel53.671/50MHz、DDR112.458/100MHz，124引脚/116输入匹配，无域内时序豁免。
+- 唯一UI SRAM2部署：`impl/deploy_runs/20261031_224251_UI_UNIFIED_PITCH_CAL_20261031`。Programmer退出0、完成标记齐全，双端SHA256 `96F32E5317254CDCE89806B1A61E9A004468222A8F7E0F62E60C25EFCB8568FD`一致，烧后只读UserCode `0x0000171D`、Status `0x00026230`。详见该目录completion_record.json、manifest.json、programmer.log、post_program_readonly.log。
+- 相机已抓拍，但画面未覆盖UI屏幕；不据此宣称显示、触摸、手机、灯带、SD或录音听感已通过实测。仅UI SRAM操作，未写Flash、未操作音频板、未删除或推送。
+
+第二轮构建：`E:/gaoyun_builds/R16A_build_20261031_215327` / 7bf3b60，于22:16结束，**时序审计失败，未烧录**：271 setup，worst -3.105ns；DDR76.306/100MHz、pixel48.414/50MHz，其他四类/116输入/124引脚一致。定位为busy宽扇出与坐标乘法DSP；追加局部修补及33项完整回归后，第三轮构建通过。失败证据全部保留。
+
+首轮构建：`E:/gaoyun_builds/R16A_build_20261031_211342`，21:37完成但**审计失败，未烧录**：15个setup端点，worst -1.302ns，pixel46.944/50MHz及DDR88.640/100MHz不通过；其他四类、124引脚及116输入一致。证据完整保留。烧录前的旧版173812 / 83ed585 / UserCode0x3056已由本轮222517 / 59a5f28 / UserCode0x171D替换；以顶部完成记录为准。
 
 ## 本次统一包含
 
@@ -24,11 +30,11 @@
 
 ## 软件验证
 
-- 24项RTL：`six_fix_20261031_214657_010510/result.json`，全部通过；含原23项加PCM capture。
-- 9项音频协议/画面/仲裁/DDR/录音完整链：`six_fix_20261031_214529_142128/result.json`，全部通过。八张完整画面与修补前逐字节一致；831672个连续像素及五拍流水对齐不变。
+- 24项RTL：`six_fix_20261031_221939_307389/result.json`，全部通过；含LFO/ENV/校准/手机/三模式/PCM capture，输入匹配最终源码。
+- 9项音频协议/画面/仲裁/DDR/录音完整链：`six_fix_20261031_221913_674315/result.json`，全部通过，输入匹配最终源码。八张完整画面与修补前逐字节一致；831672个连续像素及五拍流水对齐不变。
 - PCM store补充7/13异步时钟：`pcm_clocks_20261031_214738_225263/result.json`；PCM capture深度16：`pcm_depth16_20261031_215309_211130/result.json`，均通过。
 - 手机选曲/22663音域用例/校准gate/CRC/断连/录音导出：`phone_selection_20261031_210906_550676/result.json`，通过。
-- normal/debug完整层次：`ui_elaboration_20261031_214633_754215/result.json`，通过；官方原语加DDR stub，不替代时序和实物DDR验证。
+- normal/debug完整层次：`ui_elaboration_20261031_221913_697287/result.json`，通过且最终输入匹配；官方原语加DDR stub，不替代时序和实物DDR验证。
 - APK：`E:/gaoyun_builds/phone_apk_20261031_205654_857065/FPGA-Performance.apk`，SHA256 `bc0c891f0c0505d644c45e24d50ea1254b19318ea1a048e9fdd03faf2d5c24fb`，原签名证书一致，v2/v3通过，6份网页资产逐字节与工作区一致。
 
 ## 上板后现场验收顺序
