@@ -83,6 +83,7 @@
         <File path="rtl/performance/ws2812_driver.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/performance_page_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/static_cc_sync.v" type="file.verilog" enable="1"/>
         <File path="rtl/midi_uart_tx/midi_uart_tx.v" type="file.verilog" enable="1"/>
         <File path="rtl/debug/ui_debug_trace.v" type="file.verilog" enable="1"/>
         <File path="rtl/debug/knob_ascii_trace.v" type="file.verilog" enable="1"/>

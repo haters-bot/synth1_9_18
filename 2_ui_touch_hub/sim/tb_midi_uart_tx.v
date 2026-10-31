@@ -225,6 +225,16 @@ module tb_midi_uart_tx;
         send_cc_check(`PARAM_ID_ENV1_ATTACK, 7'd12, 7'd24, 7'd12);
         send_cc_check(`PARAM_ID_ENV1_RELEASE, 7'd67, 7'd27, 7'd67);
         send_cc_check(`PARAM_ID_MASTER_VOL, 7'd100, 7'd48, 7'd100);
+        send_cc_check(`PARAM_ID_OSCA_PHASE, 7'd11, 7'd87, 7'd11);
+        send_cc_check(`PARAM_ID_OSCA_RAND, 7'd12, 7'd88, 7'd12);
+        send_cc_check(`PARAM_ID_OSCB_PHASE, 7'd13, 7'd89, 7'd13);
+        send_cc_check(`PARAM_ID_OSCB_RAND, 7'd14, 7'd90, 7'd14);
+        send_cc_check(`PARAM_ID_DELAY_FEEDBACK, 7'd61, 7'd53, 7'd61);
+        send_cc_check(`PARAM_ID_DELAY_TIME, 7'd62, 7'd52, 7'd62);
+        send_cc_check(`PARAM_ID_DELAY_MIX, 7'd63, 7'd54, 7'd63);
+        send_cc_check(`PARAM_ID_REVERB_SIZE, 7'd64, 7'd55, 7'd64);
+        send_cc_check(`PARAM_ID_REVERB_DECAY, 7'd65, 7'd56, 7'd65);
+        send_cc_check(`PARAM_ID_REVERB_MIX, 7'd66, 7'd57, 7'd66);
 
         // Unsupported legacy/local-only controls must not emit CC0 or alias
         // into unrelated audio parameters (Hold and FX placeholders).

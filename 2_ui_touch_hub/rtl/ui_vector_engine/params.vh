@@ -99,6 +99,14 @@
 `define PARAM_ID_ENV2_SUSTAIN 8'h5B // CC34
 `define PARAM_ID_ENV2_RELEASE 8'h5C // CC35
 
+// Audio-connected controls in the existing FX strip (stable 0x60+index IDs).
+`define PARAM_ID_DELAY_FEEDBACK     8'h60 // CC53
+`define PARAM_ID_DELAY_TIME         8'h61 // CC52
+`define PARAM_ID_DELAY_MIX          8'h65 // CC54
+`define PARAM_ID_REVERB_SIZE        8'h66 // CC55
+`define PARAM_ID_REVERB_DECAY       8'h67 // CC56
+`define PARAM_ID_REVERB_MIX         8'h6C // CC57
+
 // FX Matrix / Voicing
 `define PARAM_ID_FX_REVERB    8'h50
 `define PARAM_ID_FX_DELAY     8'h51

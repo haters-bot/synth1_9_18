@@ -41,7 +41,8 @@ module midi_uart_tx #(
     // Hardware UART Serial Output (to Teammate 3 Audio Engine)
     output reg         uart_tx,
     output wire        tx_busy,
-    output wire        note_ready
+    output wire        note_ready,
+    output wire        cc_accept
 );
 
     localparam CLK_DIV = CLK_FREQ / BAUD; // 62,500,000 / 31250 = 2000
@@ -84,6 +85,16 @@ module midi_uart_tx #(
                 `PARAM_ID_OSCA_PAN:     map_id_to_cc = 7'd91;
                 `PARAM_ID_OSCB_PAN:     map_id_to_cc = 7'd92;
                 `PARAM_ID_MASTER_VOL:   map_id_to_cc = 7'd48; // Master level
+                `PARAM_ID_OSCA_PHASE: map_id_to_cc = 7'd87;
+                `PARAM_ID_OSCA_RAND: map_id_to_cc = 7'd88;
+                `PARAM_ID_OSCB_PHASE: map_id_to_cc = 7'd89;
+                `PARAM_ID_OSCB_RAND: map_id_to_cc = 7'd90;
+                `PARAM_ID_DELAY_FEEDBACK: map_id_to_cc = 7'd53;
+                `PARAM_ID_DELAY_TIME: map_id_to_cc = 7'd52;
+                `PARAM_ID_DELAY_MIX: map_id_to_cc = 7'd54;
+                `PARAM_ID_REVERB_SIZE: map_id_to_cc = 7'd55;
+                `PARAM_ID_REVERB_DECAY: map_id_to_cc = 7'd56;
+                `PARAM_ID_REVERB_MIX: map_id_to_cc = 7'd57;
                 default:                map_id_to_cc = 7'd0;
             endcase
         end
@@ -93,6 +104,16 @@ module midi_uart_tx #(
         input [7:0] id;
         begin
             case (id)
+                `PARAM_ID_OSCA_PHASE,
+                `PARAM_ID_OSCA_RAND,
+                `PARAM_ID_OSCB_PHASE,
+                `PARAM_ID_OSCB_RAND,
+                `PARAM_ID_DELAY_FEEDBACK,
+                `PARAM_ID_DELAY_TIME,
+                `PARAM_ID_DELAY_MIX,
+                `PARAM_ID_REVERB_SIZE,
+                `PARAM_ID_REVERB_DECAY,
+                `PARAM_ID_REVERB_MIX,
                 `PARAM_ID_OSCA_WT_POS, `PARAM_ID_OSCB_WT_POS,
                 `PARAM_ID_OSCA_WAVE, `PARAM_ID_OSCB_WAVE,
                 `PARAM_ID_OSCA_WARP, `PARAM_ID_OSCB_WARP,
@@ -164,6 +185,8 @@ module midi_uart_tx #(
     wire note_cc_push = (note_on_req || note_off_req
                         || (cc_req && cc_id_supported(cc_param_id)
                             && fifo_count < 4'd7)) && (fifo_count < 4'd8);
+    assign cc_accept = cc_req && cc_id_supported(cc_param_id) &&
+                       !(note_on_req || note_off_req) && fifo_count < 4'd7;
     wire [23:0] in_msg  = note_on_req  ? {8'h90, 1'b0, note_number, 1'b0, note_velocity} :
                           note_off_req ? {8'h80, 1'b0, note_number, 8'h00} :
                                          {8'hBF, 1'b0, map_id_to_cc(cc_param_id), 1'b0,

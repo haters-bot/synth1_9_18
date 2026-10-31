@@ -17,6 +17,7 @@ module modulation_overlay(
     output reg [23:0] out_rgb
 );
     `include "mod_targets.vh"
+    `include "audio_capabilities.vh"
     function [5:0] digit;
         input [6:0] num;
         begin digit=`CH_0+num;end
@@ -134,16 +135,17 @@ module modulation_overlay(
         wire [1:0] src=sources_r[n*2+:2];
         wire [12:0] scaled_value=preview_values_r[n*7+:7]*6'd34;
         wire [5:0] marker_top=6'd39-scaled_value[12:7];
+        localparam CONNECTED=audio_lfo_connected(n);
         wire ring=src!=0 && distance_l1>=25 && distance_l1<=27;
-        wire indicator=src!=0 && lx>=40 && lx<=43 && ly>=marker_top && ly<=marker_top+6'd3;
-        wire candidate=dragging_r && hover_target_r==n && (distance_l1==29 || distance_l1==30);
+        wire indicator=CONNECTED && src!=0 && lx>=40 && lx<=43 && ly>=marker_top && ly<=marker_top+6'd3;
+        wire candidate=CONNECTED && dragging_r && hover_target_r==n && (distance_l1==29 || distance_l1==30);
         wire cell_hit=box_hit && (ring || indicator || candidate);
-        wire cell_text=box_hit && src!=0 && lx>=14 && lx<30 && ly<10;
+        wire cell_text=box_hit && (src!=0 || !CONNECTED) && lx>=14 && lx<30 && ly<10;
         // Coverage is already registered separately. Mask color in the next
         // reduction stage, so the full ring/indicator predicate need not also
         // drive every RGB register bit in this stage.
-        wire [23:0] cell_color=source_color(src);
-        wire [5:0] cell_char=cell_text ? (lx>=22 ? digit({5'd0,src}) : `CH_L) : 6'd0;
+        wire [23:0] cell_color=CONNECTED ? source_color(src) : 24'h50545C;
+        wire [5:0] cell_char=cell_text ? (CONNECTED ? (lx>=22 ? digit({5'd0,src}) : `CH_L) : (lx>=22 ? `CH_C : `CH_N)) : 6'd0;
         wire [2:0] cell_rx=cell_text ? lx-6'd14 : 3'd0;
         wire [3:0] cell_ry=cell_text ? ly : 4'd0;
         always @(posedge clk) begin
@@ -249,7 +251,7 @@ module modulation_overlay(
         if(!rst_n) begin out_hit<=0;out_rgb<=0;end
         else begin
             out_hit<=hit1 || cov1!=0;
-            out_rgb<=cov1!=0 ? blend_rgb_q4(24'hFFFFFF,rgb1,font_alpha_q4(cov1)) : rgb1;
+            out_rgb<=cov1!=0 ? blend_rgb_q4(rgb1==24'h50545C ? 24'hA0A4AC : 24'hFFFFFF,rgb1,font_alpha_q4(cov1)) : rgb1;
         end
     end
 endmodule

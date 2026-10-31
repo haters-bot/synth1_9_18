@@ -1,5 +1,6 @@
 `timescale 1ns/1ps
 module tb_modulation_preview_pipeline;
+ `include "audio_capabilities.vh"
  reg clk=0,rst_n=0;
  always #10 clk=~clk;
  reg [146:0] nodes={{7{7'd119}},{7{7'd64}},{7{7'd21}}};
@@ -47,8 +48,9 @@ module tb_modulation_preview_pipeline;
    for(i=0;i<53;i=i+1)begin
     source_id=(i+round_index)%4;dep=(i*17+round_index*13)%255-127;
     value=source_id==1 ? 21 : source_id==2 ? 64 : 119;
-    expected=source_id==0 ? (i*3+round_index)%128 :
-     ((dep<0 ? -dep : dep)*(dep<0 ? 127-value : value))/127;
+    expected=(i*3+round_index)%128;
+    if(source_id!=0 && audio_lfo_connected(i)) expected=expected+((dep*value)>>>7);
+    if(expected<0)expected=0;else if(expected>127)expected=127;
     if(preview_values[i*7+:7]!==expected[6:0])
      $fatal(1,"preview target=%0d source=%0d depth=%0d got=%0d expected=%0d",i,source_id,dep,preview_values[i*7+:7],expected);
     checks=checks+1;

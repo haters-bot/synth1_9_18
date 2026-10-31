@@ -414,6 +414,11 @@ module ui_touch_hub_top #(
     wire [7:0]  active_btn_id;
     wire        btn_flash_active;
 
+    wire [237:0] static_cc_values;
+    wire [279:0] audio_static_values;
+    wire startup_sync_done,static_cc_req,static_cc_accept;
+    wire [7:0] static_cc_param_id;
+    wire [6:0] static_cc_val;
     wire        midi_cc_req;
     wire [7:0]  midi_cc_param_id;
     wire [6:0]  midi_cc_val;
@@ -534,6 +539,7 @@ module ui_touch_hub_top #(
         .val_slot_bypass   (val_slot_bypass),
         .active_btn_id     (active_btn_id),
         .btn_flash_active  (btn_flash_active),
+        .static_cc_values (static_cc_values),
         .midi_cc_req       (midi_cc_req),
         .midi_cc_param_id  (midi_cc_param_id),
         .midi_cc_val       (midi_cc_val)
@@ -890,13 +896,25 @@ module ui_touch_hub_top #(
     // --------------------------------------------------------------------------
     wire audio_midi_tx;
     // LFO Protocol V2: snapshot the LFO UI after it falls quiet and stream the
-    // configuration as 6-byte SysEx frames; static CC values keep flowing as-is.
+    // configuration after boot static CCs drain; later live edits use FIFO acceptance.
+    assign audio_static_values[237:0]=static_cc_values;
+    assign audio_static_values[238+:7]=fx_parameter_snapshot[0+:7]; // DELAY_FEEDBACK
+    assign audio_static_values[245+:7]=fx_parameter_snapshot[7+:7]; // DELAY_TIME
+    assign audio_static_values[252+:7]=fx_parameter_snapshot[35+:7]; // DELAY_MIX
+    assign audio_static_values[259+:7]=fx_parameter_snapshot[42+:7]; // REVERB_SIZE
+    assign audio_static_values[266+:7]=fx_parameter_snapshot[49+:7]; // REVERB_DECAY
+    assign audio_static_values[273+:7]=fx_parameter_snapshot[84+:7]; // REVERB_MIX
+    static_cc_sync u_static_cc_sync(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.values(audio_static_values),
+        .cc_accept(static_cc_accept),.uart_busy(midi_tx_busy),
+        .cc_req(static_cc_req),.cc_param_id(static_cc_param_id),.cc_val(static_cc_val),
+        .startup_sync_done(startup_sync_done));
     lfo_sysex_tx #(
         .HOLD_CYCLES       (1_000_000), // 20 ms edit-quiet window @ 50 MHz
         .FIRST_HOLD_CYCLES (300_000)    // initial full sync after 6 ms
     ) u_lfo_sysex (
         .clk         (clk_pixel),
-        .rst_n       (sys_rst_n_sync),
+        .rst_n       (sys_rst_n_sync && startup_sync_done),
         .cfg_nodes   (lfo_node_snapshot),
         .cfg_rates   (lfo_rate_snapshot),
         .cfg_steps   (lfo_step_snapshot),
@@ -918,12 +936,13 @@ module ui_touch_hub_top #(
         .note_off_req  (performance_note_valid && !performance_note_on),
         .note_number   (performance_note_number),
         .note_velocity (performance_note_velocity),
-        .cc_req        (midi_cc_req),
-        .cc_param_id   (midi_cc_param_id),
-        .cc_val        (midi_cc_val),
+        .cc_req        (static_cc_req),
+        .cc_param_id   (static_cc_param_id),
+        .cc_val        (static_cc_val),
         .sysex_req     (sysex_req),
         .sysex_msgs    (sysex_msgs),
         .sysex_accept  (sysex_accept),
+        .cc_accept     (static_cc_accept),
         .uart_tx       (audio_midi_tx),
         .tx_busy       (midi_tx_busy),.note_ready(performance_note_ready)
     );

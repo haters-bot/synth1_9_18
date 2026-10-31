@@ -20,6 +20,7 @@ module tb_fx_lfo_routing;
     wire [12:0] unused;
     wire [48:0] edited_nodes;
     `include "mod_targets.vh"
+    `include "audio_capabilities.vh"
     `include "fx_controls.vh"
     always #8 clk=~clk;
     always @(posedge clk) begin
@@ -80,11 +81,11 @@ module tb_fx_lfo_routing;
     initial begin
         curve={7'd0,7'd42,7'd85,7'd127,7'd85,7'd42,7'd0};
         repeat(5) @(negedge clk);rst_n=1;repeat(500) @(negedge clk);
-        // Every target is reachable and a zero-coordinate UP commits last hover.
-        for(i=0;i<53;i=i+1) begin tab=i%3;bind_target(i);end
+        // Keep all 53 positions; only audio-connected targets accept binding.
+        for(i=0;i<53;i=i+1) if(audio_lfo_connected(i)) begin tab=i%3;bind_target(i);end
         if(edited_nodes!={7'd0,7'd42,7'd85,7'd127,7'd85,7'd42,7'd0})
             $fatal(1,"Dragging a bound curve modified its nodes");
-        if(route_events!=53 || fx_events!=0) $fatal(1,"Binding leaked FX mutation or duplicate events");
+        if(route_events!=24 || fx_events!=0) $fatal(1,"Binding leaked FX mutation or duplicate events");
         before_events=route_events;
         click(1140,385);packet(980,485,1);packet(790,350,1);packet(0,0,0);
         if(route_events!=before_events || armed) $fatal(1,"Invalid drop changed routing");
@@ -189,7 +190,7 @@ module tb_fx_lfo_routing;
         for(i=0;i<53;i=i+1) base_values[i*7+:7]=i;
         repeat(500) @(negedge clk);
         for(i=0;i<53;i=i+1) begin
-            v=i==23 ? i : 127;
+            v=i==23 || !audio_lfo_connected(i) ? i : 127;
             if(preview[i*7+:7]!=v) $fatal(1,"Shared preview index mismatch %d: %d != %d",i,preview[i*7+:7],v);
         end
         tab=0;bind_target(23);base_values[23*7+:7]=100;

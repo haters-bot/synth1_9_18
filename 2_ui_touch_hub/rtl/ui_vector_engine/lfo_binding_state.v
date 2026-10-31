@@ -21,6 +21,7 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
     output reg signed [7:0] event_depth
 );
     `include "mod_targets.vh"
+    `include "audio_capabilities.vh"
     reg [1:0] source[0:52];
     reg signed [7:0] depth[0:52];
     reg finger,control_contact;
@@ -101,7 +102,7 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
                     if(dragging) begin
                         // Release coordinates can be zero on some HID reports:
                         // use the last pressed packet's hovered destination.
-                        if(hover_target<53) begin
+                        if(audio_lfo_connected(hover_target)) begin
                             source[hover_target]<=drag_source;depth[hover_target]<=127;
                             selected_target<=hover_target;event_valid<=1;
                             event_target<=mod_id(hover_target);event_source<=drag_source;event_depth<=127;
@@ -120,7 +121,7 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
                     end else if(!finger) begin
                         if(bind_hit) begin armed<=!armed;control_contact<=1;end
                         else if(armed && graph_hit) begin dragging<=1;drag_source<=packet_tab+1'b1;hover_target<=63;end
-                        else if(armed && target<53) begin
+                        else if(armed && audio_lfo_connected(target)) begin
                             // Optional tap destination after BIND: commit on
                             // press and capture the contact to protect its base.
                             source[target]<=packet_tab+1'b1;depth[target]<=127;
@@ -142,7 +143,7 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
                                 event_depth<=depth[selected_target]<119 ? depth[selected_target]+8 : 127;
                             end
                         end else if(target<53 && source[target]!=0) selected_target<=target;
-                    end else if(dragging) hover_target<=target;
+                    end else if(dragging) hover_target<=audio_lfo_connected(target) ? target : 6'd63;
                 end
             end
         end

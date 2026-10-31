@@ -110,7 +110,8 @@ module param_merger (
     // MIDI UART CC Command Dispatch
     output reg         midi_cc_req,
     output reg  [7:0]  midi_cc_param_id,
-    output reg  [6:0]  midi_cc_val
+    output reg  [6:0]  midi_cc_val,
+    output wire [237:0] static_cc_values
 );
     // Capture all event buses together before arbitration. This breaks the
     // shared UI-ID decode path without changing same-cycle source priority.
@@ -204,6 +205,41 @@ module param_merger (
     assign val_env_decay=env_d[val_env_tab];
     assign val_env_sustain=env_s[val_env_tab];
     assign val_env_release=env_r[val_env_tab];
+    // Authoritative live bank: ENV1/2 are exported independently of visible tab.
+    assign static_cc_values[0+:7]=val_master_vol; // MASTER_VOL
+    assign static_cc_values[7+:7]=val_flt_pan; // FLT_PAN
+    assign static_cc_values[14+:7]=(val_osca_power ? 7'd127 : 7'd0); // OSCA_POWER
+    assign static_cc_values[21+:7]={5'd0,val_osca_wave}; // OSCA_WAVE
+    assign static_cc_values[28+:7]=val_osca_unison; // OSCA_UNISON
+    assign static_cc_values[35+:7]=val_osca_detune; // OSCA_DETUNE
+    assign static_cc_values[42+:7]=val_osca_phase; // OSCA_PHASE
+    assign static_cc_values[49+:7]=val_osca_rand; // OSCA_RAND
+    assign static_cc_values[56+:7]=val_osca_wt_pos; // OSCA_WT_POS
+    assign static_cc_values[63+:7]=val_osca_warp; // OSCA_WARP
+    assign static_cc_values[70+:7]=val_osca_pan; // OSCA_PAN
+    assign static_cc_values[77+:7]=val_osca_vol; // OSCA_VOL
+    assign static_cc_values[84+:7]=(val_oscb_power ? 7'd127 : 7'd0); // OSCB_POWER
+    assign static_cc_values[91+:7]={5'd0,val_oscb_wave}; // OSCB_WAVE
+    assign static_cc_values[98+:7]=val_oscb_unison; // OSCB_UNISON
+    assign static_cc_values[105+:7]=val_oscb_detune; // OSCB_DETUNE
+    assign static_cc_values[112+:7]=val_oscb_phase; // OSCB_PHASE
+    assign static_cc_values[119+:7]=val_oscb_rand; // OSCB_RAND
+    assign static_cc_values[126+:7]=val_oscb_wt_pos; // OSCB_WT_POS
+    assign static_cc_values[133+:7]=val_oscb_warp; // OSCB_WARP
+    assign static_cc_values[140+:7]=val_oscb_pan; // OSCB_PAN
+    assign static_cc_values[147+:7]=val_oscb_vol; // OSCB_VOL
+    assign static_cc_values[154+:7]=(val_flt_power ? {5'd0,val_flt_type}+7'd1 : 7'd0); // FLT_TYPE
+    assign static_cc_values[161+:7]=val_flt_cutoff; // FLT_CUTOFF
+    assign static_cc_values[168+:7]=val_flt_res; // FLT_RES
+    assign static_cc_values[175+:7]=val_flt_mix; // FLT_MIX
+    assign static_cc_values[182+:7]=env_a[0]; // ENV1_ATTACK
+    assign static_cc_values[189+:7]=env_d[0]; // ENV1_DECAY
+    assign static_cc_values[196+:7]=env_s[0]; // ENV1_SUSTAIN
+    assign static_cc_values[203+:7]=env_r[0]; // ENV1_RELEASE
+    assign static_cc_values[210+:7]=env_a[1]; // ENV2_ATTACK
+    assign static_cc_values[217+:7]=env_d[1]; // ENV2_DECAY
+    assign static_cc_values[224+:7]=env_s[1]; // ENV2_SUSTAIN
+    assign static_cc_values[231+:7]=env_r[1]; // ENV2_RELEASE
     reg curve_pending,curve_filter;
     reg [1:0] curve_tab;
     reg [4:0] curve_mask;

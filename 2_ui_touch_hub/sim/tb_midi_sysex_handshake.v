@@ -8,7 +8,7 @@ module tb_midi_sysex_handshake;
  reg [6:0] note_number=29,note_velocity=100,cc_val=99;
  reg [7:0] cc_param_id=8'hff;
  reg [47:0] sysex_msgs=48'hf07d4f027ff7;
- wire uart_tx,tx_busy,note_ready,sysex_accept;
+ wire uart_tx,tx_busy,note_ready,sysex_accept,cc_accept;
  midi_uart_tx #(.CLK_FREQ(50000000),.BAUD(6250000)) dut(.*);
  reg [7:0] expected[0:255],actual;
  integer queued=0,received=0,accepted=0,i;
