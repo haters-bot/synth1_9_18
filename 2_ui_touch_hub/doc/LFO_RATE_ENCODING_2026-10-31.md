@@ -2,7 +2,16 @@
 
 ## 结果与边界
 
-源码修复及RTL/官方网表功能仿真完成。仅UI侧3份生产RTL有小改动，没有重构主体架构、修改音频协议或其他参数编码。本轮没有全量UI构建/时序审计或烧录，板上仍上轮9C50版本。隔离探针自动引脚、5Mbaud及缩短计时，仅供仿真，禁止部署。
+源码修复及RTL/官方网表功能仿真完成。仅UI侧3份生产RTL有小改动，没有重构主体架构、修改音频协议或其他参数编码。用户随后明确授权“构建并烧录”，正式构建及一次SRAM2部署已完成，当前板上UserCode为8E85。隔离探针自动引脚、5Mbaud及缩短计时，仅供仿真，禁止部署。
+
+## 16:15 正式构建与部署证据
+
+- 生产源码提交138943f90bc63f4cf7180182cd7b39aa2c941c99，实际工程2_ui_touch_hub.gprj/顶层ui_touch_hub_top；独立构建 `E:/gaoyun_builds/R16A_build_20261031_155419`，实际place3/route1/timing/correct_hold1，没有原样重跑或更换策略赌结果。
+- functional_evidence.json确认五份关键源Git/工作区/快照一致，八档网表、renderer绑定/曲线/仲裁、八档标签回归与构建输入匹配；相比此前部署仅editor/panel/sender三份输入变更。
+- audit_20261031_161231_494437.json：109输入、124引脚、7时钟全部通过；setup/hold/recovery/removal/pulse五类零违例，最差余量+0.001/+0.189/+0.324/+0.299/+0.451ns。pixel50.001/50MHz、DDR105.561/100MHz。setup只有1ps余量，已明确告知用户，不能称余量充裕或承诺下次必过。
+- Logic63543/138240（46%）、Register34541/139095（25%）、BSRAM99/340；位流39834625B，SHA256 **1F35EB3ADC2D5D5AC690518061C169C27ECF0DF76FABD99F18A4A464E3F6A3DF**。
+- 写前check-only再审及JTAG只读确认唯一UI板旧9C50；随后唯一一次 `deploy_verified.py --board ui --target sram`，部署 `impl/deploy_runs/20261031_161339_UI_LFO_RATE8_20261031`，双端SHA一致、PROGRAMMER_EXIT=0、CODEX_PROGRAM_COMPLETE、manifest=sram_programmed。写后只读UserCode **0x00008E85**、Status **0x00026230**，completion_record.json保存证据；Flash和音频未操作，无自动重试。
+- 摄像头仅拍到工作台/键盘，没有可读UI屏幕，不能据此验收显示及速率功能。2/4Hz的新版实板UI TX仍需用户现场抓包；下文UART字节属于已通过的仿真证据，不伪称新版实物测量。
 
 ## 根因
 
