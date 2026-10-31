@@ -32,6 +32,7 @@ module ui_navigation_renderer #(
  input wire        performance_gateway_up,
  input wire [6:0] performance_base_note,
  input wire [2:0] performance_calibration_state,
+ input wire performance_range_warning,
  input wire        performance_recording,
  input wire [3:0]  performance_record_status,
  input wire [5:0]  performance_next_key,
@@ -394,6 +395,7 @@ module ui_navigation_renderer #(
  reg large0;
  reg tv0,tv1;reg [5:0] digit0;
  reg number0;reg compact0;
+ reg shortcut_warning0;
  function [2:0] scale_tile;
   input [6:0] id;
   begin case(id)
@@ -637,10 +639,11 @@ module ui_navigation_renderer #(
    recorder_select1<=id0==NAV_RECORDER_STATUS;
    tv0<=text_valid||macro_number||shortcut;number0<=macro_number||shortcut;digit0<=shortcut ? shortcut_char : number_char;
    compact0<=shortcut;
+   shortcut_warning0<=PERFORMANCE_CALIBRATION_ENABLE && view==2 && performance_range_warning;
    rx0<=shortcut ? shortcut_x : macro_number ? in_x[3:0] : text_rx;
    ry0<=shortcut ? shortcut_y : macro_number ? ((in_y-248)&63) : text_ry;
    large0<=!macro_number && text_large;
-   h1<=h0;b1<=background1;fg1<=compact0 ? 24'h9ED6D3 : fg0;
+   h1<=h0;b1<=background1;fg1<=compact0 ? (shortcut_warning0 ? 24'hF0AD55 : 24'h9ED6D3) : fg0;
    tv1<=tv0 && (compact0 ? (rx0<7 && ry0<10) : large0 ? (rx0<14 && ry0<20) : (rx0<12 && ry0<16));
    number1<=number0||audio_number;digit1<=number0 ? digit0 : audio_number_char;
    glyph_x1<=compact0 ? rx0[2:0] : glyph_x(large0,rx0);glyph_y1<=compact0 ? ry0[3:0] : glyph_y(large0,ry0);

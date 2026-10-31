@@ -238,6 +238,18 @@ module ui_top_renderer #(
     wire [PERFORMANCE_KEY_BITS-1:0] performance_physical_key =
         performance_physical_note - performance_effective_base;
     reg [PERFORMANCE_KEY_COUNT-1:0] performance_physical_keys;
+    // Octave buttons do not send an origin-change command. An out-of-range
+    // physical Note On is therefore a warning, never evidence to guess a new
+    // origin: the user must explicitly calibrate the leftmost key again.
+    reg performance_key_range_warning;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n)performance_key_range_warning<=1'b0;
+        else if(performance_reset_keys || !performance_calibrated)
+            performance_key_range_warning<=1'b0;
+        else if(performance_physical_note_valid && performance_physical_note_on &&
+                performance_physical_velocity!=0 && !performance_physical_key_valid)
+            performance_key_range_warning<=1'b1;
+    end
     // Hits are consumed once, and expire when score time advances. Chord
     // notes arriving in a different order can still satisfy the same onset;
     // an earlier wrong key cannot satisfy a later note by remaining held.
@@ -598,6 +610,7 @@ module ui_top_renderer #(
         .knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales));
     ui_navigation_renderer #(.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_CALIBRATION_ENABLE(PERFORMANCE_RUNTIME_BASE)) u_navigation_render(.clk(clk),.rst_n(rst_n),
         .performance_base_note(performance_effective_base),.performance_calibration_state(performance_calibration_state),
+        .performance_range_warning(performance_key_range_warning),
         .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
         .show_diagnostics(show_diagnostics),.usb_connected(usb_connected),.usb_error(usb_conn_err),
         .macro_values({val_macro4,val_macro3,val_macro2,val_macro1}),
