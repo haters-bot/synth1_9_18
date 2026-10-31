@@ -128,7 +128,9 @@ module audio_controls_renderer(
    hit=1;
    if(y0>=372 && y0<404 && x0>=424 && x0<772)begin
     tab_col=x0<482 ? 0 : x0<540 ? 1 : x0<598 ? 2 : x0<656 ? 3 : x0<714 ? 4 : 5;
-    cx=424+tab_col*58;
+    // Keep raster coordinates constant-selected: multiplying a decoded
+    // column inferred a DSP before the text-valid priority chain.
+    cx=x0<482 ? 424 : x0<540 ? 482 : x0<598 ? 540 : x0<656 ? 598 : x0<714 ? 656 : 714;
     bg=fx_page==tab_col ? 24'h244C64 : 24'h222834;
     case(tab_col)
      0:line=pack_font24("DIST                    ");1:line=pack_font24("PHAS                    ");
@@ -191,7 +193,10 @@ module audio_controls_renderer(
     hit=1;col=x0<osc_x+124 ? 0 : x0<osc_x+248 ? 1 : 2;
     row=y0<134 ? 0 : y0<160 ? 1 : y0<186 ? 2 : 3;mode=row*3+col;
     bg=warp_rate==mode ? 24'h245448 : 24'h202936;line=mode_label(mode);
-    tx=x0-(osc_x+col*124+4);ty=y0-(108+row*26+8);text_hit=x0>=osc_x+col*124+4 && ty<10;
+    if(osc_x==40)cx=x0<164 ? 44 : x0<288 ? 168 : 292;
+    else cx=x0<580 ? 460 : x0<704 ? 584 : 708;
+    cy=y0<134 ? 116 : y0<160 ? 142 : y0<186 ? 168 : 194;
+    tx=x0-cx;ty=y0-cy;text_hit=x0>=cx && ty<10;
    end else if((osc_x==40 ? wave_a : wave_b)==4 && y0>=108 && y0<212)begin
     hit=1;bg=24'h101923;
     if(y0>=154 && y0<164)begin line=pack_font24("SD/DDR NO PREVIEW       ");tx=x0-(osc_x+72);ty=y0-154;text_hit=x0>=osc_x+72;end

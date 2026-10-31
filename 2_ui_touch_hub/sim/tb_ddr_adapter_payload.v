@@ -23,6 +23,11 @@ module tb_ddr_adapter_payload;
  reg [255:0] expected_data;
  reg [31:0] expected_mask;
  reg expected_write;
+ genvar bank;
+ generate for(bank=0;bank<10;bank=bank+1)begin:check_idle
+  always @(negedge clk)if(rst_n && dut.payload_bank[bank].idle!==!dut.busy)
+   $fatal(1,"Payload bank idle diverged from transaction state");
+ end endgenerate
  always @(posedge clk)if(rst_n)begin
   if(mc_cmd_en)begin
    if(mc_addr!==expected_addr || mc_cmd!==(expected_write ? 3'd0 : 3'd1))
@@ -100,7 +105,7 @@ module tb_ddr_adapter_payload;
   if(mc_cmd_en || mc_wr_data_en || rsp_valid)$fatal(1,"Reset did not cancel pending request");
   rst_n=1;req_valid=0;tick;
   if(!req_ready)$fatal(1,"Adapter not reusable after reset");
-  $display("PASS: production DDR adapter idle sampling, payload hold, command/data order, reads/errors and reset");
+  $display("PASS: production DDR adapter banked idle sampling, payload hold, command/data order, reads/errors and reset");
   $finish;
  end
  initial begin #200000;$fatal(1,"Timeout");end

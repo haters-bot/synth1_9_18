@@ -45,13 +45,44 @@ module ddr3_user_port_adapter #(
     reg                  request_is_write;
     reg                  command_pending;
     reg                  write_data_pending;
-    reg [ADDR_WIDTH-1:0] address_latched;
-    reg [DATA_WIDTH-1:0] write_data_latched;
-    reg [MASK_WIDTH-1:0] write_mask_latched;
+    localparam integer PAYLOAD_WIDTH = ADDR_WIDTH + DATA_WIDTH + MASK_WIDTH;
+    localparam integer PAYLOAD_BANKS = (PAYLOAD_WIDTH + 31) / 32;
+    reg [PAYLOAD_WIDTH-1:0] payload_latched;
+    wire [PAYLOAD_WIDTH-1:0] request_payload = {req_addr, req_wdata, req_wmask};
+    wire [ADDR_WIDTH-1:0] address_latched;
+    wire [DATA_WIDTH-1:0] write_data_latched;
+    wire [MASK_WIDTH-1:0] write_mask_latched;
+    assign {address_latched, write_data_latched, write_mask_latched} = payload_latched;
 
     wire accept_request = req_valid && req_ready;
     wire accept_command = command_pending && mc_cmd_ready;
     wire accept_write_data = write_data_pending && mc_wr_data_rdy;
+    wire complete_write = busy && request_is_write
+                          && (!command_pending || accept_command)
+                          && (!write_data_pending || accept_write_data);
+    wire complete_read = busy && !request_is_write && mc_rd_data_valid;
+    wire next_busy = accept_request || (busy && !complete_write && !complete_read);
+
+    // Separate, preserved idle registers localize each payload load enable.
+    // A single busy/accept enable over 317 payload bits made its control
+    // feedback critical after routing. These replicas have identical cycles,
+    // but each drives at most 32 payload bits, not the transaction FSM.
+    genvar bank;
+    generate for (bank = 0; bank < PAYLOAD_BANKS; bank = bank + 1) begin: payload_bank
+        localparam integer FIRST = bank * 32;
+        localparam integer WIDTH = PAYLOAD_WIDTH - FIRST < 32 ? PAYLOAD_WIDTH - FIRST : 32;
+        reg idle /* synthesis syn_preserve=1 syn_keep=1 */;
+        always @(posedge clk or negedge rst_n) begin
+            if (!rst_n) begin
+                idle <= 1'b1;
+                payload_latched[FIRST +: WIDTH] <= {WIDTH{1'b0}};
+            end else begin
+                idle <= !next_busy;
+                if (idle)
+                    payload_latched[FIRST +: WIDTH] <= request_payload[FIRST +: WIDTH];
+            end
+        end
+    end endgenerate
 
     assign req_ready = init_done && !busy;
 
@@ -70,9 +101,6 @@ module ddr3_user_port_adapter #(
             request_is_write   <= 1'b0;
             command_pending    <= 1'b0;
             write_data_pending <= 1'b0;
-            address_latched    <= {ADDR_WIDTH{1'b0}};
-            write_data_latched <= {DATA_WIDTH{1'b0}};
-            write_mask_latched <= {MASK_WIDTH{1'b0}};
             rsp_valid          <= 1'b0;
             rsp_write          <= 1'b0;
             rsp_rdata          <= {DATA_WIDTH{1'b0}};
@@ -80,17 +108,9 @@ module ddr3_user_port_adapter #(
         end else begin
             rsp_valid <= 1'b0;
             rsp_error <= 1'b0;
-
-            // Sample payload on every idle edge, including acceptance, then
-            // hold it throughout the transaction. Keep the wide load enable
-            // off accept_request: ready/valid must not drive all 317 payload
-            // registers as well as both FSMs. Idle samples without req_valid
-            // are never exposed as commands.
-            if (!busy) begin
-                address_latched    <= req_addr;
-                write_data_latched <= req_wdata;
-                write_mask_latched <= req_wmask;
-            end
+            // Only rsp_valid qualifies this bus. Capture on every edge so
+            // the read-complete decision does not also enable 256 data bits.
+            rsp_rdata <= mc_rd_data;
 
             if (accept_request) begin
                 busy               <= 1'b1;
@@ -105,20 +125,17 @@ module ddr3_user_port_adapter #(
                     write_data_pending <= 1'b0;
 
                 // 写命令和写数据可以在不同周期完成握手。
-                if (busy && request_is_write
-                        && (!command_pending || accept_command)
-                        && (!write_data_pending || accept_write_data)) begin
+                if (complete_write) begin
                     busy      <= 1'b0;
                     rsp_valid <= 1'b1;
                     rsp_write <= 1'b1;
                 end
 
                 // 当前只允许一个未完成读事务，因此返回数据必然属于当前请求。
-                if (busy && !request_is_write && mc_rd_data_valid) begin
+                if (complete_read) begin
                     busy      <= 1'b0;
                     rsp_valid <= 1'b1;
                     rsp_write <= 1'b0;
-                    rsp_rdata <= mc_rd_data;
                     rsp_error <= !mc_rd_data_end;
                 end
             end

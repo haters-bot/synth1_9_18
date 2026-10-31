@@ -13,6 +13,8 @@
 
 ## 后续执行顺序
 
+2026-10-31统一WARP/五FX/PITCH/校准版首构建211342（97d2b37）再次出现15setup：页选→ID/值读取→十进制字形同拍15层，以及DDR adapter的accept_request约330扇出。局部修补7bf3b60使用已有控制值寄存后再转字形/条宽，文字范围检查放到已有tx1边界；adapter宽payload在空闲边沿采样、busy期间保持，避免ready/valid同时驱动317位payload寄存器和控制FSM。没有新增像素延迟或延迟握手；33种RTL及八张画面逐字节等价、两时钟比PCM完整读回和adapter请求后改输入/双通道独立背压均通过。实际gowinsynthesis/place3/route1/timing/correct_hold1正确；新构建215327仍需最终五类/全时钟审计，功能回归不能预先证明时序修复成功。详细证据doc/UNIFIED_TIMING_2026-10-31.md。
+
 2026-10-31第6次034931/8771013证明：在385词异步表读两侧加寄存器仍可能失败（预览相位→samples8端点，−1.148ns）；9bit地址对大型MUX的高扇出/布线才是该段瓶颈。改为只复制7bit预览值的单写/同步读镜像表，保留原Q7.6 raster口，先独立综合确认3BSRAM，再跑15400旧表数值/1拍延迟和完整UI回归后构建。DDR剩−0.052ns来自reset/calibration扇出581及中间门控扇出71，不能降频或延迟失校准检测；可以让不可见回包的kind字段按已知命令独立预装，使返回有效性和实时错误检查保留原时序。
 
 2026-10-31第5次032243/eff3bed已确认phone/UART/nav三组修复消除对应违例，但仍有3个setup端点：LFO phase/tab经表读到wave0、DDR pending_end_frame经33bit容量比较到状态。故继续将相位选择/表读/目标选择分拍，并把DDR静态写校验寄存后供状态机使用；校准/session有效性必须实时判断。不能因“只剩三条”跳过全域审计。第5次pixel47.648/50、DDR97.733/100MHz不合格，未烧录。

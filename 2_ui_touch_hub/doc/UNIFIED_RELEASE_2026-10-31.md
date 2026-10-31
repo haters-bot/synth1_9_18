@@ -2,7 +2,9 @@
 
 ## 状态
 
-源码检查点：`97d2b37a53364f9ee80e1712cfab2e5c7279fcd9`，integration/dual-138k-uart-phase1，本地保存，未推送。正常工程：`2_ui_touch_hub.gprj` / `ui_touch_hub_top`。
+功能整合检查点`97d2b37`，时序局部修补检查点：`7bf3b6006bc6ed654acc3a402ed59ff372419236`，integration/dual-138k-uart-phase1，本地保存，未推送。正常工程：`2_ui_touch_hub.gprj` / `ui_touch_hub_top`。
+
+第二轮构建：`E:/gaoyun_builds/R16A_build_20261031_215327` / 7bf3b60，于22:16结束，**时序审计失败，未烧录**：271 setup，worst -3.105ns；DDR76.306/100MHz、pixel48.414/50MHz，其他四类/116输入/124引脚一致。进一步定位为busy宽扇出与坐标乘法DSP；已追加局部修补，9项相关RTL、八张画面逐字节等价及normal/debug展开通过，24项完整协议回归仍在收取。下一构建须重新完整审计，通过后按持续授权仅UI SRAM2。失败证据全部保留。
 
 首轮构建：`E:/gaoyun_builds/R16A_build_20261031_211342`，21:37完成但**审计失败，未烧录**：15个setup端点，worst -1.302ns，pixel46.944/50MHz及DDR88.640/100MHz不通过；其他四类、124引脚及116输入一致。证据完整保留，正在按负路径局部修补并重跑相关回归。板上原版仍为173812 / 83ed585 / UserCode 0x3056。后续以CODEX_HANDOFF顶部和新构建目录的审计、部署记录为准。
 
@@ -22,10 +24,11 @@
 
 ## 软件验证
 
-- 23项RTL：`six_fix_20261031_210551_921708/result.json`，全部通过。
-- 6项音频协议/画面/仲裁：`six_fix_20261031_210334_282530/result.json`，全部通过。
+- 24项RTL：`six_fix_20261031_214657_010510/result.json`，全部通过；含原23项加PCM capture。
+- 9项音频协议/画面/仲裁/DDR/录音完整链：`six_fix_20261031_214529_142128/result.json`，全部通过。八张完整画面与修补前逐字节一致；831672个连续像素及五拍流水对齐不变。
+- PCM store补充7/13异步时钟：`pcm_clocks_20261031_214738_225263/result.json`；PCM capture深度16：`pcm_depth16_20261031_215309_211130/result.json`，均通过。
 - 手机选曲/22663音域用例/校准gate/CRC/断连/录音导出：`phone_selection_20261031_210906_550676/result.json`，通过。
-- normal/debug完整层次：`ui_elaboration_20261031_210552_318706/result.json`，通过；官方原语加DDR stub，不替代时序和实物DDR验证。
+- normal/debug完整层次：`ui_elaboration_20261031_214633_754215/result.json`，通过；官方原语加DDR stub，不替代时序和实物DDR验证。
 - APK：`E:/gaoyun_builds/phone_apk_20261031_205654_857065/FPGA-Performance.apk`，SHA256 `bc0c891f0c0505d644c45e24d50ea1254b19318ea1a048e9fdd03faf2d5c24fb`，原签名证书一致，v2/v3通过，6份网页资产逐字节与工作区一致。
 
 ## 上板后现场验收顺序
