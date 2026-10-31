@@ -1,4 +1,18 @@
-# LFO 实板全零路由帧：复验未通过，继续定位
+# LFO 全零路由：网表根因、修复与SRAM部署记录
+
+## 14:51 最终构建与SRAM完成，实板功能待用户复测
+
+生产源码已本地提交 **a6c4a8b261eb89fb90fc0e0d11f7e4c2b85c1ba6**（未推送）。正式工程 `2_ui_touch_hub.gprj`、顶层 `ui_touch_hub_top`，构建 `E:/gaoyun_builds/R16A_build_20261031_143345`，实际place3/route1/timing/correct_hold1；相比此前部署041417，109项输入清单中只有 `rtl/midi_uart_tx/lfo_sysex_tx.v` 改变。
+
+`functional_evidence.json`已保存binding/renderer/sender三份文件的Git blob、工作区、构建快照哈希及规范化换行的内容一致性；sender与官方网表回归的输入哈希一致。没有误用旧工程、错误顶层或旧sender。源码修复没有改变source/depth状态：修复前后绑定/q/sh始终为1/127；改变的是综合后的组帧读取，由0000恢复为017F，即UART两个数据字节02 7F。
+
+`audit_20261031_144906_544956.json`：109输入全部一致，124引脚一致，7时钟达标，setup/hold/recovery/removal/pulse五类无违例，最差余量分别为 **+0.033/+0.140/+0.372/+0.287/+0.451ns**；pixel50.081/50MHz、DDR112.974/100MHz。setup余量窄，不能把本次通过解释成后续每次必过。资源Logic64348/138240（47%）、Register34535/139095（25%）、BSRAM99/340；相较上一版增加428 Logic、30 Register。位流39857421字节，SHA256 **74E75DD438B0D77FC30B57CE5D202F2269B1E063C567DAB4B2DFA3F2DBBFCD1E**。
+
+按用户此前“完成到烧录完毕”授权，14:49只读再次确认1个UI138B/旧UserCode966后，唯一一次执行 `deploy_verified.py --board ui --target sram`。部署目录 `impl/deploy_runs/20261031_144944_UI_LFO_ROUTE_STATIC_GATE_20261031`：双端SHA一致，SRAM operation2、PROGRAMMER_EXIT=0、CODEX_PROGRAM_COMPLETE、manifest状态sram_programmed，写后只读复核UserCode **0x00009C50**、Status **0x00026230**；completion_record.json保存完整证据。Flash和音频工程未操作，无自动重试，无探针位流写入。
+
+抓拍已人工查看，只看到工作台和键盘，没有可读UI屏幕，因此显示和LFO实板功能仍标为待用户验收。接下来请用户在9C50上重新执行BIND LFO1→Detune→松手，UI TX应为 `F0 7D 4F 02 7F F7 F0 7D 7E 00 00 F7`；Level对应56。此处UART字节是RTL/官方网表已观察及新版预期，**尚不是新版实板TX实测**。先前长时间未收敛的直接原因是仅用RTL仿真及STA验证，未覆盖综合后的功能不等价；可复现官方网表回归现已加入，最终仍须实际UI TX闭环。
+
+下方14:33/14:30及更早条目是排查过程，当前状态以本节为准。所有原失败证据保留。
 
 ## 14:33 验证收齐，准备正式构建
 
@@ -15,7 +29,7 @@ Timeout Detune : F0 7D 4F 06 7F F7
 每个批次结尾  : F0 7D 7E 00 00 F7
 ```
 
-协议增强回归 `impl/midi_lfo_protocol_20261031_143029_654639` 已全PASS；53目标以不同深度、四种source初始化，逐帧核验，覆盖旧的重复深度无法排除的切片错位。完整renderer、真实31250及仲裁等五项142920_842985均PASS。首次错误测试名导致142844附近的一次脚本运行在读取测试文件时失败、未启动仿真，空证据目录仍保留；修正为实际现有测试名后运行的是142920_842985，不掩盖失败。
+协议增强回归 `impl/midi_lfo_protocol_20261031_143029_654639` 已全PASS；53目标以不同深度、四种source初始化，逐帧核验，覆盖旧的重复深度无法排除的切片错位。完整renderer、真实31250及仲裁等五项142920_842985均PASS。本轮首次批量回归调用使用了不存在的测试名，在读取测试文件时失败、未启动仿真，空证据目录仍保留；修正为实际现有测试名后运行的是142920_842985，不掩盖失败。
 
 已再次fetch，integration远端仍3664276、无分叉。沿用用户此前“完成到烧录完毕”的明确授权，下一步提交指定文件、唯一正式UI normal工程构建，全部审计通过才SRAM2。当前尚未开始正式构建或再次烧录，板上仍00000966，最终功能仍须新版实板UI TX复测。
 
