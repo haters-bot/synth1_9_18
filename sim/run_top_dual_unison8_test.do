@@ -43,7 +43,6 @@ vlog -work work_top_dual_unison8 \
     src/global_compressor.v \
     src/global_effects.v \
     src/i2s_tx.v \
-    src/pt8211_tx.v \
     src/stereo_pan_mixer.v \
     src/stereo_output_stage.v \
     src/control_event_merge.v \

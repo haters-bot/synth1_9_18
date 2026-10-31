@@ -21,10 +21,6 @@ module tb_top_dual_unison8;
     wire VIS_BCLK;
     wire VIS_LRC;
     wire VIS_DIN;
-    wire PA_EN;
-    wire HP_DIN;
-    wire HP_WS;
-    wire HP_BCK;
     wire sd_clk;
     tri  sd_cmd;
     reg  sd_dat0;
@@ -63,10 +59,6 @@ module tb_top_dual_unison8;
         .VIS_BCLK(VIS_BCLK),
         .VIS_LRC (VIS_LRC),
         .VIS_DIN (VIS_DIN),
-        .PA_EN   (PA_EN),
-        .HP_DIN  (HP_DIN),
-        .HP_WS   (HP_WS),
-        .HP_BCK  (HP_BCK),
         .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
         .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),
         .ddr_ras(ddr_ras), .ddr_cas(ddr_cas), .ddr_we(ddr_we),

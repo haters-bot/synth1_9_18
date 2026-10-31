@@ -13,16 +13,12 @@ module tb_top_midi_input;
 
     wire MAX_SD;
     wire MAX_GAIN;
-    wire HP_BCK;
-    wire HP_WS;
-    wire HP_DIN;
     wire MAX_DIN;
     wire MAX_BCLK;
     wire MAX_LRC;
     wire VIS_BCLK;
     wire VIS_LRC;
     wire VIS_DIN;
-    wire PA_EN;
     wire sd_clk;
     tri  sd_cmd;
     reg  sd_dat0;
@@ -74,16 +70,12 @@ module tb_top_midi_input;
         .keyboard_uart_rx(keyboard_uart_rx),
         .MAX_SD  (MAX_SD),
         .MAX_GAIN(MAX_GAIN),
-        .HP_BCK  (HP_BCK),
-        .HP_WS   (HP_WS),
-        .HP_DIN  (HP_DIN),
         .MAX_DIN (MAX_DIN),
         .MAX_BCLK(MAX_BCLK),
         .MAX_LRC (MAX_LRC),
         .VIS_BCLK(VIS_BCLK),
         .VIS_LRC (VIS_LRC),
         .VIS_DIN (VIS_DIN),
-        .PA_EN   (PA_EN),
         .sd_clk(sd_clk), .sd_cmd(sd_cmd), .sd_dat0(sd_dat0),
         .ddr_addr(ddr_addr), .ddr_bank(ddr_bank), .ddr_cs(ddr_cs),
         .ddr_ras(ddr_ras), .ddr_cas(ddr_cas), .ddr_we(ddr_we),
@@ -763,8 +755,7 @@ module tb_top_midi_input;
         end
 
         if (dut.uart_framing_error !== 1'b0
-            || MAX_SD !== 1'b1 || MAX_GAIN !== 1'b1
-            || PA_EN !== 1'b0) begin
+            || MAX_SD !== 1'b1 || MAX_GAIN !== 1'b1) begin
             $display("ERROR: UART or audio output control state is incorrect");
             errors = errors + 1;
         end
