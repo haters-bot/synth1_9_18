@@ -7,7 +7,7 @@ module tb_audio_controls_pixels;
  `include "audio_extra_controls.vh"
  audio_controls_renderer dut(.clk(clk),.rst_n(rst_n),.in_x(x),.in_y(y),.extra_values(extras),.legacy_values(legacy),
   .fx_page(page),.warp_menu(menu),.wave_a(3'd4),.wave_b(3'd1),.sources(sources),.out_hit(hit),.out_rgb(rgb));
- integer i,p,fh,t,n,px,py,checks=0;
+ integer i,p,fh,t,n,px,py,checks=0;reg allow_transparent=0;
  task point(input integer a,b,input bit expected);begin
   @(negedge clk);x=a;y=b;repeat(6)@(negedge clk);
   if(hit!==expected || (hit && ^rgb===1'bx))$fatal(1,"render hit/unknown at%0d,%0d",a,b);
@@ -19,7 +19,7 @@ module tb_audio_controls_pixels;
    @(negedge clk);x=t<n ? left+t%width : 0;y=t<n ? top+t/width : 0;
    @(posedge clk);#1;
    if(t>=4)begin
-    if(!hit || ^rgb===1'bx)$fatal(1,"pipeline alignment pixel%0d",t-4);
+    if((!hit && !allow_transparent) || (hit && ^rgb===1'bx))$fatal(1,"pipeline alignment pixel%0d",t-4);
     $fdisplay(fh,"%0d %0d %0d",rgb[23:16],rgb[15:8],rgb[7:0]);
    end
   end
@@ -49,8 +49,9 @@ module tb_audio_controls_pixels;
     4:image(420,368,361,340,"fx_comp.ppm");5:image(420,368,361,340,"fx_pitch.ppm");
    endcase
   end
-  menu=1;image(40,108,372,128,"warp_menu.ppm");menu=0;image(40,108,372,128,"sd_bank.ppm");
-  $display("PASS: five FX plus sixth PITCH page, 12-mode WARP menu and honest SD placeholder, %0d pipeline-aligned RGB pixels, edge/dynamic value/route checks=%0d",6*361*340+2*372*128,checks);$finish;
+  menu=1;image(40,108,372,128,"warp_menu.ppm");menu=0;
+  point(200,170,0);point(200,114,1);allow_transparent=1;image(40,108,372,128,"sd_bank.ppm");
+  $display("PASS: five FX plus sixth PITCH page, 12-mode WARP menu, local SD caption and transparent waveform region, %0d pipeline-aligned RGB pixels, edge/dynamic value/route checks=%0d",6*361*340+2*372*128,checks);$finish;
  end
  initial begin #30000000;$fatal(1,"pixel watchdog");end
 endmodule

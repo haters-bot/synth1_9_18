@@ -79,5 +79,14 @@
       "min": -31129,
       "max": 9439
     }
-  ]
+  ],
+  "preview": {
+    "kind": "local_source_bank",
+    "frames": 16,
+    "phase_samples": 128,
+    "sample_bits": 8,
+    "rom_bytes": 20480,
+    "frame_interpolation": true,
+    "canonical_lf_sha256": "1cd9358e0eddeda2f001a126374c210e70289db9f28d3703978aefea586c84a7"
+  }
 }

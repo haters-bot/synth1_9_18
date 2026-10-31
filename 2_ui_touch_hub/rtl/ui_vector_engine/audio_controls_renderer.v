@@ -3,7 +3,7 @@
 `include "font_7x10.vh"
 `include "pixel_coverage.vh"
 // Five raster stages, same input tap/latency as the retired production FX strip.
-// Basic/SD wave pictures are illustrative; never pretend to have SD sample data.
+// SD preview is generated from the local WTB file, not an audio-board readback.
 module audio_controls_renderer(
  input wire clk,rst_n,
  input wire [13:0] in_x,in_y,
@@ -197,10 +197,9 @@ module audio_controls_renderer(
     else cx=x0<580 ? 460 : x0<704 ? 584 : 708;
     cy=y0<134 ? 116 : y0<160 ? 142 : y0<186 ? 168 : 194;
     tx=x0-cx;ty=y0-cy;text_hit=x0>=cx && ty<10;
-   end else if((osc_x==40 ? wave_a : wave_b)==4 && y0>=108 && y0<212)begin
+   end else if((osc_x==40 ? wave_a : wave_b)==4 && y0>=108 && y0<128)begin
     hit=1;bg=24'h101923;
-    if(y0>=154 && y0<164)begin line=pack_font24("SD/DDR NO PREVIEW       ");tx=x0-(osc_x+72);ty=y0-154;text_hit=x0>=osc_x+72;end
-    else if(y0>=174 && y0<184)begin line=pack_font24("BANK STATUS UNAVAILABLE ");tx=x0-(osc_x+64);ty=y0-174;text_hit=x0>=osc_x+64;end
+    line=pack_font24("LOCAL SD PREVIEW        ");tx=x0-(osc_x+72);ty=y0-112;text_hit=x0>=osc_x+72 && ty<10;
    end
   end
  end

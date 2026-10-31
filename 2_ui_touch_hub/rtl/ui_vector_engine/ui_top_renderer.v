@@ -828,6 +828,8 @@ module ui_top_renderer #(
         .val_oscb_wave  (val_oscb_wave),
         .wt_pos_a       (mod_preview[70+:7]),
         .wt_pos_b       (mod_preview[133+:7]),
+        .wt_index_a     (audio_extra_snapshot[14+:7]),
+        .wt_index_b     (audio_extra_snapshot[21+:7]),
         .out_hit_osca   (hit_osca),
         .out_osca_rgb   (osca_rgb),
         .out_hit_oscb   (hit_oscb),
