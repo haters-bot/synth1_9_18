@@ -168,6 +168,11 @@ module top #(
     wire [3:0] keyboard_note_event_channel;
     wire [6:0] keyboard_note_event_note;
     wire [6:0] keyboard_note_event_velocity;
+    wire       control_note_event_valid;
+    wire       control_note_event_on;
+    wire [3:0] control_note_event_channel;
+    wire [6:0] control_note_event_note;
+    wire [6:0] control_note_event_velocity;
     wire       midi_control_change_valid;
     wire [3:0] midi_control_change_channel;
     wire [6:0] midi_control_change_number;
@@ -608,8 +613,12 @@ module top #(
     wire control_event_overflow;
     wire [7:0] keyboard_uart_byte;
     wire keyboard_uart_byte_valid, keyboard_uart_framing_error;
+    wire [21:0] primary_note_event;
+    wire primary_note_event_valid;
     wire [21:0] merged_note_event;
     wire merged_note_event_valid;
+    wire primary_note_event_overflow;
+    wire merged_note_event_overflow;
     wire midi_note_event_overflow;
     midi_note_parser u_midi_note_parser (
         .clk                   (clk_sys),
@@ -667,7 +676,7 @@ module top #(
         .control_change_value  ()
     );
 
-    // 复用现有8项双入口事件FIFO。先保留板载USB-UART事件，再保留实体键盘事件。
+    // 第一层保留原有优先级：板载USB-UART优先，其次为实体键盘。
     control_event_merge u_midi_note_event_merge (
         .clk      (clk_sys),
         .rst_n    (rst_n_sys),
@@ -679,16 +688,10 @@ module top #(
         .data_b   ({3'd0, keyboard_note_event_on,
                     keyboard_note_event_channel, keyboard_note_event_note,
                     keyboard_note_event_velocity}),
-        .out_valid(merged_note_event_valid),
-        .out_data (merged_note_event),
-        .overflow (midi_note_event_overflow)
+        .out_valid(primary_note_event_valid),
+        .out_data (primary_note_event),
+        .overflow (primary_note_event_overflow)
     );
-
-    assign midi_note_event_valid = merged_note_event_valid;
-    assign midi_note_event_on = merged_note_event[18];
-    assign midi_note_event_channel = merged_note_event[17:14];
-    assign midi_note_event_note = merged_note_event[13:7];
-    assign midi_note_event_velocity = merged_note_event[6:0];
 
     uart_rx #(.CLK_HZ(50000000), .BAUD_RATE(CONTROL_UART_BAUD_RATE)) u_control_uart_rx (
         .clk(clk_sys), .rst_n(rst_n_sys), .rx(control_uart_rx),
@@ -698,8 +701,11 @@ module top #(
     midi_note_parser u_control_cc_parser (
         .clk(clk_sys), .rst_n(rst_n_sys),
         .byte_data(control_uart_byte), .byte_valid(control_uart_byte_valid),
-        .note_event_valid(), .note_event_on(), .note_event_channel(),
-        .note_event_note(), .note_event_velocity(),
+        .note_event_valid(control_note_event_valid),
+        .note_event_on(control_note_event_on),
+        .note_event_channel(control_note_event_channel),
+        .note_event_note(control_note_event_note),
+        .note_event_velocity(control_note_event_velocity),
         .control_change_valid(external_cc_valid), .control_change_channel(external_cc_channel),
         .control_change_number(external_cc_number), .control_change_value(external_cc_value)
     );
@@ -709,6 +715,30 @@ module top #(
         .parameter_valid(external_hr_valid), .parameter_id(external_hr_id),
         .parameter_value(external_hr_value)
     );
+
+    // 第二层把C19控制口的Note On/Off加入现有音符流。C19上的CC和SysEx
+    // 仍走下方原控制事件队列，两条通路互不替代。
+    control_event_merge u_all_note_event_merge (
+        .clk      (clk_sys),
+        .rst_n    (rst_n_sys),
+        .valid_a  (primary_note_event_valid),
+        .data_a   (primary_note_event),
+        .valid_b  (control_note_event_valid),
+        .data_b   ({3'd0, control_note_event_on,
+                    control_note_event_channel, control_note_event_note,
+                    control_note_event_velocity}),
+        .out_valid(merged_note_event_valid),
+        .out_data (merged_note_event),
+        .overflow (merged_note_event_overflow)
+    );
+
+    assign midi_note_event_valid = merged_note_event_valid;
+    assign midi_note_event_on = merged_note_event[18];
+    assign midi_note_event_channel = merged_note_event[17:14];
+    assign midi_note_event_note = merged_note_event[13:7];
+    assign midi_note_event_velocity = merged_note_event[6:0];
+    assign midi_note_event_overflow = primary_note_event_overflow
+                                    || merged_note_event_overflow;
     wire [21:0] merged_control_event;
     wire merged_control_valid;
     control_event_merge u_control_event_merge (

@@ -47,6 +47,8 @@ module tb_top_midi_input;
     integer valid_mismatch_count;
     integer switch_wait_samples;
     integer clip_count_before;
+    integer c19_a_update_before;
+    integer c19_b_update_before;
 
     reg [7:0]  osc_a_slot_log [0:15];
     reg [31:0] osc_a_step_log [0:15];
@@ -133,6 +135,25 @@ module tb_top_midi_input;
             end
 
             uart_rx = 1'b1;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+        end
+    endtask
+
+    task send_control_uart_byte;
+        input [7:0] value;
+        integer bit_number;
+        begin
+            @(negedge sys_clk);
+            control_uart_rx = 1'b0;
+            repeat (CLKS_PER_BIT) @(negedge sys_clk);
+
+            for (bit_number = 0; bit_number < 8;
+                 bit_number = bit_number + 1) begin
+                control_uart_rx = value[bit_number];
+                repeat (CLKS_PER_BIT) @(negedge sys_clk);
+            end
+
+            control_uart_rx = 1'b1;
             repeat (CLKS_PER_BIT) @(negedge sys_clk);
         end
     endtask
@@ -699,6 +720,34 @@ module tb_top_midi_input;
 
         if (consecutive_silent_samples < 4) begin
             $display("ERROR: dual oscillator mix did not settle to silence");
+            errors = errors + 1;
+        end
+
+        // C19控制口与原UART、实体键盘口并行工作。验证其Note On/Off
+        // 使用同一性能通道过滤和双振荡器调度路径。
+        c19_a_update_before = osc_a_update_count;
+        c19_b_update_before = osc_b_update_count;
+        send_control_uart_byte(8'h90);
+        send_control_uart_byte(8'h3E);
+        send_control_uart_byte(8'h5A);
+        repeat (80) @(posedge sys_clk);
+        if (osc_a_update_count !== c19_a_update_before + 3
+            || osc_b_update_count !== c19_b_update_before + 2) begin
+            $display("ERROR: C19 Note On did not reach both schedulers A=%0d B=%0d",
+                     osc_a_update_count - c19_a_update_before,
+                     osc_b_update_count - c19_b_update_before);
+            errors = errors + 1;
+        end
+
+        send_control_uart_byte(8'h80);
+        send_control_uart_byte(8'h3E);
+        send_control_uart_byte(8'h00);
+        repeat (80) @(posedge sys_clk);
+        if (osc_a_update_count !== c19_a_update_before + 6
+            || osc_b_update_count !== c19_b_update_before + 4) begin
+            $display("ERROR: C19 Note Off did not reach both schedulers A=%0d B=%0d",
+                     osc_a_update_count - c19_a_update_before,
+                     osc_b_update_count - c19_b_update_before);
             errors = errors + 1;
         end
 
