@@ -464,13 +464,26 @@ module ui_top_renderer #(
     assign performance_score_error_out = performance_score_load_error;
     assign performance_running_out = performance_running;
 
+    // A follow-mode Note On is deliberately not emitted until the player
+    // hits it. Cue the pending note when its score time is due, independently
+    // of that acknowledgement; otherwise the strip only lights AFTER a hit.
+    wire performance_led_note_due = performance_next_on_valid &&
+        performance_follow_target_in_range &&
+        performance_next_time_ms <= performance_song_time_ms;
+    wire [PERFORMANCE_KEY_COUNT-1:0] performance_led_due_keys =
+        performance_led_note_due ?
+        ({{(PERFORMANCE_KEY_COUNT-1){1'b0}},1'b1} << performance_follow_target) :
+        {PERFORMANCE_KEY_COUNT{1'b0}};
+    wire [PERFORMANCE_KEY_COUNT-1:0] performance_led_target_keys =
+        performance_guide_keys | performance_led_due_keys;
+
     // The logical map covers 24 external strip pixels. The Tang Mega dock
     // drives the external strip directly on F13, so there is no prefix pixel.
     performance_led_white_mapper #(
         .KEY_COUNT(PERFORMANCE_KEY_COUNT),.LED_COUNT(PERFORMANCE_LED_COUNT),
         .BASE_NOTE(PERFORMANCE_BASE_NOTE)
     ) u_performance_led_map(
-        .active_keys(performance_active_keys),.guide_keys(performance_guide_keys),
+        .active_keys(performance_active_keys),.guide_keys(performance_led_target_keys),
         .led_active(performance_led_active_keys),.led_guide(performance_led_guide_keys));
 
     // The external strip receives a complete dark frame when leaving the page.
@@ -484,8 +497,17 @@ module ui_top_renderer #(
     reg [LED_INDEX_BITS-1:0] led_write_index;
     reg [PERFORMANCE_LED_COUNT-1:0] led_last_active, led_last_guide;
     reg led_initialized;
-    wire [PERFORMANCE_LED_COUNT-1:0] led_active_source = performance_page_active ? performance_led_active_keys : {PERFORMANCE_LED_COUNT{1'b0}};
-    wire [PERFORMANCE_LED_COUNT-1:0] led_guide_source  = performance_page_active ? performance_led_guide_keys : {PERFORMANCE_LED_COUNT{1'b0}};
+    // Idle practice mirrors played keys. Every running mode instead follows
+    // the score exclusively, including pauses: wrong/held physical keys must
+    // not replace or add to the requested keys. Stop/invalidation blank cues.
+    wire performance_led_enabled = performance_page_active &&
+        !performance_stop && !performance_reset_keys && !performance_start;
+    wire [PERFORMANCE_LED_COUNT-1:0] led_active_source =
+        performance_led_enabled && !performance_running ? performance_led_active_keys :
+        {PERFORMANCE_LED_COUNT{1'b0}};
+    wire [PERFORMANCE_LED_COUNT-1:0] led_guide_source =
+        performance_led_enabled && performance_running ? performance_led_guide_keys :
+        {PERFORMANCE_LED_COUNT{1'b0}};
     wire led_masks_changed = (led_active_source != led_last_active) || (led_guide_source != led_last_guide);
     wire led_frame_we = led_state == LED_WRITE;
     wire led_latch = led_state == LED_LATCH;
@@ -494,8 +516,39 @@ module ui_top_renderer #(
     // Freeze both masks before the first RAM write. A key change halfway
     // through a frame must appear in the NEXT frame, not tear this one.
     wire [LED_INDEX_BITS-1:0] external_led_index = led_write_index;
-    wire [23:0] led_frame_rgb = led_last_active[external_led_index] ? 24'h20140A :
-                                 led_last_guide[external_led_index] ? 24'h07100E : 24'h000000;
+    // Physical pitch increases left-to-right. A fixed low-current palette
+    // traverses red/orange/yellow/green/cyan/blue/violet over the 19 white
+    // keys; octave calibration leaves the physical key/color map unchanged.
+    function [23:0] performance_led_pitch_rgb;
+        input [LED_INDEX_BITS-1:0] index;
+        begin
+            case(index)
+                 0: performance_led_pitch_rgb=24'h200000;
+                 1: performance_led_pitch_rgb=24'h200600;
+                 2: performance_led_pitch_rgb=24'h200C00;
+                 3: performance_led_pitch_rgb=24'h201200;
+                 4: performance_led_pitch_rgb=24'h201A00;
+                 5: performance_led_pitch_rgb=24'h202000;
+                 6: performance_led_pitch_rgb=24'h142000;
+                 7: performance_led_pitch_rgb=24'h082000;
+                 8: performance_led_pitch_rgb=24'h002000;
+                 9: performance_led_pitch_rgb=24'h00200C;
+                10: performance_led_pitch_rgb=24'h002018;
+                11: performance_led_pitch_rgb=24'h002020;
+                12: performance_led_pitch_rgb=24'h001420;
+                13: performance_led_pitch_rgb=24'h000820;
+                14: performance_led_pitch_rgb=24'h000020;
+                15: performance_led_pitch_rgb=24'h080020;
+                16: performance_led_pitch_rgb=24'h100020;
+                17: performance_led_pitch_rgb=24'h180020;
+                18: performance_led_pitch_rgb=24'h200020;
+                default: performance_led_pitch_rgb=24'h000000;
+            endcase
+        end
+    endfunction
+    wire [23:0] led_frame_rgb =
+        (led_last_active[external_led_index] || led_last_guide[external_led_index]) ?
+        performance_led_pitch_rgb(external_led_index) : 24'h000000;
     always @(posedge clk or negedge rst_n) begin
         if(!rst_n)begin
             led_state<=LED_IDLE;led_write_index<={LED_INDEX_BITS{1'b0}};
