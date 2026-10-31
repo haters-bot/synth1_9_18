@@ -582,7 +582,8 @@ module ui_touch_hub_top #(
     wire [6:0] performance_packet_length;
     wire [511:0] performance_packet_payload;
     wire [15:0] performance_packet_signature;
-    wire phone_reply_valid,phone_reply_ready,phone_fast_baud,phone_locked,phone_tx_busy;
+    wire phone_reply_valid,phone_reply_ready,phone_fast_baud,phone_turbo_baud,phone_locked,phone_tx_busy;
+    wire phone_recording_discarded;
     wire [7:0] phone_reply_type,phone_reply_sequence;
     wire [6:0] phone_reply_length;
     wire [511:0] phone_reply_payload;
@@ -605,7 +606,7 @@ module ui_touch_hub_top #(
         .note_event_note(keyboard_note_number),.note_event_velocity(keyboard_note_velocity));
     performance_phone_transport u_phone_transport(
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.tick_1ms(performance_tick_1ms),.uart_rx(phone_uart_rx),
-        .hold_lock(phone_export_busy),.fast_baud(phone_fast_baud),.locked(phone_locked),
+        .hold_lock(phone_export_busy),.fast_baud(phone_fast_baud),.turbo_baud(phone_turbo_baud),.locked(phone_locked),
         .packet_valid(performance_packet_valid),.packet_type(performance_packet_type),
         .packet_sequence(performance_packet_sequence),.packet_length(performance_packet_length),
         .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),
@@ -696,7 +697,7 @@ module ui_touch_hub_top #(
         .calibration_epoch(performance_calibration_epoch),.invalidate_score(performance_invalidate),
         .packet_valid(performance_packet_valid),.packet_type(performance_packet_type),
         .packet_sequence(performance_packet_sequence),.packet_length(performance_packet_length),
-        .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),.fast_baud(phone_fast_baud),
+        .packet_payload(performance_packet_payload),.packet_signature(performance_packet_signature),.fast_baud(phone_fast_baud),.turbo_baud(phone_turbo_baud),
         .command_valid(phone_command_valid),.command_type(phone_command_type),
         .command_length(phone_command_length),.command_payload(phone_command_payload),
         .decoder_error(performance_protocol_error),.score_error(performance_score_error),.score_running(performance_score_running),
@@ -704,7 +705,7 @@ module ui_touch_hub_top #(
         .record_start_accepted(performance_record_start_accepted),.record_start_rejected(performance_record_start_rejected),
         .backend_available(performance_record_backend_available),.audio_link_up(audio_vis_link_up),
         .record_status(performance_record_status),.stored_frames(performance_record_stored_frames),
-        .upload_active(phone_upload_active),.export_busy(phone_export_busy),
+        .upload_active(phone_upload_active),.export_busy(phone_export_busy),.recording_discarded(phone_recording_discarded),
         .reply_valid(phone_reply_valid),.reply_ready(phone_reply_ready),.reply_type(phone_reply_type),
         .reply_sequence(phone_reply_sequence),.reply_length(phone_reply_length),.reply_payload(phone_reply_payload),
         .read_valid(performance_record_read_valid),.read_ready(performance_record_read_ready),.read_index(performance_record_read_index),
@@ -786,7 +787,7 @@ module ui_touch_hub_top #(
         .performance_mode(performance_mode),
         .performance_local_mode_valid(performance_local_mode_valid),.performance_local_mode(performance_local_mode),
         .performance_duration_ms(performance_duration_ms),.performance_gateway_up_in(performance_gateway_up),
-        .performance_recording_in(performance_record_active),.performance_record_status_in(performance_record_status),
+        .performance_recording_in(performance_record_active),.performance_record_status_in(phone_recording_discarded ? 4'd0 : performance_record_status),
         .performance_remote_note_valid(performance_remote_note_valid),
         .performance_remote_note_on(performance_remote_note_on),.performance_remote_note(performance_remote_note),
         .performance_remote_velocity(performance_remote_velocity),

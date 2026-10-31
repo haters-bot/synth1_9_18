@@ -7,7 +7,7 @@ module performance_phone_session #(
  input wire clk,rst_n,tick_1ms,packet_valid,
  input wire [7:0] packet_type,packet_sequence,
  input wire [6:0] packet_length,input wire [511:0] packet_payload,
- input wire [15:0] packet_signature,input wire fast_baud,
+ input wire [15:0] packet_signature,input wire fast_baud,turbo_baud,
  input wire local_calibrate,calibration_idle,
  input wire physical_note_valid,physical_note_on,
  input wire [6:0] physical_note,physical_velocity,
@@ -21,7 +21,7 @@ module performance_phone_session #(
  input wire record_active,record_busy,record_start_accepted,record_start_rejected,
  input wire backend_available,audio_link_up,input wire [3:0] record_status,
  input wire [31:0] stored_frames,
- output wire upload_active,output wire export_busy,
+ output wire upload_active,output wire export_busy,output reg recording_discarded,
  output reg reply_valid,input wire reply_ready,
  output wire [7:0] reply_type,output reg [7:0] reply_sequence,
  output reg [6:0] reply_length,output reg [511:0] reply_payload,
@@ -46,7 +46,12 @@ module performance_phone_session #(
  reg [7:0] cache_kind,cache_seq;
  reg [6:0] cache_length;
  reg [15:0] cache_signature;
- reg [207:0] cache_reply;
+ reg [351:0] cache_reply;
+ // A fresh random claim is adopted once for each take. HELLO/reconnect leaves
+ // it intact; reset, DDR loss or another accepted recording clears it. This
+ // disambiguates recordings even if generation/frame counts repeat after reset.
+ reg [127:0] recording_token;
+ wire [31:0] visible_frames=recording_discarded ? 32'd0 : stored_frames;
  reg hello_seen;
  reg [31:0] hello_nonce;
  reg [5:0] calibration_settle;
@@ -67,7 +72,7 @@ module performance_phone_session #(
  wire data_handshake=state==EXPORT_WAIT && export_packet_valid && reply_ready;
  performance_audio_export exporter(.clk(clk),.rst_n(rst_n),.tick_1ms(tick_1ms),.start(export_start),
   .offset(payload[31:0]),.count(payload[47:32]),.stereo(payload[55:48]==2),
-  .stored_frames(stored_frames),.generation(generation),.backend_available(backend_available),
+  .stored_frames(visible_frames),.generation(generation),.backend_available(backend_available),
   .busy(exporter_busy),.done(export_done),.error(export_error),
   .read_valid(read_valid),.read_ready(read_ready),.read_index(read_index),
   .read_data_valid(read_data_valid),.read_data_ready(read_data_ready),
@@ -76,8 +81,8 @@ module performance_phone_session #(
   .packet_length(export_packet_length),.packet_payload(export_packet_payload));
  always @*begin
   reply_valid=state==SEND || (state==EXPORT_WAIT && export_packet_valid);
-  reply_length=state==EXPORT_WAIT ? export_packet_length : CALIBRATION_ENABLE ? 7'd26 : 7'd22;
-  reply_payload=state==EXPORT_WAIT ? export_packet_payload : {304'd0,cache_reply};
+  reply_length=state==EXPORT_WAIT ? export_packet_length : kind==8'h44 ? 7'd44 : CALIBRATION_ENABLE ? 7'd26 : 7'd22;
+  reply_payload=state==EXPORT_WAIT ? export_packet_payload : {160'd0,cache_reply};
  end
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
@@ -85,6 +90,7 @@ module performance_phone_session #(
    kind<=0;seq<=0;length<=0;signature<=0;status<=0;settle<=0;wait_ms<=0;
    cleared<=0;uploading<=0;loaded<=0;expected<=0;received<=0;duration<=0;last_time<=0;check_time<=0;
    generation<=0;batch_index<=0;batch_count<=0;cache_valid<=0;
+   recording_discarded<=0;recording_token<=0;
    current_event<=0;batch_event_invalid<=0;
    cache_kind<=0;cache_seq<=0;cache_length<=0;cache_signature<=0;cache_reply<=0;
    export_start<=0;reply_sequence<=0;
@@ -126,7 +132,6 @@ module performance_phone_session #(
      loaded<=0;cleared<=0;received<=0;cache_valid<=0;
     end
    end
-   if(record_start_accepted)generation<=generation+1'b1;
    case(state)
     IDLE:if(packet_valid)begin
      kind<=packet_type;seq<=packet_sequence;length<=packet_length;
@@ -200,7 +205,23 @@ module performance_phone_session #(
       8'h43:begin
        if(length!=7 || (payload[55:48]!=1 && payload[55:48]!=2) || payload[47:32]==0 || payload[47:32]>1024)begin status<=1;state<=COMPOSE;end
        else if(record_busy || record_active || !backend_available)begin status<=2;state<=COMPOSE;end
+       else if(recording_discarded || visible_frames<12)begin status<=4;state<=COMPOSE;end
        else begin export_start<=1;state<=EXPORT_WAIT;end
+      end
+      8'h42:begin
+       if(length!=0)status<=1;
+       else if(record_busy || record_active || exporter_busy || export_start)status<=2;
+       else if(!recording_discarded)begin
+        recording_discarded<=1;recording_token<=0;generation<=generation+1'b1;
+       end
+       state<=COMPOSE;
+      end
+      8'h44:begin
+       if(length!=16 || payload[127:0]==0)status<=1;
+       else if(record_busy || record_active)status<=2;
+       else if(recording_token==0 && visible_frames!=0 && backend_available)
+        recording_token<=payload[127:0];
+       state<=COMPOSE;
       end
       default:begin status<=1;state<=COMPOSE;end
      endcase
@@ -246,15 +267,26 @@ module performance_phone_session #(
      if(kind==1 || kind==2 || kind==8'h43)begin command_valid<=1;command_type<=1;command_length<=0;end
      cache_reply[7:0]<=status;cache_reply[15:8]<=kind;
        cache_reply[23:16]<={CALIBRATION_ENABLE && calibrated,audio_link_up,export_busy,fast_baud,loaded,backend_available,record_busy,record_active};
-     cache_reply[31:24]<={4'd0,record_status};cache_reply[63:32]<=stored_frames;
+     cache_reply[31:24]<=recording_discarded ? 8'd0 : {4'd0,record_status};cache_reply[63:32]<=visible_frames;
      cache_reply[79:64]<=received;cache_reply[87:80]<={1'b0,effective_base};cache_reply[95:88]<=KEY_COUNT;
      cache_reply[127:96]<=32'd96000;cache_reply[159:128]<=generation;cache_reply[175:160]<=MAX_EVENTS;
      cache_reply[183:176]<=CALIBRATION_ENABLE ? 8'd1 : 8'd0;
      cache_reply[191:184]<={5'd0,calibration_state};cache_reply[207:192]<=calibration_epoch;
+     cache_reply[215:208]<=1;
+     cache_reply[223:216]<=turbo_baud ? 8'd2 : fast_baud ? 8'd1 : 8'd0;
+     cache_reply[351:224]<=recording_token;
      cache_valid<=1;cache_kind<=kind;cache_seq<=seq;cache_length<=length;cache_signature<=signature;state<=SEND;
     end
     SEND:if(reply_ready)state<=IDLE;
    endcase
+   // Recording lifecycle wins over command-cache/claim updates on the same
+   // clock. Never replay an old identity after DDR loss or a local new take.
+   if(!backend_available)begin
+    recording_discarded<=1;recording_token<=0;cache_valid<=0;
+   end
+   if(record_start_accepted)begin
+    generation<=generation+1'b1;recording_discarded<=0;recording_token<=0;cache_valid<=0;
+   end
   end
  end
 endmodule

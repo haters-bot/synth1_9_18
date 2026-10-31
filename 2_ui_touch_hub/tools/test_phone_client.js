@@ -54,6 +54,18 @@ async function main(){
  const outside=Buffer.from(midi);outside[outside.length-track.length+2]=120;
  const parsed=M.parseMidi(outside.buffer.slice(outside.byteOffset,outside.byteOffset+outside.length));assert.equal(parsed.events[0].note,120);checks++;
  const payload=P.eventsPayload(song.events);assert.equal(payload.length,16);assert.equal(new DataView(payload.buffer).getUint32(8,true),500);checks++;
+ const base26=P.join(status(T.STATUS),Uint8Array.of(1,2),P.u16(99));base26[2]|=128;
+ assert.equal(P.status(base26).calibrated,true);assert.equal(P.status(base26).calibrationEpoch,99);checks++;
+ for(let baud=0;baud<3;baud++){
+  const info=base26.slice();info[1]=T.RECORD_INFO;
+  const token=Uint8Array.from({length:16},(_,i)=>i+1);
+  const parsed=P.status(P.join(info,Uint8Array.of(1,baud),token));
+  assert.equal(parsed.baud,[9600,115200,230400][baud]);assert.equal(parsed.recordInfoSupported,true);
+  assert.equal(parsed.recordingToken,Buffer.from(token).toString("hex"));assert.equal(parsed.calibrated,true);checks++;
+ }
+ assert.throws(()=>P.status(P.join(base26,new Uint8Array(18))),/长度/);checks++;
+ c=new P.Client(bytes=>{const p=new P.Decoder().feed(bytes)[0];setTimeout(()=>c.receive(wire(T.ACK,p.seq,status(p.type,1))),1);},{timeout:20});
+ await assert.rejects(c.request(T.RECORD_INFO,new Uint8Array(16)),e=>e.boardCode===1);checks++;
  console.log(`PASS: ${checks} phone client checks: CRC/fragmentation, lost ACK, serialized commands, missing audio retry, generation/error/disconnect, WAV and MIDI running status/range`);
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

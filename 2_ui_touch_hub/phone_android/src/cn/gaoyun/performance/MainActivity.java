@@ -24,6 +24,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import org.json.JSONObject;
+import org.json.JSONArray;
 import java.io.InputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -51,6 +52,23 @@ public final class MainActivity extends Activity {
     private volatile boolean saveDialog,saveCopying;
     private File wavCache;
     private String saveName;
+    private int downloadExportRequest=-1;
+
+    private File downloadDirectory(){return new File(getFilesDir(),"recordings");}
+    private JSONObject entryJson(WavDownloadStore.Entry e) throws Exception {
+        return new JSONObject().put("key",e.key).put("identity",e.identity).put("name",e.name)
+            .put("frames",e.frames).put("channels",e.channels).put("received",e.receivedFrames()).put("complete",e.complete());
+    }
+    private void downloadReply(int request,boolean ok,String value) {
+        js("window.onNativeDownloadReply && window.onNativeDownloadReply("+request+","+ok+","+JSONObject.quote(value)+");");
+    }
+    private void downloadFailure(int request,Exception e){downloadReply(request,false,e.getMessage()==null?e.toString():e.getMessage());}
+    private void saveResult(boolean ok,String message){
+        int request=downloadExportRequest;downloadExportRequest=-1;
+        if(request>=0)downloadReply(request,ok,ok?"{}":message);
+        else if(ok)js("window.onNativeWrite && window.onNativeWrite(true,'');");
+        else event("onNativeSaveError",message);
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -169,7 +187,7 @@ public final class MainActivity extends Activity {
         }
         if(request==SAVE_WAV){
             saveDialog=false;
-            if(result!=RESULT_OK || data==null || data.getData()==null){event("onNativeSaveError","已取消导出；完整录音缓存保留，可重新下载导出");return;}
+            if(result!=RESULT_OK || data==null || data.getData()==null){saveResult(false,"已取消导出；完整录音缓存保留，可在“本地录音”直接导出，无需重新回传");return;}
             final Uri target=data.getData();
             saveCopying=true;
             files.execute(()->{
@@ -179,8 +197,8 @@ public final class MainActivity extends Activity {
                     byte[] buffer=new byte[16384];long copied=0;int n;
                     while((n=input.read(buffer))!=-1){output.write(buffer,0,n);copied+=n;}
                     if(copied!=wavCache.length())throw new Exception("导出长度校验失败");
-                    output.flush();js("window.onNativeWrite && window.onNativeWrite(true,'');");
-                }catch(Exception e){event("onNativeSaveError",e.toString());}
+                    output.flush();saveResult(true,"");
+                }catch(Exception e){saveResult(false,e.toString());}
                 finally{saveCopying=false;}
             });
         }
@@ -188,6 +206,56 @@ public final class MainActivity extends Activity {
 
     private void closeWav(){try{wavStore.close();}catch(Exception ignored){}}
     public final class PhoneBridge {
+        @JavascriptInterface public void downloadAction(int request,String action,String encoded){
+            if(action.equals("confirmOverwrite") || action.equals("confirmDiscard")){
+                runOnUiThread(()->new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(action.equals("confirmOverwrite")?"覆盖板上当前录音？":"丢弃板上当前录音？")
+                    .setMessage("板卡只保存一段录音。此操作会使旧录音无法继续回传；手机已保存的缓存保留。")
+                    .setPositiveButton("确认",(d,w)->downloadReply(request,true,"{\"confirmed\":true}"))
+                    .setNegativeButton("取消",(d,w)->downloadReply(request,true,"{\"confirmed\":false}"))
+                    .setOnCancelListener(d->downloadReply(request,true,"{\"confirmed\":false}")).show());
+                return;
+            }
+            files.execute(()->{
+                try {
+                    JSONObject data=new JSONObject(encoded);
+                    if((saveDialog || saveCopying) && !action.equals("list"))throw new Exception("请先完成或取消WAV保存");
+                    if(action.equals("list")){
+                        JSONArray entries=new JSONArray();for(WavDownloadStore.Entry e:WavDownloadStore.list(downloadDirectory()))entries.put(entryJson(e));
+                        downloadReply(request,true,new JSONObject().put("entries",entries).put("directory",downloadDirectory().getAbsolutePath()).toString());
+                    }else if(action.equals("begin")){
+                        closeWav();
+                        WavDownloadStore.Entry e=wavStore.open(downloadDirectory(),data.getString("identity"),data.getString("name"),data.getInt("frames"),data.getInt("channels"));
+                        runOnUiThread(()->web.setKeepScreenOn(true));downloadReply(request,true,entryJson(e).toString());
+                    }else if(action.equals("append")){
+                        if(!data.getString("key").equals(wavStore.activeKey()))throw new Exception("过期的缓存写入请求");
+                        wavStore.append(Base64.decode(data.getString("pcm"),Base64.DEFAULT));
+                        downloadReply(request,true,new JSONObject().put("received",wavStore.receivedFrames()).toString());
+                    }else if(action.equals("pause")){
+                        closeWav();runOnUiThread(()->web.setKeepScreenOn(false));downloadReply(request,true,"{}");
+                    }else if(action.equals("export")){
+                        closeWav();String key=data.getString("key");
+                        wavCache=WavDownloadStore.completeFile(downloadDirectory(),key);
+                        saveName=WavDownloadStore.inspect(downloadDirectory(),key).name;downloadExportRequest=request;saveDialog=true;
+                        runOnUiThread(()->{
+                            web.setKeepScreenOn(false);
+                            Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/wav").putExtra(Intent.EXTRA_TITLE,saveName);
+                            try{startActivityForResult(intent,SAVE_WAV);}catch(Exception e){saveDialog=false;saveResult(false,e.toString());}
+                        });
+                    }else if(action.equals("delete")){
+                        String key=data.getString("key");WavDownloadStore.inspect(downloadDirectory(),key);
+                        runOnUiThread(()->new AlertDialog.Builder(MainActivity.this).setTitle("删除所选手机录音缓存？")
+                            .setMessage("仅删除本 App 中选定的缓存和进度；不删除板卡录音或已导出的文件。")
+                            .setPositiveButton("删除",(d,w)->files.execute(()->{
+                                try{if(key.equals(wavStore.activeKey()))closeWav();WavDownloadStore.remove(downloadDirectory(),key);downloadReply(request,true,"{}");}
+                                catch(Exception e){downloadFailure(request,e);}
+                            }))
+                            .setNegativeButton("取消",(d,w)->downloadReply(request,true,"{\"cancelled\":true}"))
+                            .setOnCancelListener(d->downloadReply(request,true,"{\"cancelled\":true}")).show());
+                    }else throw new Exception("未知缓存操作");
+                }catch(Exception e){downloadFailure(request,e);}
+            });
+        }
         @JavascriptInterface public void chooseMidi(){runOnUiThread(()->MainActivity.this.chooseMidi());}
         @JavascriptInterface public void chooseDevice(){runOnUiThread(()->MainActivity.this.chooseDevice());}
         @JavascriptInterface public void sendBase64(String encoded){
@@ -230,7 +298,7 @@ public final class MainActivity extends Activity {
                 }catch(Exception e){closeWav();event("onNativeSaveError",e.toString());}
             });
         }
-        @JavascriptInterface public void cancelSave(){files.execute(()->{closeWav();event("onNativeError","下载中断；未导出残缺文件，应用缓存保留。请重新下载。");});}
+        @JavascriptInterface public void cancelSave(){files.execute(()->{closeWav();event("onNativeError","下载中断；未导出残缺文件。新版续传缓存可从“本地录音”继续。");});}
     }
 
     @Override public void onBackPressed(){new AlertDialog.Builder(this).setMessage("退出将断开蓝牙并中断未完成下载。板端录音继续由板卡控制。").setPositiveButton("退出",(d,w)->finish()).setNegativeButton("取消",null).show();}

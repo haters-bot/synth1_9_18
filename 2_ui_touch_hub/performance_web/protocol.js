@@ -1,7 +1,7 @@
 (function (root) {
   "use strict";
   const TYPES = Object.freeze({HELLO:1, STATUS:2, CLEAR:16, BEGIN:17, EVENTS:18, END:19,
-    PLAY:32, PAUSE:33, STOP:34, MODE:35, NOTE:48, RECORD_START:64, RECORD_STOP:65, READ:67, ACK:112, AUDIO:113});
+    PLAY:32, PAUSE:33, STOP:34, MODE:35, NOTE:48, RECORD_START:64, RECORD_STOP:65, RECORD_CLEAR:66, READ:67, RECORD_INFO:68, ACK:112, AUDIO:113});
   const u16 = n => Uint8Array.of(n & 255, n >>> 8 & 255);
   const u32 = n => Uint8Array.of(n & 255, n >>> 8 & 255, n >>> 16 & 255, n >>> 24 & 255);
   function join(...parts) {
@@ -34,16 +34,20 @@
     }
   }
   function status(data) {
-    if(data.length!==22 && data.length!==26)throw Error("板卡状态帧长度错误");
+    const extended=data.length===44 && data[1]===TYPES.RECORD_INFO && data[26]===1;
+    if(data.length!==22 && data.length!==26 && !extended)throw Error("板卡状态帧长度错误");
     const v=new DataView(data.buffer,data.byteOffset,data.byteLength);
     return {code:data[0],request:data[1],flags:data[2],recordStatus:data[3],storedFrames:v.getUint32(4,true),
       events:v.getUint16(8,true),baseNote:data[10],keyCount:data[11],sampleRate:v.getUint32(12,true),
       generation:v.getUint32(16,true),maxEvents:v.getUint16(20,true),
       recording:!!(data[2]&1),busy:!!(data[2]&2),backend:!!(data[2]&4),loaded:!!(data[2]&8),fast:!!(data[2]&16),
-      calibrationSupported:data.length===26 && data[22]===1,
-      calibrationState:data.length===26?data[23]:0,
-      calibrationEpoch:data.length===26?v.getUint16(24,true):0,
-      calibrated:data.length===26 && data[22]===1 && data[23]===2 && !!(data[2]&128)};
+      calibrationSupported:data.length>=26 && data[22]===1,
+      calibrationState:data.length>=26?data[23]:0,
+      calibrationEpoch:data.length>=26?v.getUint16(24,true):0,
+      calibrated:data.length>=26 && data[22]===1 && data[23]===2 && !!(data[2]&128),
+      recordInfoSupported:extended,
+      baud:extended?[9600,115200,230400][data[27]]:((data[2]&16)?115200:9600),
+      recordingToken:extended?Array.from(data.slice(28,44),b=>b.toString(16).padStart(2,"0")).join(""):null};
   }
   const errors={1:"格式或音域错误",2:"板卡忙或音源／DDR未就绪",3:"曲谱不完整或调度拒绝",4:"录音范围无效",5:"DDR读取错误",6:"板卡处理超时",7:"请在 UI 板重新校准最左键后上传，校准状态已改变"};
   class Client {
@@ -86,7 +90,7 @@
           } else if(packet.type===TYPES.ACK) {
             const s=status(packet.payload);if(s.request!==p.type)continue;
             this.lastStatus=s;this.onStatus(s);
-            if(s.code)throw Error(`板卡拒绝：${errors[s.code]||s.code}`);
+            if(s.code){const e=Error(`板卡拒绝：${errors[s.code]||s.code}`);e.boardCode=s.code;throw e;}
             if(p.audio) {
               if(s.generation!==p.audio.generation)throw Error("录音已被新一轮覆盖，停止下载");
               if(p.seen.some(n=>!n))continue; // Retain request; timeout retries missing/CRC-bad data.
