@@ -6,7 +6,7 @@
 //   Mix   控制干湿比例。
 //
 // 四条延迟线并行读取，但阻尼、反馈乘法和写回按通道分时完成，
-// 因而只需要一条反馈乘法路径。每个输入样本约占 17 个 50 MHz 时钟，
+// 因而只需要一条反馈乘法路径。每个输入样本约占 25 个 50 MHz 时钟，
 // 远低于 96 kHz 采样周期所提供的 520 个时钟。
 module global_reverb (
     input  wire               clk,
@@ -26,13 +26,15 @@ module global_reverb (
     localparam [3:0] STATE_FDN_READ    = 4'd1;
     localparam [3:0] STATE_FDN_CAPTURE = 4'd2;
     localparam [3:0] STATE_FDN_DAMP    = 4'd3;
-    localparam [3:0] STATE_FDN_WRITE   = 4'd4;
-    localparam [3:0] STATE_AP1_READ    = 4'd5;
-    localparam [3:0] STATE_AP1_PROCESS = 4'd6;
-    localparam [3:0] STATE_AP2_READ    = 4'd7;
-    localparam [3:0] STATE_AP2_PROCESS = 4'd8;
-    localparam [3:0] STATE_DC_BLOCK    = 4'd9;
-    localparam [3:0] STATE_MIX         = 4'd10;
+    localparam [3:0] STATE_FDN_MATRIX  = 4'd4;
+    localparam [3:0] STATE_FDN_SCALE   = 4'd5;
+    localparam [3:0] STATE_FDN_WRITE   = 4'd6;
+    localparam [3:0] STATE_AP1_READ    = 4'd7;
+    localparam [3:0] STATE_AP1_PROCESS = 4'd8;
+    localparam [3:0] STATE_AP2_READ    = 4'd9;
+    localparam [3:0] STATE_AP2_PROCESS = 4'd10;
+    localparam [3:0] STATE_DC_BLOCK    = 4'd11;
+    localparam [3:0] STATE_MIX         = 4'd12;
 
     // 18 位内部存储为反馈累加保留余量。数组不在复位时清零，
     // fill 计数器会在历史数据有效前将 RAM 输出屏蔽为零。
@@ -76,6 +78,8 @@ module global_reverb (
     reg signed [17:0] fdn_damped_1;
     reg signed [17:0] fdn_damped_2;
     reg signed [17:0] fdn_damped_3;
+    reg signed [19:0] hadamard_pipeline;
+    reg signed [21:0] feedback_scaled_pipeline;
 
     reg [15:0] feedback_gain_smoothed_q15;
     reg [15:0] feedback_gain_latched_q15;
@@ -169,26 +173,31 @@ module global_reverb (
 
     // 归一化 4x4 Hadamard 矩阵。除以 2 后能量增益为 1，
     // 四条反馈路径会互相扩散，不再形成四组彼此独立的梳状尾音。
+    // 显式写成两级蝶形网络，防止综合器生成四个操作数的串行加减链。
+    wire signed [18:0] hadamard_pair_sum_01 =
+        $signed({fdn_damped_0[17], fdn_damped_0})
+        + $signed({fdn_damped_1[17], fdn_damped_1});
+    wire signed [18:0] hadamard_pair_sum_23 =
+        $signed({fdn_damped_2[17], fdn_damped_2})
+        + $signed({fdn_damped_3[17], fdn_damped_3});
+    wire signed [18:0] hadamard_pair_diff_01 =
+        $signed({fdn_damped_0[17], fdn_damped_0})
+        - $signed({fdn_damped_1[17], fdn_damped_1});
+    wire signed [18:0] hadamard_pair_diff_23 =
+        $signed({fdn_damped_2[17], fdn_damped_2})
+        - $signed({fdn_damped_3[17], fdn_damped_3});
     wire signed [19:0] hadamard_0 =
-        ($signed({{2{fdn_damped_0[17]}}, fdn_damped_0})
-        + $signed({{2{fdn_damped_1[17]}}, fdn_damped_1})
-        + $signed({{2{fdn_damped_2[17]}}, fdn_damped_2})
-        + $signed({{2{fdn_damped_3[17]}}, fdn_damped_3})) >>> 1;
+        ($signed({hadamard_pair_sum_01[18], hadamard_pair_sum_01})
+        + $signed({hadamard_pair_sum_23[18], hadamard_pair_sum_23})) >>> 1;
     wire signed [19:0] hadamard_1 =
-        ($signed({{2{fdn_damped_0[17]}}, fdn_damped_0})
-        - $signed({{2{fdn_damped_1[17]}}, fdn_damped_1})
-        + $signed({{2{fdn_damped_2[17]}}, fdn_damped_2})
-        - $signed({{2{fdn_damped_3[17]}}, fdn_damped_3})) >>> 1;
+        ($signed({hadamard_pair_diff_01[18], hadamard_pair_diff_01})
+        + $signed({hadamard_pair_diff_23[18], hadamard_pair_diff_23})) >>> 1;
     wire signed [19:0] hadamard_2 =
-        ($signed({{2{fdn_damped_0[17]}}, fdn_damped_0})
-        + $signed({{2{fdn_damped_1[17]}}, fdn_damped_1})
-        - $signed({{2{fdn_damped_2[17]}}, fdn_damped_2})
-        - $signed({{2{fdn_damped_3[17]}}, fdn_damped_3})) >>> 1;
+        ($signed({hadamard_pair_sum_01[18], hadamard_pair_sum_01})
+        - $signed({hadamard_pair_sum_23[18], hadamard_pair_sum_23})) >>> 1;
     wire signed [19:0] hadamard_3 =
-        ($signed({{2{fdn_damped_0[17]}}, fdn_damped_0})
-        - $signed({{2{fdn_damped_1[17]}}, fdn_damped_1})
-        - $signed({{2{fdn_damped_2[17]}}, fdn_damped_2})
-        + $signed({{2{fdn_damped_3[17]}}, fdn_damped_3})) >>> 1;
+        ($signed({hadamard_pair_diff_01[18], hadamard_pair_diff_01})
+        - $signed({hadamard_pair_diff_23[18], hadamard_pair_diff_23})) >>> 1;
 
     reg signed [19:0] selected_hadamard;
     always @(*) begin
@@ -201,7 +210,7 @@ module global_reverb (
     end
 
     wire signed [36:0] feedback_product =
-        selected_hadamard * $signed({1'b0, feedback_gain_latched_q15});
+        hadamard_pipeline * $signed({1'b0, feedback_gain_latched_q15});
     // 负数的算术右移会向负无穷舍入，使很小的负反馈长期停在 -1。
     // 这里对正负值都向零截断，消除固定点反馈中的最低位极限环。
     wire signed [36:0] feedback_scaled_full = (feedback_product >= 0)
@@ -210,7 +219,7 @@ module global_reverb (
     wire signed [21:0] feedback_scaled = feedback_scaled_full[21:0];
     wire signed [21:0] fdn_write_wide =
         $signed({{6{dry_sample_latched[15]}}, dry_sample_latched})
-        + feedback_scaled;
+        + feedback_scaled_pipeline;
     wire signed [17:0] fdn_write_data = saturate_s22_to_s18(fdn_write_wide);
 
     wire signed [19:0] fdn_output_sum =
@@ -488,6 +497,8 @@ module global_reverb (
             fdn_damped_1 <= 18'sd0;
             fdn_damped_2 <= 18'sd0;
             fdn_damped_3 <= 18'sd0;
+            hadamard_pipeline <= 20'sd0;
+            feedback_scaled_pipeline <= 22'sd0;
             feedback_gain_smoothed_q15 <= 16'd0;
             feedback_gain_latched_q15 <= 16'd0;
             mix_smoothed <= 7'd0;
@@ -559,10 +570,22 @@ module global_reverb (
                     endcase
                     if (channel_index == 2'd3) begin
                         channel_index <= 2'd0;
-                        state <= STATE_FDN_WRITE;
+                        state <= STATE_FDN_MATRIX;
                     end else begin
                         channel_index <= channel_index + 2'd1;
                     end
+                end
+
+                // 反馈写回拆成三拍：矩阵、乘法缩放、RAM 写入。
+                // 这些寄存器只改变处理延迟，不改变任何定点计算结果。
+                STATE_FDN_MATRIX: begin
+                    hadamard_pipeline <= selected_hadamard;
+                    state <= STATE_FDN_SCALE;
+                end
+
+                STATE_FDN_SCALE: begin
+                    feedback_scaled_pipeline <= feedback_scaled;
+                    state <= STATE_FDN_WRITE;
                 end
 
                 STATE_FDN_WRITE: begin
@@ -627,6 +650,7 @@ module global_reverb (
                         state <= STATE_AP1_READ;
                     end else begin
                         channel_index <= channel_index + 2'd1;
+                        state <= STATE_FDN_MATRIX;
                     end
                 end
 
