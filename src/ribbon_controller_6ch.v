@@ -34,7 +34,7 @@ module ribbon_controller_6ch #(
 
     ads1256_scanner #(
         .SYS_CLK_HZ(SYS_CLK_HZ),
-        .CHANNEL_COUNT(6)
+        .CHANNEL_COUNT(4)
     ) u_ads1256_scanner (
         .clk(clk),
         .rst_n(rst_n),
@@ -52,7 +52,8 @@ module ribbon_controller_6ch #(
     );
 
     ribbon_pitch_processor #(
-        .CHANNEL_COUNT(6)
+        .CHANNEL_COUNT(4),
+        .CALIBRATED_REVERSED(1)
     ) u_ribbon_pitch_processor (
         .clk(clk),
         .rst_n(rst_n),

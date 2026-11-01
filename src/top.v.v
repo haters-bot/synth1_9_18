@@ -8,6 +8,8 @@ module top #(
     parameter integer SLOTS_PER_ENGINE = 32,
     parameter integer EXTERNAL_WAVETABLE_ENABLE = 1
 )(
+    input wire adc_drdy_n, adc_dout,
+    output wire adc_cs_n, adc_sclk, adc_din, adc_reset_n,
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
     input  wire control_uart_rx, // C19; 独立音色控制UART RX，3.3 V，空闲高电平
@@ -1025,6 +1027,48 @@ module top #(
         .release_phase_step(osc_b_release_phase_step)
     );
 
+    // MIDI事件优先入队，两组调度器同时空闲后共同接收。
+    reg [14:0] midi_scheduler_fifo [0:15];
+    reg [3:0] midi_scheduler_wr, midi_scheduler_rd;
+    reg [4:0] midi_scheduler_count;
+    reg midi_scheduler_overflow;
+    wire schedulers_ready = !osc_a_scheduler_busy && !osc_b_scheduler_busy;
+    wire midi_dispatch = schedulers_ready && (midi_scheduler_count != 0);
+    wire midi_enqueue = pitch_note_event_valid && ((midi_scheduler_count != 16) || midi_dispatch);
+    wire [14:0] midi_dispatch_data = midi_scheduler_fifo[midi_scheduler_rd];
+    wire ribbon_event_valid, ribbon_event_on, ribbon_event_ready;
+    wire [2:0] ribbon_event_source;
+    wire [31:0] ribbon_event_base_step;
+    wire [6:0] ribbon_event_velocity;
+    wire ribbon_adc_initialized;
+    assign ribbon_event_ready = schedulers_ready && (midi_scheduler_count == 0) && !pitch_note_event_valid;
+    always @(posedge clk_sys or negedge rst_n_sys) begin
+        if (!rst_n_sys) begin
+            midi_scheduler_wr <= 0; midi_scheduler_rd <= 0;
+            midi_scheduler_count <= 0; midi_scheduler_overflow <= 0;
+        end else begin
+            if (pitch_note_event_valid && !midi_enqueue) midi_scheduler_overflow <= 1'b1;
+            if (midi_enqueue) begin
+                midi_scheduler_fifo[midi_scheduler_wr] <= {pitch_note_event_on, pitch_note_event_note, pitch_note_event_velocity};
+                midi_scheduler_wr <= midi_scheduler_wr + 1'b1;
+            end
+            if (midi_dispatch) midi_scheduler_rd <= midi_scheduler_rd + 1'b1;
+            case ({midi_enqueue, midi_dispatch})
+                2'b10: midi_scheduler_count <= midi_scheduler_count + 1'b1;
+                2'b01: midi_scheduler_count <= midi_scheduler_count - 1'b1;
+                default: midi_scheduler_count <= midi_scheduler_count;
+            endcase
+        end
+    end
+    ribbon_controller_6ch u_ribbon_controller (
+        .clk(clk_sys), .rst_n(rst_n_sys), .adc_drdy_n(adc_drdy_n), .adc_dout(adc_dout),
+        .adc_cs_n(adc_cs_n), .adc_sclk(adc_sclk), .adc_din(adc_din), .adc_reset_n(adc_reset_n),
+        .scheduler_ready(ribbon_event_ready), .continuous_event_valid(ribbon_event_valid),
+        .continuous_event_on(ribbon_event_on), .continuous_event_source(ribbon_event_source),
+        .continuous_event_base_step(ribbon_event_base_step), .continuous_event_velocity(ribbon_event_velocity),
+        .adc_initialized(ribbon_adc_initialized)
+    );
+
     oscillator_task_scheduler #(
         .INITIAL_PHASE_ENABLE(1),
         .ENGINE_COUNT    (OSC_ENGINE_COUNT),
@@ -1032,19 +1076,19 @@ module top #(
     ) u_osc_a_task_scheduler (
         .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (pitch_note_event_valid),
-        .note_event_on           (pitch_note_event_on),
-        .note_event_note         (pitch_note_event_note),
-        .note_event_velocity     (pitch_note_event_velocity),
+        .note_event_valid        (midi_dispatch),
+        .note_event_on           (midi_dispatch_data[14]),
+        .note_event_note         (midi_dispatch_data[13:7]),
+        .note_event_velocity     (midi_dispatch_data[6:0]),
         .unison_count            (osc_a_unison_count),
         .detune_amount           (lfo_osc_a_detune_target),
         .phase_control(lfo_osc_a_phase_target), .rand_control(lfo_osc_a_rand_target),
         .task_idle_mask          (osc_a_task_idle_mask),
-        .continuous_event_valid  (1'b0),
-        .continuous_event_on     (1'b0),
-        .continuous_event_source (3'd0),
-        .continuous_event_base_step(32'd0),
-        .continuous_event_velocity(7'd0),
+        .continuous_event_valid  (ribbon_event_valid && ribbon_event_ready),
+        .continuous_event_on     (ribbon_event_on),
+        .continuous_event_source (ribbon_event_source),
+        .continuous_event_base_step(ribbon_event_base_step),
+        .continuous_event_velocity(ribbon_event_velocity),
         .task_update_valid       (osc_a_task_update_valid),
         .task_update_slot        (osc_a_task_update_slot),
         .task_update_phase_step  (osc_a_task_update_phase_step),
@@ -1068,19 +1112,19 @@ module top #(
     ) u_osc_b_task_scheduler (
         .clk                     (clk_sys),
         .rst_n                   (rst_n_sys),
-        .note_event_valid        (pitch_note_event_valid),
-        .note_event_on           (pitch_note_event_on),
-        .note_event_note         (pitch_note_event_note),
-        .note_event_velocity     (pitch_note_event_velocity),
+        .note_event_valid        (midi_dispatch),
+        .note_event_on           (midi_dispatch_data[14]),
+        .note_event_note         (midi_dispatch_data[13:7]),
+        .note_event_velocity     (midi_dispatch_data[6:0]),
         .unison_count            (osc_b_unison_count),
         .detune_amount           (lfo_osc_b_detune_target),
         .phase_control(lfo_osc_b_phase_target), .rand_control(lfo_osc_b_rand_target),
         .task_idle_mask          (osc_b_task_idle_mask),
-        .continuous_event_valid  (1'b0),
-        .continuous_event_on     (1'b0),
-        .continuous_event_source (3'd0),
-        .continuous_event_base_step(32'd0),
-        .continuous_event_velocity(7'd0),
+        .continuous_event_valid  (ribbon_event_valid && ribbon_event_ready),
+        .continuous_event_on     (ribbon_event_on),
+        .continuous_event_source (ribbon_event_source),
+        .continuous_event_base_step(ribbon_event_base_step),
+        .continuous_event_velocity(ribbon_event_velocity),
         .task_update_valid       (osc_b_task_update_valid),
         .task_update_slot        (osc_b_task_update_slot),
         .task_update_phase_step  (osc_b_task_update_phase_step),

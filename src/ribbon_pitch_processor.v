@@ -6,6 +6,7 @@
 // 替换为每条滑条的实测码值。
 module ribbon_pitch_processor #(
     parameter integer CHANNEL_COUNT = 6,
+    parameter integer CALIBRATED_REVERSED = 0,
     parameter signed [23:0] RAW_ACTIVE_MIN = 24'sd1409286,
     parameter signed [23:0] RAW_ACTIVE_MAX = 24'sd3858759,
     parameter signed [23:0] RAW_GATE_ON    = 24'sd922747,
@@ -82,6 +83,28 @@ module ribbon_pitch_processor #(
                 default: base_note_for_channel = 7'd84;
             endcase
         end
+    endfunction
+
+    function signed [23:0] calibrated_min;
+        input [2:0] ch;
+        case (ch)
+            0: calibrated_min=24'sd1568670; 1: calibrated_min=24'sd1538471;
+            2: calibrated_min=24'sd1444518; default: calibrated_min=24'sd1353921;
+        endcase
+    endfunction
+    function signed [23:0] calibrated_max;
+        input [2:0] ch;
+        case (ch)
+            0: calibrated_max=24'sd3989622; 1: calibrated_max=24'sd3969489;
+            2: calibrated_max=24'sd3920835; default: calibrated_max=24'sd3598713;
+        endcase
+    endfunction
+    function [11:0] calibrated_coefficient;
+        input [2:0] ch;
+        case (ch)
+            0: calibrated_coefficient=12'd2661; 1: calibrated_coefficient=12'd2650;
+            2: calibrated_coefficient=12'd2602; default: calibrated_coefficient=12'd2870;
+        endcase
     endfunction
 
     function [14:0] absolute_pitch_difference;
@@ -188,20 +211,21 @@ module ribbon_pitch_processor #(
                 end
 
                 STATE_MAP: begin
-                    if (work_filtered <= RAW_ACTIVE_MIN) begin
-                        active_delta <= 28'd0;
+                    if (CALIBRATED_REVERSED != 0) begin
+                        // 左端电压高，右端电压低。
+                        if (work_filtered >= calibrated_max(work_channel))
+                            map_product <= 36'd0;
+                        else if (work_filtered <= calibrated_min(work_channel))
+                            map_product <= 36'd6144 << 20;
+                        else
+                            map_product <= (calibrated_max(work_channel) - work_filtered)
+                                           * calibrated_coefficient(work_channel);
+                    end else if (work_filtered <= RAW_ACTIVE_MIN) begin
                         map_product <= 36'd0;
                     end else if (work_filtered >= RAW_ACTIVE_MAX) begin
-                        active_delta
-                            <= RAW_ACTIVE_MAX - RAW_ACTIVE_MIN;
-                        map_product
-                            <= (RAW_ACTIVE_MAX - RAW_ACTIVE_MIN)
-                               * MAP_COEFFICIENT_Q20;
+                        map_product <= (RAW_ACTIVE_MAX - RAW_ACTIVE_MIN) * MAP_COEFFICIENT_Q20;
                     end else begin
-                        active_delta <= work_filtered - RAW_ACTIVE_MIN;
-                        map_product
-                            <= (work_filtered - RAW_ACTIVE_MIN)
-                               * MAP_COEFFICIENT_Q20;
+                        map_product <= (work_filtered - RAW_ACTIVE_MIN) * MAP_COEFFICIENT_Q20;
                     end
                     state <= STATE_COMMIT;
                 end

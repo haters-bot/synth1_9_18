@@ -18,6 +18,10 @@ vlog -work work_top_dual_unison8 \
     src/synth_control_router.v \
     src/adsr_parameter_mapper.v \
     src/performance_pitch_controller.v \
+    src/ads1256_scanner.v \
+    src/ribbon_pitch_processor.v \
+    src/ribbon_pitch_to_step.v \
+    src/ribbon_controller_6ch.v \
     src/oscillator_task_scheduler.v \
     src/freq_lut.v \
     src/sine_lut.v \
