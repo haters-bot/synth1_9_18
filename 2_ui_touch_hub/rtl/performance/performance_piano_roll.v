@@ -64,8 +64,12 @@ module performance_piano_roll #(
     (* syn_ramstyle="block_ram", ram_style="block" *) reg [63:0] bitmap[0:511];
     // One read/write builder port, one display read port; no reset on RAM.
     always @(posedge clk) begin
-        if(write_enable)bitmap[back_address]<=write_data;
-        back_data<=bitmap[back_address];
+        // Explicit write-through avoids the unsupported GW5A DPB
+        // read-before-write mode. RMW reads happen in READ_ROW beforehand.
+        if(write_enable)begin
+            bitmap[back_address]<=write_data;
+            back_data<=write_data;
+        end else back_data<=bitmap[back_address];
         front_data<=bitmap[front_address];
     end
     reg raster_in_roll;

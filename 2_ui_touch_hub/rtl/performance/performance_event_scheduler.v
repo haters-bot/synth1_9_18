@@ -60,9 +60,12 @@ module performance_event_scheduler #(
     wire [ADDR_BITS-1:0] upload_preview_address = accept_event ? write_ptr : preview_address;
 
     always @(posedge clk) begin
-        if (accept_event)
+        // GW5A DPB supports write-through, not read-before-write (mode 2).
+        // Preview is ignored during upload; explicitly bypass the write data.
+        if (accept_event) begin
             event_mem[upload_preview_address] <= {event_time_ms,event_note,event_velocity,event_on};
-        preview_record <= event_mem[upload_preview_address];
+            preview_record <= {event_time_ms,event_note,event_velocity,event_on};
+        end else preview_record <= event_mem[upload_preview_address];
         ram_record <= event_mem[read_ptr];
     end
 
