@@ -8,7 +8,8 @@ module ads1256_scanner #(
     parameter integer CHANNEL_COUNT = 6,
     parameter integer POWERUP_DELAY_CYCLES = 2500000,
     parameter integer RESET_DELAY_CYCLES = 50000,
-    parameter integer COMMAND_DELAY_CYCLES = 32,
+    // SYNC后下一命令需至少24个7.68 MHz时钟，即约3.125 us。
+    parameter integer COMMAND_DELAY_CYCLES = (SYS_CLK_HZ + 249999) / 250000,
     parameter integer RDATA_DELAY_CYCLES = 400
 )(
     input  wire               clk,
