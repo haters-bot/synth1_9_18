@@ -44,7 +44,8 @@ def main():
  actual=(args.preset_run/'preset_actual.hex').read_text().split()
  expected=(args.preset_run/'preset_expected.hex').read_text().split()
  assert [int(s,16) for s in actual]==[int(s,16) for s in expected] and len(actual)==11343
- r=json.loads((args.regression/'result.json').read_text());assert len(r['tests'])==16
+ r=json.loads((args.regression/'result.json').read_text())
+ assert len(r['tests'])==17 and 'tb_midi_local_reset' in r['tests']
  output={'passed':True,'scope':'source and RTL simulation only; no Gowin or programming',
    'git_base_commit':current_commit,'git_branch':branch,'changes_committed':False,
    'reference_commit':catalog['reference_commit'],'reference_sha256':catalog['reference_sha256'],

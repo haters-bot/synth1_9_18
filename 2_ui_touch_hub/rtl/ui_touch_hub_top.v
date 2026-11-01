@@ -924,6 +924,14 @@ module ui_touch_hub_top #(
     // 8. 队友 3 音频引擎 UART MIDI 协议发送器 (31250 baud)
     // --------------------------------------------------------------------------
     wire audio_midi_tx;
+    // Local asynchronous-assert / synchronous-release reset copies keep the
+    // global reset-counter reduction out of the MIDI acceptance feedback cone.
+    wire midi_uart_reset_n,midi_sync_reset_n,midi_preset_reset_n,midi_lfo_reset_n;
+    wire midi_note_ready;
+    midi_reset_distribution u_midi_resets(.clk(clk_pixel),.rst_n(sys_rst_n_sync),
+        .tx_rst_n(midi_uart_reset_n),.sync_rst_n(midi_sync_reset_n),
+        .preset_rst_n(midi_preset_reset_n),.lfo_rst_n(midi_lfo_reset_n));
+    assign performance_note_ready=midi_note_ready && midi_uart_reset_n;
     // LFO Protocol V2: snapshot the LFO UI after it falls quiet and stream the
     // configuration after boot static CCs drain; later live edits use FIFO acceptance.
     assign audio_static_values[237:0]=static_cc_values;
@@ -935,7 +943,7 @@ module ui_touch_hub_top #(
     assign audio_static_values[273+:7]=fx_parameter_snapshot[84+:7]; // REVERB_MIX
     assign audio_static_values[280+:238]=audio_extra_values;
     synth_preset_controller u_synth_presets(
-        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.apply_req(preset_apply_req),.apply_index(preset_request_index),
+        .clk(clk_pixel),.rst_n(midi_preset_reset_n),.apply_req(preset_apply_req),.apply_index(preset_request_index),
         .uart_busy(midi_tx_busy),.cc_accept(midi_cc_accept && preset_busy),
         .sysex_accept(sysex_accept && preset_busy),
         .lfo_nodes(lfo_node_snapshot),.lfo_rates(lfo_rate_snapshot),.lfo_steps(lfo_step_snapshot),.lfo_once(lfo_once_snapshot),
@@ -947,7 +955,7 @@ module ui_touch_hub_top #(
     assign static_cc_accept=midi_cc_accept && !preset_busy;
     static_cc_sync #(.PRESET_ENABLE(1)) u_static_cc_sync(
         .preset_hold(preset_busy),.preset_adopt(preset_adopt),
-        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.values(audio_static_values),
+        .clk(clk_pixel),.rst_n(midi_sync_reset_n),.values(audio_static_values),
         .cc_accept(static_cc_accept),.uart_busy(midi_tx_busy),
         .cc_req(static_cc_req),.cc_param_id(static_cc_param_id),.cc_val(static_cc_val),
         .startup_sync_done(startup_sync_done));
@@ -958,7 +966,7 @@ module ui_touch_hub_top #(
     ) u_lfo_sysex (
         .preset_hold(preset_busy || !startup_sync_done),.preset_adopt(preset_adopt),
         .clk         (clk_pixel),
-        .rst_n       (sys_rst_n_sync),
+        .rst_n       (midi_lfo_reset_n),
         .cfg_nodes   (lfo_node_snapshot),
         .cfg_rates   (lfo_rate_snapshot),
         .cfg_steps   (lfo_step_snapshot),
@@ -975,7 +983,7 @@ module ui_touch_hub_top #(
         .BAUD     (31250)
     ) u_midi_tx (
         .clk           (clk_pixel),
-        .rst_n         (sys_rst_n_sync),
+        .rst_n         (midi_uart_reset_n),
         .note_on_req   (performance_note_valid && performance_note_on),
         .note_off_req  (performance_note_valid && !performance_note_on),
         .note_number   (performance_note_number),
@@ -988,7 +996,7 @@ module ui_touch_hub_top #(
         .sysex_accept  (sysex_accept),
         .cc_accept     (midi_cc_accept),
         .uart_tx       (audio_midi_tx),
-        .tx_busy       (midi_tx_busy),.note_ready(performance_note_ready)
+        .tx_busy       (midi_tx_busy),.note_ready(midi_note_ready)
     );
 
     // Diagnostic UI trace remains independently selectable. MIDI stays on
@@ -1046,4 +1054,22 @@ module Reset_Sync (
             reset_cnt <= reset_cnt + !resetn;
     end
     assign resetn = &reset_cnt;
+endmodule
+
+// Same pixel clock for all four copies. Preserve separate local reset drivers
+// rather than sharing one high-fanout combinational global-reset expression.
+module midi_reset_distribution(
+    input wire clk,rst_n,
+    output wire tx_rst_n,sync_rst_n,preset_rst_n,lfo_rst_n
+);
+    reg tx_q /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg sync_q /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg preset_q /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg lfo_q /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    assign tx_rst_n=tx_q;assign sync_rst_n=sync_q;
+    assign preset_rst_n=preset_q;assign lfo_rst_n=lfo_q;
+    always @(posedge clk or negedge rst_n)begin
+        if(!rst_n)begin tx_q<=0;sync_q<=0;preset_q<=0;lfo_q<=0;end
+        else begin tx_q<=1;sync_q<=1;preset_q<=1;lfo_q<=1;end
+    end
 endmodule

@@ -790,20 +790,41 @@ module ui_top_renderer #(
         .legacy_valid(audio_legacy_valid),.legacy_id(audio_legacy_id),.legacy_value(audio_legacy_value));
     // Preserve the six existing Delay/Reverb modulation destinations by ID.
     // Other new effect controls are static only; old EQ slots stay NC.
-    reg [13:0] binding_x,binding_y;
+    // Isolate the high-fanout raw touch bus, then register the FX-coordinate
+    // remap before the 53-way target comparisons. Metadata travels with X/Y.
+    reg [13:0] binding_input_x,binding_input_y /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg binding_valid0,binding_down0,binding_packet_valid,binding_packet_down;
+    reg [1:0] binding_tab0,binding_packet_tab;
+    reg [2:0] binding_fx_page0;
+    reg [13:0] binding_x,binding_y /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [13:0] binding_remap_x,binding_remap_y;
+    always @(posedge clk or negedge rst_n)begin
+        if(!rst_n)begin
+            binding_input_x<=0;binding_input_y<=0;binding_valid0<=0;binding_down0<=0;
+            binding_tab0<=0;binding_fx_page0<=0;binding_x<=0;binding_y<=0;
+            binding_packet_valid<=0;binding_packet_down<=0;binding_packet_tab<=0;
+        end else begin
+            binding_input_x<=ui_touch_x;binding_input_y<=ui_touch_y;
+            binding_valid0<=ui_touch_valid;binding_down0<=synth_touch_down;
+            binding_tab0<=lfo_tab;binding_fx_page0<=audio_fx_page;
+            binding_x<=binding_remap_x;binding_y<=binding_remap_y;
+            binding_packet_valid<=binding_valid0;binding_packet_down<=binding_down0;
+            binding_packet_tab<=binding_tab0;
+        end
+    end
     always @(*)begin
-        binding_x=ui_touch_x;binding_y=ui_touch_y;
-        if(ui_touch_x>=420 && ui_touch_x<=780 && ui_touch_y>=368 && ui_touch_y<=707)begin
-            binding_x=0;binding_y=0;
-            if(audio_fx_page==3)begin
-                if(ui_touch_x>=432 && ui_touch_x<598)begin
-                    if(ui_touch_y>=450 && ui_touch_y<488)begin binding_x=504;binding_y=416;end
-                    else if(ui_touch_y>=494 && ui_touch_y<532)begin binding_x=728;binding_y=416;end
-                    else if(ui_touch_y>=538 && ui_touch_y<576)begin binding_x=492;binding_y=524;end
-                end else if(ui_touch_x>=608 && ui_touch_x<774)begin
-                    if(ui_touch_y>=450 && ui_touch_y<488)begin binding_x=448;binding_y=416;end
-                    else if(ui_touch_y>=494 && ui_touch_y<532)begin binding_x=444;binding_y=524;end
-                    else if(ui_touch_y>=538 && ui_touch_y<576)begin binding_x=732;binding_y=524;end
+        binding_remap_x=binding_input_x;binding_remap_y=binding_input_y;
+        if(binding_input_x>=420 && binding_input_x<=780 && binding_input_y>=368 && binding_input_y<=707)begin
+            binding_remap_x=0;binding_remap_y=0;
+            if(binding_fx_page0==3)begin
+                if(binding_input_x>=432 && binding_input_x<598)begin
+                    if(binding_input_y>=450 && binding_input_y<488)begin binding_remap_x=504;binding_remap_y=416;end
+                    else if(binding_input_y>=494 && binding_input_y<532)begin binding_remap_x=728;binding_remap_y=416;end
+                    else if(binding_input_y>=538 && binding_input_y<576)begin binding_remap_x=492;binding_remap_y=524;end
+                end else if(binding_input_x>=608 && binding_input_x<774)begin
+                    if(binding_input_y>=450 && binding_input_y<488)begin binding_remap_x=448;binding_remap_y=416;end
+                    else if(binding_input_y>=494 && binding_input_y<532)begin binding_remap_x=444;binding_remap_y=524;end
+                    else if(binding_input_y>=538 && binding_input_y<576)begin binding_remap_x=732;binding_remap_y=524;end
                 end
             end
         end
@@ -811,8 +832,8 @@ module ui_top_renderer #(
     lfo_binding_state #(.PRESET_ENABLE(PRESET_ENABLE),.ENABLE_CANCEL(1),.WATCHDOG_CYCLES(BIND_WATCHDOG_CYCLES)) u_binding(.clk(clk),.rst_n(rst_n),
         .preset_load(preset_load),.preset_busy(preset_busy),
         .cancel(navigation_capture),
-        .touch_valid(ui_touch_valid),.touch_down(synth_touch_down),.touch_x(binding_x),.touch_y(binding_y),
-        .active_tab(lfo_tab),.armed(mod_armed),.dragging(mod_dragging),.capture_active(binding_capture),
+        .touch_valid(binding_packet_valid),.touch_down(binding_packet_down),.touch_x(binding_x),.touch_y(binding_y),
+        .active_tab(binding_packet_tab),.armed(mod_armed),.dragging(mod_dragging),.capture_active(binding_capture),
         .selected_target(mod_selected),.hover_target(mod_hover),.sources(mod_sources),.depths(mod_depths),
         .event_valid(route_event_valid),.event_target(route_event_target),
         .event_source(route_event_source),.event_depth(route_event_depth));

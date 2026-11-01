@@ -26,7 +26,7 @@ module synth_preset_controller(
  `include "static_cc_slots.vh"
  localparam IDLE=0,DRAIN=1,LOAD=2,SETTLE=3,CC_SELECT=4,CC_STAGE=5,
             CC_SEND=6,CC_DRAIN=7,SX_SELECT=8,SX_STAGE=9,SX_SEND=10,
-            SX_DRAIN=11,FINISH=12;
+            SX_DRAIN=11,FINISH=12,CC_ADVANCE=13,SX_ADVANCE=14;
  reg [3:0] state;
  reg [6:0] message_index,slot,sx_index;
  reg [146:0] saved_nodes;
@@ -37,8 +37,10 @@ module synth_preset_controller(
  assign adopt_bank=state==FINISH;
  assign bank_values=synth_preset_bank(active_index);
  // One bulk message at a time leaves the FIFO free for performance Notes.
- assign cc_req=state==CC_SEND && !uart_busy;
- assign sysex_req=state==SX_SEND && !uart_busy;
+ // Wait for idle BEFORE presenting a request. The held request itself must
+ // not include the UART busy/FIFO decode in the same-cycle acceptance loop.
+ assign cc_req=state==CC_SEND;
+ assign sysex_req=state==SX_SEND;
  wire [73:0] value_bits[0:6];
  wire [6:0] selected_value;
  genvar s,b;
@@ -89,9 +91,10 @@ module synth_preset_controller(
      message_index<=0;sx_index<=0;state<=SETTLE;
     end
     SETTLE:state<=CC_SELECT;
-    CC_SELECT:begin slot<=synth_preset_send_slot(message_index);state<=CC_STAGE;end
+    CC_SELECT:if(!uart_busy)begin slot<=synth_preset_send_slot(message_index);state<=CC_STAGE;end
     CC_STAGE:begin cc_id<=static_cc_id(slot);cc_value<=selected_value;state<=CC_SEND;end
-    CC_SEND:if(cc_req && cc_accept)begin
+    CC_SEND:if(cc_accept)state<=CC_ADVANCE;
+    CC_ADVANCE:begin
      if(message_index==41 || message_index==73)state<=CC_DRAIN;
      else begin message_index<=message_index+1'b1;state<=CC_SELECT;end
     end
@@ -99,9 +102,10 @@ module synth_preset_controller(
      if(message_index==41)begin message_index<=42;state<=SX_SELECT;end
      else state<=FINISH;
     end
-    SX_SELECT:state<=SX_STAGE;
+    SX_SELECT:if(!uart_busy)state<=SX_STAGE;
     SX_STAGE:begin sysex_msgs<={8'hF0,8'h7D,sx_id,1'b0,sx_value[13:7],1'b0,sx_value[6:0],8'hF7};state<=SX_SEND;end
-    SX_SEND:if(sysex_req && sysex_accept)begin
+    SX_SEND:if(sysex_accept)state<=SX_ADVANCE;
+    SX_ADVANCE:begin
      if(sx_index==80)state<=SX_DRAIN;
      else begin sx_index<=sx_index+1'b1;state<=SX_SELECT;end
     end
