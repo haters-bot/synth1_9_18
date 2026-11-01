@@ -1,5 +1,7 @@
 # 官方音色库正式构建、时序收敛和 SRAM 部署记录
 
+> **最终结果：2026-11-02 06:22，第三轮正式位流已全部通过审计，并且唯一一次 UI SRAM operation 2 烧录和后置只读复核成功。板上 UserCode=0x617D，Status=0x26230。前两轮失败位流从未烧录。**
+
 用户于 2026-11-02 明确授权：开始构建，按照流程直到完成烧录。仅 UI SRAM operation 2；不写 Flash、音频板或 ESP。
 
 ## 第一轮正式构建：禁止部署
@@ -76,3 +78,59 @@ MIDI 编码文件 `midi_uart_tx.v`、53 个目标表、时钟/引脚约束和综
 - normal/debug：`E:/gaoyun_builds/ui_elaboration_20261102_055657_920737/result.json`。
 - FX 4,352项：`impl/fx_input_pipeline_20261102_055704_553134/result.json`。
 - 6组证据/136当前输入全部匹配；acceptance已更新。编译前曾遇到新局部变量声明顺序不兼容旧 ModelSim，已调整并保留失败记录后重跑通过。
+
+## 第三轮正式构建与最终全审计：通过
+
+- 源码：`9ee5dce473774f85e8010ec0add1d4e942047855`；分支 `integration/dual-138k-uart-phase1`，本地提交未推送。
+- 构建：`E:/gaoyun_builds/R16A_build_20261102_060044`，06:00:46～06:21:30，约20分44秒，退出0。
+- 工程/顶层：`2_ui_touch_hub.gprj` / `ui_touch_hub_top`，GowinSynthesis / place3 / route1 / timing driven；与前两轮配置相同。
+- 124 项冻结输入、工作区文件、规范化 Git 内容全部匹配；136 项当前仿真输入一致。相比第二轮仅 controller、top、renderer 三个生产文件变化，其他121项输入相同。
+- `audit_20261102_062137_424718.json` 与烧前 `deploy_check_only.json` 复审均通过；没有新增时序例外。
+
+| 检查 | 最差裕量 | 结果 |
+|---|---:|---|
+| Setup | +0.730 ns | 0违例 |
+| Hold | +0.138 ns | 0违例 |
+| Recovery | +0.365 ns | 0违例 |
+| Removal | +0.299 ns | 0违例 |
+| Pulse width | +0.366 ns | 0违例 |
+
+七个时钟全部达标：sys_clk228.636/50 MHz，pixel54.027/50 MHz，DVI5x393.797/250 MHz，USB88.300/59.999 MHz，CH569421.941/50 MHz，DDR400为2016.129/400 MHz，DDR user112.592/100 MHz。124 项最终引脚匹配约束。
+
+最终资源（Gowin报告）：逻辑76706/138240（56%），寄存器40191/139095（29%），BSRAM185/340（55%）。不是资源容量溢出。
+
+正式位流 `impl/pnr/2_ui_touch_hub.fs` 为41,215,585字节；SHA256：
+
+```text
+FF2A32811EF2AC11F2933C99F8AB5EA409AB946C4C2380BCC3A477512A18BF13
+```
+
+## 唯一一次 SRAM 写入及只读复核：通过
+
+- 烧前即刻只读 `preset_remote_preflight_20261102_062154_375835`：主机身份、无其他下载进程、唯一 UI 板旧352D/26230确认。
+- 仅调用 `tools/deploy_verified.py --board ui --target sram`，label `UI_FACTORY_PRESETS_20261102`；没有写 Flash、音频板或 ESP。
+- 部署目录：`D:/github/synth1_9_18/2_ui_touch_hub/impl/deploy_runs/20261102_062216_UI_FACTORY_PRESETS_20261102`。
+- 工程机文件哈希通过后执行 operation2；100%完成，耗时26.76秒，`PROGRAMMER_EXIT=0`、`CODEX_PROGRAM_COMPLETE`。
+- 新板卡读码：**UserCode=0x0000617D，Status=0x00026230**。
+- 再独立执行只读核验，确认工程机身份、两台电脑位流 SHA256 相同、保存的 Programmer exit0、无遗留下载/构建进程、板卡读码一致；`completion_record.json`已保存。
+- 这是文件传输哈希核对及板卡设备码/状态读取，不冒称对整片 SRAM 做了 SHA256 读回。
+- 全程只有一次实际写入，没有 SSH 写入超时或自动重试；两个失败构建完整保留。
+
+相机拍到了工作台，未覆盖可验收的 UI 屏幕。因此本轮证明的是源码/仿真、正式时序及正确位流的 SRAM 部署；没有声称已现场听过12个音色或验证了所有实屏触摸。
+
+## 现场验收建议
+
+1. UI 上进入 **SYSTEM → PRESETS**，检查6个分类、12个音色卡片。
+2. 依次试钢琴（SD8）、Supersaw、Sub Bass、Pad，按实体键听音；切换后回 SYNTHESIZER 检查 OSC、Filter、ENV1/2、FX、Pitch 参数同步。
+3. 修改任一相关参数后点 REAPPLY，确认完整恢复；先绑定一个 LFO，再选音色，检查旧绑定消失。
+4. 快速选多个卡片，最终应落在最后一次选择，Note On/Off不中断；CUSTOM仍只是预留提示。
+
+SD8/9能否发出预期音色仍取决于音频板波表已加载，UI不负责加载SD文件。手机/ESP固件本轮未更换。烧录重置了UI会话，验收 PERFORM/手机传曲时按原流程重新连接和校准。
+
+## 本轮经验
+
+Gowin退出0且生成fs不能代表可上板；本轮前两次都由审计阻止。原始长链同时包括全局复位、UART状态/FIFO判断、握手确认、消费者索引/写使能，单改一个消费端可能只把最差端点转移。应把请求准备、稳定保持、确认和索引推进拆成独立时钟阶段，必要时就近分布同步释放的复位。
+
+触摸目标比较即使已有寄存，其上游的坐标重映射、共享几何和高扇出原始总线仍可能成为长链；寄存坐标时必须同时寄存 valid/down/LFO bank/FX page，保持事务归属。
+
+这次没有选错 EDA 默认模式，也未靠放宽时钟/增加例外过关。后续新增功能仍可能改变全局布局，必须继续执行独立源码、引脚、七时钟和五类时序审计，不能保证以后永不出现时序收敛工作。

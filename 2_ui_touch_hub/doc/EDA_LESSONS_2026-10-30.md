@@ -63,3 +63,15 @@ normal候选R16A_build_20261029_222234最差setup/hold/recovery/removal/pulse余
 - doc/DDR_OFFICIAL_TIMING_REFERENCE_2026-10-29.md：高云DDR官方例程与版本边界。
 - doc/LOCAL_PERFORMANCE_STATUS_2026-10-29.md：时序修复和验证记录。
 - impl/deploy_runs/20261030_140337_R16_local_performance_ui_sram_20261030/：部署清单、日志及hardware_acceptance.json。
+
+
+## 2026-11-02 官方预设：握手/复位反馈和坐标重映射的时序收敛
+
+三轮正式构建分别setup314（−1.062ns）、184（−1.848ns）、0（+0.730ns）；前两版从未部署。Gowin退出0不代表可烧录，始终检查五类/七时钟/引脚/源码。三轮都为gowinsynthesis/place3/route1，容量最终逻辑56%、BSRAM55%，没有模式错误或容量溢出。
+
+- 不要让同拍FIFO接受译码直接扇出整个影子参数库；寄存已接受的ID/值再提交，COUNT=1必须留提交间隔防重复。
+- 只在一个消费者端加寄存可能仅转移最差端点。请求不应组合依赖UART busy再走译码反馈；先准备/等空闲、SEND稳定保持、接受沿撤销、下一拍ADVANCE推进索引。
+- 全局复位归约会被综合成FIFO/写使能组合路径的起点。对MIDI组就近保留异步断言/同步释放的本地复位驱动，保留ready在复位期间为低；不可用false-path或降低时钟掩盖。
+- 目标命中即使有寄存，上游FX坐标重映射和原始触摸高扇出/共享几何仍可能拉长。原始坐标和变换坐标分级寄存，同时携带valid/down/LFO bank/FX page，不能错配事务。
+
+最终060044/9ee5dce通过124输入/124引脚/七时钟，setup/hold/recovery/removal/pulse全0，pixel54.027/50、DDR112.592/100MHz。唯一UI SRAM2写入后617D/26230、双端文件hash和独立只读复核一致；17RTL/11343控制字节/512七拍等通过。相机没有UI正面，不把烧录或源仿真当作实屏、听感或灯带电气验收。全部失败证据保留。详见SYNTH_FACTORY_PRESET_RELEASE_2026-11-02.md。后续新增功能仍必须逐版审计，不能承诺永不再遇到布局敏感路径。
