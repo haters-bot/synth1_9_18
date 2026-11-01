@@ -59,7 +59,7 @@ def main():
     add('view==1 && audio_link_up && metrics_ready && metrics_clip!=0',1176,580,'CLIP',False,'E87565')
     add('view==1 && audio_link_up && metrics_ready && metrics_transient!=0',238,318,'ATTACK',False,'F5D36A')
     add('view==2',32,56,'SYSTEM SETTINGS',True)
-    for i,title in enumerate(['CONTROLS','DISPLAY','INPUTS','ABOUT']):
+    for i,title in enumerate(['CONTROLS','DISPLAY','INPUTS','PRESETS']):
         x=[32,336,632,928][i]
         add('view==2',x+24,98,title,False,'E8F0FA')
     add('view==2 && settings_section_id==1',48,144,'ENCODER STEP',True)

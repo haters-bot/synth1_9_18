@@ -14,7 +14,7 @@ def main():
     renderer = (ROOT / 'rtl/ui_vector_engine/ui_top_renderer.v').read_text(encoding='utf-8')
     operands = top.split('    reg physical_fx_valid;', 1)[1].split('    // Other controls', 1)[0]
     operands = '    reg physical_fx_valid;' + operands
-    touch = renderer.split('    reg fx_touch_valid,fx_touch_down;', 1)[1].split('    fx_editor_state u_fx_state', 1)[0]
+    touch = renderer.split('    reg fx_touch_valid,fx_touch_down;', 1)[1].split('    fx_editor_state ', 1)[0]
     touch = '    reg fx_touch_valid,fx_touch_down;' + touch
     assert '.external_param_valid(physical_fx_valid)' in top
     assert '.touch_valid(fx_touch_valid),.touch_down(fx_touch_down)' in renderer

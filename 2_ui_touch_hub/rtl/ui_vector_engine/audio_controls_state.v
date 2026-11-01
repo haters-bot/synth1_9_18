@@ -2,8 +2,10 @@
 // UI-only static controls added after the stable 53-slot modulation bank.
 // Captured drags retain their ID across page changes. No UART pulse queues here:
 // static_cc_sync reconciles the complete authoritative bank with FIFO acceptance.
-module audio_controls_state #(parameter CONTACT_TIMEOUT=2500000)(
+module audio_controls_state #(parameter CONTACT_TIMEOUT=2500000,parameter PRESET_ENABLE=0)(
  input wire clk,rst_n,cancel,touch_valid,touch_down,
+ input wire preset_load,preset_busy,
+ input wire [517:0] preset_values,
  input wire [13:0] touch_x,touch_y,
  input wire external_valid,
  input wire [7:0] external_id,
@@ -67,6 +69,11 @@ module audio_controls_state #(parameter CONTACT_TIMEOUT=2500000)(
    anchor_x<=0;anchor_y<=0;anchor_value<=0;watchdog<=0;
    legacy_valid<=0;legacy_id<=0;legacy_value<=0;
    focus_valid<=0;focus_id<=0;
+  end else if(PRESET_ENABLE && preset_load)begin
+   for(i=0;i<34;i=i+1)params[i]<=preset_values[280+i*7+:7];
+   finger<=0;drag<=0;warp_menu<=0;legacy_valid<=0;focus_valid<=0;
+  end else if(PRESET_ENABLE && preset_busy)begin
+   finger<=0;drag<=0;legacy_valid<=0;focus_valid<=0;
   end else begin
    legacy_valid<=0;focus_valid<=0;
    if(external_valid && external_id>=8'hA0 && external_id<=8'hC1 && !(drag && captured==external_id))

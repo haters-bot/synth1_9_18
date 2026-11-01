@@ -12,6 +12,7 @@
 `include "font_3x5.vh"
 
 module ui_top_renderer #(
+    parameter PRESET_ENABLE=0,
     parameter integer PERFORMANCE_BASE_NOTE = 7'h29,
     parameter PERFORMANCE_RUNTIME_BASE=0,
     parameter integer PERFORMANCE_KEY_COUNT = 32,
@@ -27,6 +28,11 @@ module ui_top_renderer #(
     input  wire        clk,
     input  wire        rst_n,
 
+    input wire preset_load,preset_busy,preset_pending,preset_applied_valid,
+    input wire [517:0] preset_values,
+    input wire [3:0] preset_active_index,
+    output wire preset_apply_req,
+    output wire [3:0] preset_apply_index,
     // Timing Inputs (from video_timing_ctrl)
     input  wire        in_hsync,
     input  wire        in_vsync,
@@ -607,10 +613,19 @@ module ui_top_renderer #(
         .clk(clk),.rst_n(rst_n),.frame_we(led_frame_we),.frame_index(led_write_index),
         .frame_rgb(led_frame_rgb),.latch(led_latch),.data(performance_led_data),
         .busy(led_busy),.frame_done(led_frame_done));
-    wire synth_touch_down=ui_touch_down && !navigation_capture;
+    wire synth_touch_down=ui_touch_down && !navigation_capture && !(PRESET_ENABLE && preset_busy);
     always @(posedge clk or negedge rst_n)
         if(!rst_n)previous_vsync<=0;else previous_vsync<=in_vsync;
-    ui_navigation_state u_navigation(.clk(clk),.rst_n(rst_n),
+    wire [2:0] preset_category;
+    wire preset_back,preset_custom_notice;
+    synth_preset_ui u_preset_ui(.clk(clk),.rst_n(rst_n),
+        .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
+        .view(navigation_view),.section(settings_section_id),
+        .applied_valid(PRESET_ENABLE && preset_applied_valid),.active_index(preset_active_index),
+        .category(preset_category),.apply_req(preset_apply_req),.apply_index(preset_apply_index),
+        .back_req(preset_back),.custom_notice(preset_custom_notice));
+    ui_navigation_state #(.PRESET_ENABLE(PRESET_ENABLE)) u_navigation(
+        .preset_back(preset_back),.clk(clk),.rst_n(rst_n),
         .frame_start(in_vsync && !previous_vsync),
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .view(navigation_view),.settings_section_id(settings_section_id),.capture_active(navigation_capture),.show_diagnostics(show_diagnostics),
@@ -621,7 +636,11 @@ module ui_top_renderer #(
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .view(navigation_view),.section(settings_section_id),.knob_steps(user_knob_steps),
         .knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales));
-    ui_navigation_renderer #(.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_CALIBRATION_ENABLE(PERFORMANCE_RUNTIME_BASE),.PERFORMANCE_PIANO_ROLL_ENABLE(1)) u_navigation_render(.clk(clk),.rst_n(rst_n),
+    ui_navigation_renderer #(.PRESET_ENABLE(PRESET_ENABLE),.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_CALIBRATION_ENABLE(PERFORMANCE_RUNTIME_BASE),.PERFORMANCE_PIANO_ROLL_ENABLE(1)) u_navigation_render(.clk(clk),.rst_n(rst_n),
+        .preset_category(preset_category),.preset_active_index(preset_active_index),
+        .preset_applied_valid(PRESET_ENABLE && preset_applied_valid),.preset_busy(PRESET_ENABLE && preset_busy),
+        .preset_pending(PRESET_ENABLE && preset_pending),
+        .preset_custom_notice(preset_custom_notice),
         .performance_base_note(performance_effective_base),.performance_calibration_state(performance_calibration_state),
         .performance_range_warning(performance_key_range_warning),
         .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
@@ -752,17 +771,19 @@ module ui_top_renderer #(
             fx_touch_x<=ui_touch_x;fx_touch_y<=ui_touch_y;
         end
     end
-    fx_editor_state #(.AUX_ENABLE(1)) u_fx_state(.clk(clk),.rst_n(rst_n),
+    fx_editor_state #(.AUX_ENABLE(1),.PRESET_ENABLE(PRESET_ENABLE)) u_fx_state(.clk(clk),.rst_n(rst_n),
+        .preset_load(preset_load),.preset_busy(preset_busy),.preset_values(preset_values),
         .touch_valid(1'b0),.touch_down(1'b0),
         .touch_x(fx_touch_x),.touch_y(fx_touch_y),
-        .external_valid(external_param_valid),.external_id(external_param_id),.external_value(external_param_value),
+        .external_valid(external_param_valid && !(PRESET_ENABLE && preset_busy)),.external_id(external_param_id),.external_value(external_param_value),
         .aux_valid(audio_legacy_valid),.aux_id(audio_legacy_id),.aux_value(audio_legacy_value),
         .aux_owner_valid(audio_legacy_owner),.aux_owner_id(audio_legacy_owner_id),
         .values(fx_values),.switches(fx_switches),.focus_valid(legacy_focus_valid),.focus_id(legacy_focus_id),
         .event_valid(fx_event_valid),.event_id(fx_event_id),.event_value(fx_event_value));
-    audio_controls_state u_audio_controls(.clk(clk),.rst_n(rst_n),.cancel(navigation_capture),
+    audio_controls_state #(.PRESET_ENABLE(PRESET_ENABLE)) u_audio_controls(.clk(clk),.rst_n(rst_n),
+        .preset_load(preset_load),.preset_busy(preset_busy),.preset_values(preset_values),.cancel(navigation_capture),
         .touch_valid(fx_touch_valid),.touch_down(fx_touch_down),.touch_x(fx_touch_x),.touch_y(fx_touch_y),
-        .external_valid(external_param_valid),.external_id(external_param_id),.external_value(external_param_value),
+        .external_valid(external_param_valid && !(PRESET_ENABLE && preset_busy)),.external_id(external_param_id),.external_value(external_param_value),
         .legacy_values(fx_values),.extra_values(audio_extra_snapshot),.fx_page(audio_fx_page),.warp_menu(audio_warp_menu),
         .focus_valid(audio_focus_valid),.focus_id(audio_focus_id),
         .legacy_owner_valid(audio_legacy_owner),.legacy_owner_id(audio_legacy_owner_id),
@@ -787,7 +808,8 @@ module ui_top_renderer #(
             end
         end
     end
-    lfo_binding_state #(.ENABLE_CANCEL(1),.WATCHDOG_CYCLES(BIND_WATCHDOG_CYCLES)) u_binding(.clk(clk),.rst_n(rst_n),
+    lfo_binding_state #(.PRESET_ENABLE(PRESET_ENABLE),.ENABLE_CANCEL(1),.WATCHDOG_CYCLES(BIND_WATCHDOG_CYCLES)) u_binding(.clk(clk),.rst_n(rst_n),
+        .preset_load(preset_load),.preset_busy(preset_busy),
         .cancel(navigation_capture),
         .touch_valid(ui_touch_valid),.touch_down(synth_touch_down),.touch_x(binding_x),.touch_y(binding_y),
         .active_tab(lfo_tab),.armed(mod_armed),.dragging(mod_dragging),.capture_active(binding_capture),

@@ -1,7 +1,9 @@
 // Logical parameter adapter. External protocol/framing is intentionally separate.
 // Values are normalized 0..127; touch owns its captured parameter until release.
-module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000,parameter AUX_ENABLE=0)(
+module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000,parameter AUX_ENABLE=0,parameter PRESET_ENABLE=0)(
     input wire clk,rst_n,touch_valid,touch_down,
+    input wire preset_load,preset_busy,
+    input wire [517:0] preset_values,
     input wire [13:0] touch_x,touch_y,
     input wire external_valid,
     input wire [7:0] external_id,
@@ -82,11 +84,11 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000,parameter AUX_ENABLE=
             packet_aux_valid<=0;packet_aux_id<=0;packet_aux_value<=0;
             packet_owner_valid<=0;packet_owner_id<=0;
         end else begin
-            packet_valid<=touch_valid;packet_down<=touch_down;
+            packet_valid<=touch_valid && !(PRESET_ENABLE && preset_busy);packet_down<=touch_down;
             packet_x<=touch_x;packet_y<=touch_y;toggle_id<=toggle_next;
-            external_pending<=external_valid;packet_external_id<=external_id;
+            external_pending<=external_valid && !(PRESET_ENABLE && preset_busy);packet_external_id<=external_id;
             packet_external_value<=external_value;
-            packet_aux_valid<=AUX_ENABLE && aux_valid;packet_aux_id<=aux_id;packet_aux_value<=aux_value;
+            packet_aux_valid<=AUX_ENABLE && aux_valid && !(PRESET_ENABLE && preset_busy);packet_aux_id<=aux_id;packet_aux_value<=aux_value;
             packet_owner_valid<=AUX_ENABLE && aux_owner_valid;packet_owner_id<=aux_owner_id;
         end
     end
@@ -97,6 +99,14 @@ module fx_editor_state #(parameter WATCHDOG_CYCLES=2500000,parameter AUX_ENABLE=
             watchdog<=0;switches<=11'b00001001111;event_valid<=0;event_id<=0;event_value<=0;
             for(i=0;i<19;i=i+1) params[i]<=64;
             params[5]<=32;params[12]<=32;params[15]<=64;params[18]<=64;
+        end else if(PRESET_ENABLE && preset_load)begin
+            params[0]<=preset_values[238+:7];params[1]<=preset_values[245+:7];
+            params[5]<=preset_values[252+:7];params[6]<=preset_values[259+:7];
+            params[7]<=preset_values[266+:7];params[12]<=preset_values[273+:7];
+            // Link disabled: it must not overwrite the preset's independent values.
+            switches<=0;finger<=0;drag<=0;event_valid<=0;focus_valid<=0;
+        end else if(PRESET_ENABLE && preset_busy)begin
+            finger<=0;drag<=0;event_valid<=0;focus_valid<=0;
         end else begin
             event_valid<=0;focus_valid<=0;
             if(watchdog<WATCHDOG_CYCLES) watchdog<=watchdog+1'b1;

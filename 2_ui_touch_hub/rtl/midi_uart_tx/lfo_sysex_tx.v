@@ -14,9 +14,11 @@
 // Project: 2_ui_touch_hub (FPGA Real-time Polyphonic Synthesizer UI)
 // ==============================================================================
 module lfo_sysex_tx #(
+    parameter PRESET_ENABLE=0,
     parameter HOLD_CYCLES      = 1_000_000,  // 20 ms edit-quiet window @ 50 MHz
     parameter FIRST_HOLD_CYCLES = 300_000    // initial full sync after 6 ms
 )(
+    input wire preset_hold,preset_adopt,
     input  wire        clk,
     input  wire        rst_n,
 
@@ -176,6 +178,12 @@ module lfo_sysex_tx #(
             first_boot <= 1'b1;
             sysex_req  <= 1'b0;
             sysex_msgs <= 48'd0;
+        end else if(PRESET_ENABLE && preset_adopt)begin
+            sh_nodes<=q_nodes;sh_rates<=q_rates;sh_steps<=q_steps;sh_once<=q_once;
+            sh_sources<=q_sources;sh_depths<=q_depths;
+            dirty<=0;scan<=0;state<=S_WATCH;hold<=0;first_boot<=0;sysex_req<=0;
+        end else if(PRESET_ENABLE && preset_hold)begin
+            dirty<=0;scan<=0;state<=S_WATCH;hold<=0;sysex_req<=0;
         end else begin
             case (state)
                 S_WATCH: begin

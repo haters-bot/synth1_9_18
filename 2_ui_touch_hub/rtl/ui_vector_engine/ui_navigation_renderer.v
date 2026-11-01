@@ -3,12 +3,16 @@
 `include "pixel_coverage.vh"
 // Five stages after raster entry; native font and PCM-driven visualizations.
 module ui_navigation_renderer #(
+ parameter PRESET_ENABLE=0,
  parameter integer PERFORMANCE_KEY_COUNT=32,
  parameter integer PERFORMANCE_BASE_NOTE=7'h29,
  parameter PERFORMANCE_CALIBRATION_ENABLE=0,
  parameter PERFORMANCE_PIANO_ROLL_ENABLE=0
 )(
  input wire clk,rst_n,
+ input wire [2:0] preset_category,
+ input wire [3:0] preset_active_index,
+ input wire preset_applied_valid,preset_busy,preset_pending,preset_custom_notice,
  input wire [13:0] in_x,in_y,
  input wire [2:0] view,
  input wire [7:0] settings_section_id,
@@ -44,6 +48,16 @@ module ui_navigation_renderer #(
  output reg out_hit,
  output reg [23:0] out_rgb
 );
+ wire preset_hit4;
+ wire [23:0] preset_rgb4;
+ generate if(PRESET_ENABLE)begin:g_presets
+  synth_preset_panel u_panel(.clk(clk),.rst_n(rst_n),.x(in_x),.y(in_y),
+   .visible(view==3 && settings_section_id==4),.category(preset_category),
+   .active_index(preset_active_index),.applied_valid(preset_applied_valid),
+   .busy(preset_busy),.pending(preset_pending),.custom_notice(preset_custom_notice),.hit(preset_hit4),.rgb(preset_rgb4));
+ end else begin:g_no_presets
+  assign preset_hit4=0;assign preset_rgb4=0;
+ end endgenerate
  // Page state changes only in vertical blank. A preserved local text copy
  // isolates glyph selection from distant touch/menu control decode.
  reg [2:0] text_view /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
@@ -658,7 +672,7 @@ module ui_navigation_renderer #(
        spectrum_peak2 ? 24'hF5D36A : spectrum_hit2 ? 24'h65CDA4 :
        history_hit2 ? history_rgb2 : b2;fg3<=fg2;
    coverage3<=glyph_valid2 ? glyph_column(glyph_row2,glyph_x2) : 0;
-   out_hit<=h3;out_rgb<=blend_rgb_q4(fg3,b3,font_alpha_q4(coverage3));
+   out_hit<=h3 || preset_hit4;out_rgb<=preset_hit4 ? preset_rgb4 : blend_rgb_q4(fg3,b3,font_alpha_q4(coverage3));
   end
  end
 endmodule

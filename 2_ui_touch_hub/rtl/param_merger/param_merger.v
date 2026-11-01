@@ -11,7 +11,9 @@
 
 `include "params.vh"
 
-module param_merger (
+module param_merger #(parameter PRESET_ENABLE=0)(
+    input wire preset_load,preset_busy,
+    input wire [517:0] preset_values,
     input  wire        clk,
     input  wire        rst_n,
 
@@ -151,20 +153,20 @@ module param_merger (
             event_btn_tap_id<=0;
             event_btn_tap_action<=0;
         end else begin
-            event_spi_param_valid<=spi_param_valid;
+            event_spi_param_valid<=spi_param_valid && !(PRESET_ENABLE && preset_busy);
             event_spi_param_id<=((spi_param_id>=`PARAM_ID_ENV1_ATTACK && spi_param_id<=`PARAM_ID_ENV1_RELEASE && val_env_tab==2'd1) ? (spi_param_id+8'h18) : spi_param_id);
             event_spi_env_tab<=(spi_param_id>=`PARAM_ID_ENV2_ATTACK && spi_param_id<=`PARAM_ID_ENV2_RELEASE) ? 2'd1 : val_env_tab;
             event_spi_param_val<=spi_param_val;
-            event_touch_delta_valid<=touch_delta_valid;
+            event_touch_delta_valid<=touch_delta_valid && !(PRESET_ENABLE && preset_busy);
             event_touch_selected_id<=((touch_selected_id>=`PARAM_ID_ENV1_ATTACK && touch_selected_id<=`PARAM_ID_ENV1_RELEASE && val_env_tab==2'd1) ? (touch_selected_id+8'h18) : touch_selected_id);
             event_touch_env_tab<=(touch_selected_id>=`PARAM_ID_ENV2_ATTACK && touch_selected_id<=`PARAM_ID_ENV2_RELEASE) ? 2'd1 : val_env_tab;
             event_touch_delta_val<=touch_delta_val;
-            event_curve_update_valid<=curve_update_valid;
+            event_curve_update_valid<=curve_update_valid && !(PRESET_ENABLE && preset_busy);
             event_curve_update_filter<=curve_update_filter;
             event_curve_update_tab<=curve_update_tab;
             event_curve_update_mask<=curve_update_mask;
             event_curve_update_values<=curve_update_values;
-            event_btn_tap_valid<=btn_tap_valid;
+            event_btn_tap_valid<=btn_tap_valid && !(PRESET_ENABLE && preset_busy);
             event_btn_tap_id<=btn_tap_id;
             event_btn_tap_action<=btn_tap_action;
         end
@@ -329,6 +331,45 @@ module param_merger (
             midi_cc_req      <= 1'b0;
             midi_cc_param_id <= 8'd0;
             midi_cc_val      <= 7'd0;
+        end else if(PRESET_ENABLE && preset_load)begin
+            val_master_vol<=preset_values[0+:7];
+            val_flt_pan<=preset_values[7+:7];
+            val_osca_unison<=preset_values[28+:7];
+            val_osca_detune<=preset_values[35+:7];
+            val_osca_phase<=preset_values[42+:7];
+            val_osca_rand<=preset_values[49+:7];
+            val_osca_wt_pos<=preset_values[56+:7];
+            val_osca_warp<=preset_values[63+:7];
+            val_osca_pan<=preset_values[70+:7];
+            val_osca_vol<=preset_values[77+:7];
+            val_oscb_unison<=preset_values[98+:7];
+            val_oscb_detune<=preset_values[105+:7];
+            val_oscb_phase<=preset_values[112+:7];
+            val_oscb_rand<=preset_values[119+:7];
+            val_oscb_wt_pos<=preset_values[126+:7];
+            val_oscb_warp<=preset_values[133+:7];
+            val_oscb_pan<=preset_values[140+:7];
+            val_oscb_vol<=preset_values[147+:7];
+            val_flt_cutoff<=preset_values[161+:7];
+            val_flt_res<=preset_values[168+:7];
+            val_flt_mix<=preset_values[175+:7];
+            env_a[0]<=preset_values[182+:7];
+            env_d[0]<=preset_values[189+:7];
+            env_s[0]<=preset_values[196+:7];
+            env_r[0]<=preset_values[203+:7];
+            env_a[1]<=preset_values[210+:7];
+            env_d[1]<=preset_values[217+:7];
+            env_s[1]<=preset_values[224+:7];
+            env_r[1]<=preset_values[231+:7];
+            val_osca_power<=preset_values[14+:7]!=0;
+            val_oscb_power<=preset_values[84+:7]!=0;
+            val_osca_wave<=preset_values[21+:3];val_oscb_wave<=preset_values[91+:3];
+            val_flt_power<=preset_values[154+:7]!=0;
+            val_flt_type<=preset_values[154+:7]==0 ? 0 : preset_values[154+:7]-7'd1;
+            env_h[0]<=0;env_h[1]<=0;
+            curve_pending<=0;curve_midi_pending<=0;midi_cc_req<=0;btn_flash_active<=0;
+        end else if(PRESET_ENABLE && preset_busy)begin
+            midi_cc_req<=0;curve_pending<=0;curve_midi_pending<=0;
         end else begin
             midi_cc_req <= 1'b0;
             if(event_curve_update_valid) begin

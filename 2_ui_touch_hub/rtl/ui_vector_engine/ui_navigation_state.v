@@ -1,6 +1,6 @@
 // Page switches commit only at vertical sync. Navigation never resets synth state.
-module ui_navigation_state #(parameter CONTACT_CYCLES=2500000)(
- input wire clk,rst_n,frame_start,
+module ui_navigation_state #(parameter CONTACT_CYCLES=2500000,parameter PRESET_ENABLE=0)(
+ input wire clk,rst_n,frame_start,preset_back,
  input wire touch_valid,touch_down,
  input wire [13:0] touch_x,touch_y,
  output reg [2:0] view,
@@ -27,6 +27,7 @@ module ui_navigation_state #(parameter CONTACT_CYCLES=2500000)(
    quiet<=0;show_diagnostics<=0;delta_valid<=0;delta_id<=0;delta_value<=0;
   end else begin
    delta_valid<=0;
+   if(PRESET_ENABLE && preset_back)requested<=VIEW_ADJUST;
    if(frame_start)view<=requested;
    if(quiet<CONTACT_CYCLES)quiet<=quiet+1'b1;
    else begin finger<=0;owned_contact<=0;end

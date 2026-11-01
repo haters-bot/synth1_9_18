@@ -1,0 +1,510 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reserved UI synth snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "name",
+    "description",
+    "values"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 160
+    },
+    "values": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 0, audio CC48"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 1, audio CC10"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 2, audio CC36",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "static slot 3, audio CC21"
+        },
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "static slot 4, audio CC23"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 5, audio CC22"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 6, audio CC87"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 7, audio CC88"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 8, audio CC20"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 9, audio CC39"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 10, audio CC91"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 11, audio CC46"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 12, audio CC37",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "static slot 13, audio CC29"
+        },
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "static slot 14, audio CC31"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 15, audio CC30"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 16, audio CC89"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 17, audio CC90"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 18, audio CC28"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 19, audio CC41"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 20, audio CC92"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 21, audio CC47"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "static slot 22, audio CC42"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 23, audio CC43"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 24, audio CC44"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 25, audio CC45"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 26, audio CC24"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 27, audio CC25"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 28, audio CC26"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 29, audio CC27"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 30, audio CC32"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 31, audio CC33"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 32, audio CC34"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 33, audio CC35"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 34, audio CC53"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 35, audio CC52"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 36, audio CC54"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 37, audio CC55"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 38, audio CC56"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 39, audio CC57"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11,
+          "description": "static slot 40, audio CC38"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11,
+          "description": "static slot 41, audio CC40"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "static slot 42, audio CC49"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "static slot 43, audio CC50"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "static slot 44, audio CC51"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 45, audio CC58",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "static slot 46, audio CC59"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 47, audio CC60"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 48, audio CC61"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 49, audio CC62"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 50, audio CC63",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 51, audio CC64"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 52, audio CC65"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 53, audio CC66"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 54, audio CC67"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 55, audio CC68"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 56, audio CC69",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 57, audio CC70"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 58, audio CC71"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 59, audio CC72"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 60, audio CC73"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 61, audio CC74"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 62, audio CC75",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 63, audio CC76"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 64, audio CC77"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 65, audio CC78"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 66, audio CC79"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 67, audio CC80"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 68, audio CC81"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 69, audio CC82",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 70, audio CC83"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 71, audio CC84"
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 72, audio CC85",
+          "enum": [
+            0,
+            127
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 127,
+          "description": "static slot 73, audio CC86"
+        }
+      ],
+      "items": false,
+      "minItems": 74,
+      "maxItems": 74
+    }
+  }
+}

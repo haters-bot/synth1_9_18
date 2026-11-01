@@ -4,9 +4,10 @@
 // contacts use the same 50-ms quiet release as the other touch editors.
 module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
                           parameter CONTACT_TIMEOUT_CYCLES=WATCHDOG_CYCLES/10,
-                          parameter ENABLE_CANCEL=0)(
+                          parameter ENABLE_CANCEL=0,parameter PRESET_ENABLE=0)(
     input wire clk,rst_n,touch_valid,touch_down,
     input wire cancel,
+    input wire preset_load,preset_busy,
     input wire [13:0] touch_x,touch_y,
     input wire [1:0] active_tab,
     output reg armed,dragging,
@@ -88,6 +89,11 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
             selected_target<=63;hover_target<=63;watchdog<=0;
             event_valid<=0;event_target<=0;event_source<=0;event_depth<=0;
             for(i=0;i<53;i=i+1) begin source[i]<=0;depth[i]<=127;end
+        end else if(PRESET_ENABLE && preset_load)begin
+            for(i=0;i<53;i=i+1)begin source[i]<=0;depth[i]<=0;end
+            armed<=0;dragging<=0;finger<=0;control_contact<=0;hover_target<=63;event_valid<=0;
+        end else if(PRESET_ENABLE && preset_busy)begin
+            armed<=0;dragging<=0;finger<=0;control_contact<=0;event_valid<=0;
         end else begin
             event_valid<=0;
             if(packet_valid) watchdog<=0;

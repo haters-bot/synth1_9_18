@@ -2,8 +2,9 @@
 // Reconcile the authoritative live UI bank with the last FIFO-accepted values.
 // This also replaces lossy single-cycle CC requests in the production top.
 // Intermediate edits may coalesce under congestion; the newest value is retained.
-module static_cc_sync #(parameter COUNT=74)(
+module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
     input wire clk,rst_n,
+    input wire preset_hold,preset_adopt,
     input wire [COUNT*7-1:0] values,
     input wire cc_accept,uart_busy,
     output reg cc_req,
@@ -39,6 +40,11 @@ module static_cc_sync #(parameter COUNT=74)(
             scan<=0;initial_pending<={COUNT{1'b1}};startup_sync_done<=0;
             cc_req<=0;cc_param_id<=0;cc_val<=0;
             for(i=0;i<COUNT;i=i+1) sent[i]<=0;
+        end else if(PRESET_ENABLE && preset_adopt)begin
+            for(i=0;i<COUNT;i=i+1)sent[i]<=values[i*7+:7];
+            initial_pending<=0;startup_sync_done<=1;cc_req<=0;scan<=0;
+        end else if(PRESET_ENABLE && preset_hold)begin
+            cc_req<=0;
         end else begin
             // Acceptance denotes the exact FIFO write, never merely TX idle.
             if(cc_req && cc_accept) begin

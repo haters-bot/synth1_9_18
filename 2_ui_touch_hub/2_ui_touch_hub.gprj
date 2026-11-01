@@ -24,6 +24,9 @@
         <File path="rtl/ui_vector_engine/fx_matrix_panel_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/fx_editor_state.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/audio_controls_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/synth_preset_ui.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/synth_preset_panel.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/synth_preset_controller.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/audio_controls_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/fx_strip_renderer.v" type="file.verilog" enable="1"/>
         <File path="rtl/ui_vector_engine/lfo_smooth_table.v" type="file.verilog" enable="1"/>

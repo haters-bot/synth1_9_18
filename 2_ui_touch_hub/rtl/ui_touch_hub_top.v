@@ -414,6 +414,14 @@ module ui_touch_hub_top #(
     wire [7:0]  active_btn_id;
     wire        btn_flash_active;
 
+    wire preset_apply_req,preset_busy,preset_load,preset_adopt;
+    wire [3:0] preset_request_index,preset_active_index,preset_pending_index;
+    wire preset_applied_valid,preset_pending,preset_invalid;
+    wire [517:0] preset_values;
+    wire preset_cc_req,preset_sx_req,midi_cc_accept;
+    wire [7:0] preset_cc_id;
+    wire [6:0] preset_cc_value;
+    wire [47:0] preset_sx_msgs;
     wire [237:0] static_cc_values;
     wire [517:0] audio_static_values;
     wire [237:0] audio_extra_values;
@@ -466,7 +474,8 @@ module ui_touch_hub_top #(
         .update_tab(curve_update_tab),.update_mask(curve_update_mask),.update_values(curve_update_values)
     );
 
-    param_merger u_param_merger (
+    param_merger #(.PRESET_ENABLE(1)) u_param_merger (
+        .preset_load(preset_load),.preset_busy(preset_busy),.preset_values(preset_values),
         .curve_update_valid(curve_update_valid),.curve_update_filter(curve_update_filter),
         .curve_update_tab(curve_update_tab),.curve_update_mask(curve_update_mask),
         .curve_update_values(curve_update_values),.midi_tx_busy(midi_tx_busy),
@@ -758,7 +767,11 @@ module ui_touch_hub_top #(
         .link_up   (audio_vis_link_up)
     );
 
-    ui_top_renderer #(.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_RUNTIME_BASE(1),.PERFORMANCE_MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.PERFORMANCE_USE_NOTE_READY(1)) u_render (
+    ui_top_renderer #(.PRESET_ENABLE(1),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_RUNTIME_BASE(1),.PERFORMANCE_MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.PERFORMANCE_USE_NOTE_READY(1)) u_render (
+        .preset_load(preset_load),.preset_busy(preset_busy),.preset_values(preset_values),
+        .preset_active_index(preset_active_index),.preset_applied_valid(preset_applied_valid),
+        .preset_pending(preset_pending),
+        .preset_apply_req(preset_apply_req),.preset_apply_index(preset_request_index),
         .performance_base_note(performance_calibrated_base),.performance_calibration_state(performance_calibration_state),
         .performance_invalidate(performance_invalidate),.performance_notes_busy(performance_notes_busy),
         .performance_score_error_out(performance_score_error),.performance_running_out(performance_score_running),
@@ -921,24 +934,38 @@ module ui_touch_hub_top #(
     assign audio_static_values[266+:7]=fx_parameter_snapshot[49+:7]; // REVERB_DECAY
     assign audio_static_values[273+:7]=fx_parameter_snapshot[84+:7]; // REVERB_MIX
     assign audio_static_values[280+:238]=audio_extra_values;
-    static_cc_sync u_static_cc_sync(
+    synth_preset_controller u_synth_presets(
+        .clk(clk_pixel),.rst_n(sys_rst_n_sync),.apply_req(preset_apply_req),.apply_index(preset_request_index),
+        .uart_busy(midi_tx_busy),.cc_accept(midi_cc_accept && preset_busy),
+        .sysex_accept(sysex_accept && preset_busy),
+        .lfo_nodes(lfo_node_snapshot),.lfo_rates(lfo_rate_snapshot),.lfo_steps(lfo_step_snapshot),.lfo_once(lfo_once_snapshot),
+        .busy(preset_busy),.load_bank(preset_load),.adopt_bank(preset_adopt),.bank_values(preset_values),
+        .active_index(preset_active_index),.applied_valid(preset_applied_valid),
+        .pending(preset_pending),.pending_index(preset_pending_index),.invalid_request(preset_invalid),
+        .cc_req(preset_cc_req),.cc_id(preset_cc_id),.cc_value(preset_cc_value),
+        .sysex_req(preset_sx_req),.sysex_msgs(preset_sx_msgs));
+    assign static_cc_accept=midi_cc_accept && !preset_busy;
+    static_cc_sync #(.PRESET_ENABLE(1)) u_static_cc_sync(
+        .preset_hold(preset_busy),.preset_adopt(preset_adopt),
         .clk(clk_pixel),.rst_n(sys_rst_n_sync),.values(audio_static_values),
         .cc_accept(static_cc_accept),.uart_busy(midi_tx_busy),
         .cc_req(static_cc_req),.cc_param_id(static_cc_param_id),.cc_val(static_cc_val),
         .startup_sync_done(startup_sync_done));
     lfo_sysex_tx #(
+        .PRESET_ENABLE(1),
         .HOLD_CYCLES       (1_000_000), // 20 ms edit-quiet window @ 50 MHz
         .FIRST_HOLD_CYCLES (300_000)    // initial full sync after 6 ms
     ) u_lfo_sysex (
+        .preset_hold(preset_busy || !startup_sync_done),.preset_adopt(preset_adopt),
         .clk         (clk_pixel),
-        .rst_n       (sys_rst_n_sync && startup_sync_done),
+        .rst_n       (sys_rst_n_sync),
         .cfg_nodes   (lfo_node_snapshot),
         .cfg_rates   (lfo_rate_snapshot),
         .cfg_steps   (lfo_step_snapshot),
         .cfg_once    (lfo_once_snapshot),
         .cfg_sources (route_source_snapshot),
         .cfg_depths  (route_depth_snapshot),
-        .tx_accept   (sysex_accept),
+        .tx_accept   (sysex_accept && !preset_busy),
         .sysex_req   (sysex_req),
         .sysex_msgs  (sysex_msgs),
         .busy        ()
@@ -953,13 +980,13 @@ module ui_touch_hub_top #(
         .note_off_req  (performance_note_valid && !performance_note_on),
         .note_number   (performance_note_number),
         .note_velocity (performance_note_velocity),
-        .cc_req        (static_cc_req),
-        .cc_param_id   (static_cc_param_id),
-        .cc_val        (static_cc_val),
-        .sysex_req     (sysex_req),
-        .sysex_msgs    (sysex_msgs),
+        .cc_req        (preset_busy ? preset_cc_req : static_cc_req),
+        .cc_param_id   (preset_busy ? preset_cc_id : static_cc_param_id),
+        .cc_val        (preset_busy ? preset_cc_value : static_cc_val),
+        .sysex_req     (preset_busy ? preset_sx_req : sysex_req),
+        .sysex_msgs    (preset_busy ? preset_sx_msgs : sysex_msgs),
         .sysex_accept  (sysex_accept),
-        .cc_accept     (static_cc_accept),
+        .cc_accept     (midi_cc_accept),
         .uart_tx       (audio_midi_tx),
         .tx_busy       (midi_tx_busy),.note_ready(performance_note_ready)
     );
