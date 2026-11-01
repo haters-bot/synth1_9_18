@@ -3,7 +3,8 @@
 module performance_page_renderer #(
     parameter integer KEY_COUNT = 32,
     parameter integer BASE_NOTE = 7'h29,
-    parameter CALIBRATION_ENABLE=0
+    parameter CALIBRATION_ENABLE=0,
+    parameter PIANO_ROLL_ENABLE=0
 )(
     input  wire [13:0] in_x,
     input  wire [13:0] in_y,
@@ -20,6 +21,8 @@ module performance_page_renderer #(
     input  wire [5:0]  next_key,
     input  wire        next_key_valid,
     input  wire [8:0]  next_key_y,
+    input wire [31:0] roll_body_keys,
+    input wire [31:0] roll_onset_keys,
     output reg         out_hit,
     output reg  [23:0] out_rgb
 );
@@ -38,6 +41,20 @@ module performance_page_renderer #(
     wire [KEY_COUNT-1:0] black_key_mask;
     wire [KEY_COUNT-1:0] key_edge_mask;
     wire [KEY_COUNT-1:0] next_key_mask;
+    wire [KEY_COUNT-1:0] roll_body_mask,roll_onset_mask;
+    wire [23:0] roll_colors[0:KEY_COUNT-1];
+    function [23:0] lane_color;
+        input integer lane;
+        begin
+            if(lane<5)lane_color=24'hFF8D57;
+            else if(lane<10)lane_color=24'hF0C85C;
+            else if(lane<15)lane_color=24'h66DA9A;
+            else if(lane<20)lane_color=24'h53DCE2;
+            else if(lane<25)lane_color=24'h6B9EED;
+            else if(lane<30)lane_color=24'hB388EF;
+            else lane_color=24'hED85C6;
+        end
+    endfunction
     genvar key;
     generate
         for (key = 0; key < KEY_COUNT; key = key + 1) begin: g_key_geometry
@@ -48,6 +65,9 @@ module performance_page_renderer #(
             assign black_key_mask[key] = KEY_BLACK;
             assign key_edge_mask[key] = (in_x == KEY_LEFT) || (in_x == KEY_RIGHT - 1);
             assign next_key_mask[key] = (next_key == key);
+            assign roll_body_mask[key]=roll_body_keys[key] && in_x>=KEY_LEFT+4 && in_x<KEY_RIGHT-4;
+            assign roll_onset_mask[key]=roll_onset_keys[key] && roll_body_mask[key];
+            assign roll_colors[key]={24{roll_body_mask[key]}} & lane_color(key);
         end
     endgenerate
 
@@ -56,6 +76,14 @@ module performance_page_renderer #(
     wire key_black = |(key_select & black_key_mask);
     wire key_edge = |(key_select & key_edge_mask);
     wire next_key_hit = next_key_valid && |(key_select & next_key_mask);
+    wire roll_body_hit=|roll_body_mask;
+    wire roll_onset_hit=|roll_onset_mask;
+    reg [23:0] roll_color;
+    integer lane;
+    always @(*)begin
+        roll_color=0;
+        for(lane=0;lane<KEY_COUNT;lane=lane+1)roll_color=roll_color|roll_colors[lane];
+    end
     wire [26:0] progress_product = {11'd0, song_progress} * 27'd1180;
     wire [10:0] progress_width = progress_product[26:16];
 
@@ -100,12 +128,19 @@ module performance_page_renderer #(
         end else if (in_y >= 14'd192 && in_y < 14'd400) begin
             // Each guidance lane uses the exact horizontal interval of its
             // corresponding chromatic key; no run-time division is used.
-            out_rgb = key_edge ? 24'h1D3447 : next_key_hit ? 24'h153B4C : 24'h0C1824;
-            if(next_key_hit && in_y>={5'd0,next_key_y} && in_y<{5'd0,next_key_y}+14'd16)
-                out_rgb = 24'h7EBBE8;
-            if (key_guide && in_y >= 14'd330 && in_y < 14'd390)
-                out_rgb = 24'h62E0E8;
-            if(in_y>=14'd394)out_rgb=24'h2C8794;
+            if(PIANO_ROLL_ENABLE)begin
+                out_rgb=key_edge ? 24'h1D3447 : key_black ? 24'h0B1420 : 24'h101F2B;
+                if(in_y[4:0]==0)out_rgb=24'h213547;
+                if(roll_body_hit)out_rgb=roll_onset_hit ? 24'hEAF9FF : roll_color;
+                if(in_y>=14'd397)out_rgb=key_guide ? 24'hFFF1A8 : 24'h3F8897;
+            end else begin
+                out_rgb = key_edge ? 24'h1D3447 : next_key_hit ? 24'h153B4C : 24'h0C1824;
+                if(next_key_hit && in_y>={5'd0,next_key_y} && in_y<{5'd0,next_key_y}+14'd16)
+                    out_rgb = 24'h7EBBE8;
+                if (key_guide && in_y >= 14'd330 && in_y < 14'd390)
+                    out_rgb = 24'h62E0E8;
+                if(in_y>=14'd394)out_rgb=24'h2C8794;
+            end
         end else if (in_y >= 14'd420) begin
             if (key_black)
                 out_rgb = key_active ? 24'hF0AD55 : key_guide ? 24'h2C8794 : 24'h1C3040;

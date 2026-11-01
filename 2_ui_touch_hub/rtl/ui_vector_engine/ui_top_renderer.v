@@ -227,6 +227,9 @@ module ui_top_renderer #(
     wire [6:0]  performance_scheduler_next_note;
     wire [31:0] performance_next_time_ms;
     wire performance_next_on_valid;
+    wire [((PERFORMANCE_MAX_EVENTS<=2)?1:$clog2(PERFORMANCE_MAX_EVENTS))-1:0] performance_preview_address;
+    wire [46:0] performance_preview_record;
+    wire [31:0] performance_roll_body_keys,performance_roll_onset_keys;
     wire        performance_remote_key_valid =
         (performance_remote_note >= performance_effective_base) &&
         (performance_remote_note < (performance_effective_base + PERFORMANCE_KEY_COUNT));
@@ -418,7 +421,17 @@ module ui_top_renderer #(
         .event_velocity_out(performance_scheduled_velocity),.song_time_ms(performance_song_time_ms),
         .done(performance_done),.next_note(performance_scheduler_next_note),
         .next_time_ms(performance_next_time_ms),.next_on_valid(performance_next_on_valid),
-        .loaded_events(performance_loaded_events),.load_error(performance_score_load_error));
+        .loaded_events(performance_loaded_events),.load_error(performance_score_load_error),
+        .preview_address(performance_preview_address),.preview_record(performance_preview_record));
+    performance_piano_roll #(.MAX_EVENTS(PERFORMANCE_MAX_EVENTS),.KEY_COUNT(PERFORMANCE_KEY_COUNT)) u_performance_roll(
+        .clk(clk),.rst_n(rst_n),.frame_start(in_vsync && !previous_vsync),
+        .running(performance_running),
+        .invalidate(performance_start || performance_stop || performance_reset_keys || performance_event_push || performance_clear_events),
+        .song_time_ms(performance_song_time_ms),.base_note(performance_effective_base),
+        .loaded_events(performance_loaded_events),.preview_address(performance_preview_address),
+        .preview_record(performance_preview_record),.raster_y(in_pixel_y),
+        .body_keys(performance_roll_body_keys),.onset_keys(performance_roll_onset_keys),
+        .visible(),.displayed_time_ms());
     performance_progress u_performance_progress(
         .clk(clk),.rst_n(rst_n),.refresh(performance_tick_1ms),
         .elapsed_ms(performance_song_time_ms),.duration_ms(performance_duration_ms),
@@ -608,7 +621,7 @@ module ui_top_renderer #(
         .touch_valid(ui_touch_valid),.touch_down(ui_touch_down),.touch_x(ui_touch_x),.touch_y(ui_touch_y),
         .view(navigation_view),.section(settings_section_id),.knob_steps(user_knob_steps),
         .knob_page(user_knob_page),.apply_step(user_apply_step),.plot_scales(user_plot_scales));
-    ui_navigation_renderer #(.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_CALIBRATION_ENABLE(PERFORMANCE_RUNTIME_BASE)) u_navigation_render(.clk(clk),.rst_n(rst_n),
+    ui_navigation_renderer #(.PERFORMANCE_KEY_COUNT(PERFORMANCE_KEY_COUNT),.PERFORMANCE_BASE_NOTE(PERFORMANCE_BASE_NOTE),.PERFORMANCE_CALIBRATION_ENABLE(PERFORMANCE_RUNTIME_BASE),.PERFORMANCE_PIANO_ROLL_ENABLE(1)) u_navigation_render(.clk(clk),.rst_n(rst_n),
         .performance_base_note(performance_effective_base),.performance_calibration_state(performance_calibration_state),
         .performance_range_warning(performance_key_range_warning),
         .in_x(raster_x[10]),.in_y(raster_y[10]),.view(navigation_view),.settings_section_id(settings_section_id),
@@ -624,6 +637,7 @@ module ui_top_renderer #(
         .performance_paused(performance_pause),.performance_mode(performance_mode),
         .performance_gateway_up(performance_gateway_up_in),.performance_recording(performance_recording_in),.performance_record_status(performance_status_for_display),
         .performance_next_key(performance_next_key),.performance_next_key_valid(performance_next_key_valid),.performance_next_key_y(performance_next_key_y),
+        .performance_roll_body_keys(performance_roll_body_keys),.performance_roll_onset_keys(performance_roll_onset_keys),
         .out_hit(navigation_hit),.out_rgb(navigation_rgb));
     always @(posedge clk) begin
         raster_hsync<=in_hsync;raster_vsync<=in_vsync;raster_den<=in_den;

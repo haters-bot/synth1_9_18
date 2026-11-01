@@ -57,6 +57,7 @@
         <File path="rtl/audio/audio_correlation_cursor.v" type="file.verilog" enable="1"/>
         <File path="rtl/audio/audio_waveform_capture.v" type="file.verilog" enable="1"/>
         <File path="rtl/performance/performance_event_scheduler.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_piano_roll.v" type="file.verilog" enable="1"/>
         <File path="rtl/performance/performance_key_state.v" type="file.verilog" enable="1"/>
         <File path="rtl/performance/performance_note_arbiter.v" type="file.verilog" enable="1"/>
         <File path="rtl/performance/performance_pcm_capture.v" type="file.verilog" enable="1"/>

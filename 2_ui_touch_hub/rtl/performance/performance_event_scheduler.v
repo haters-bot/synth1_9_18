@@ -31,7 +31,11 @@ module performance_event_scheduler #(
     output wire [6:0]  next_note,
     output wire [31:0] next_time_ms,
     output wire        next_on_valid,
-    output wire [$clog2(MAX_EVENTS+1)-1:0] loaded_events
+    output wire [$clog2(MAX_EVENTS+1)-1:0] loaded_events,
+    // The upload port is available for a second synchronous reader during
+    // playback. Preview never advances the transport's own read pointer.
+    input wire [((MAX_EVENTS <= 2) ? 1 : $clog2(MAX_EVENTS))-1:0] preview_address,
+    output reg [46:0] preview_record
 );
     localparam integer ADDR_BITS = (MAX_EVENTS <= 2) ? 1 : $clog2(MAX_EVENTS);
     localparam integer COUNT_BITS = $clog2(MAX_EVENTS + 1);
@@ -53,10 +57,12 @@ module performance_event_scheduler #(
                         !stop && !start && (event_count < MAX_EVENTS);
     wire [COUNT_BITS-1:0] consumed_events =
         {{(COUNT_BITS-ADDR_BITS){1'b0}},read_ptr} + 1'b1;
+    wire [ADDR_BITS-1:0] upload_preview_address = accept_event ? write_ptr : preview_address;
 
     always @(posedge clk) begin
         if (accept_event)
-            event_mem[write_ptr] <= {event_time_ms,event_note,event_velocity,event_on};
+            event_mem[upload_preview_address] <= {event_time_ms,event_note,event_velocity,event_on};
+        preview_record <= event_mem[upload_preview_address];
         ram_record <= event_mem[read_ptr];
     end
 
