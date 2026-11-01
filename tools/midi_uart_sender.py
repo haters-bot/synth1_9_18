@@ -140,8 +140,6 @@ FILTER_MODE_VALUES = {
     "高通": 2,
     "带通": 3,
     "陷波": 4,
-    "梳状 +": 5,
-    "梳状 -": 6,
 }
 EFFECT_MODE_VALUES = {
     "旁路": 0,
@@ -155,155 +153,356 @@ DISTORTION_TYPE_VALUES = {
     "Foldback": 2,
 }
 
-# 音色预设只组合现有协议参数，不引入新的FPGA控制命令。
-# 钢琴和提琴分别使用测试波表包中的8号、9号波表。
+# 音色预设只组合现有协议参数，不引入新的FPGA控制命令。每个预设都从
+# 同一组完整默认值构造，避免切换音色时继承上一个音色中未列出的参数。
+BASE_PRESET_CONTROLS = {
+    "pan": 64,
+    "filter_mode": "旁路",
+    "filter_cutoff": 127,
+    "filter_resonance": 0,
+    "filter_mix": 127,
+    "master_level": 100,
+    "effect_mode": "旁路",
+    "delay_time": 64,
+    "delay_feedback": 32,
+    "delay_mix": 0,
+    "reverb_size": 64,
+    "reverb_decay": 64,
+    "reverb_mix": 0,
+    "distortion_enabled": False,
+    "distortion_type": "Soft Clip",
+    "distortion_drive": 24,
+    "distortion_tone": 127,
+    "distortion_mix": 0,
+    "chorus_enabled": False,
+    "chorus_rate": 18,
+    "chorus_depth": 28,
+    "chorus_delay": 44,
+    "chorus_feedback": 10,
+    "chorus_mix": 0,
+    "phaser_enabled": False,
+    "phaser_rate": 18,
+    "phaser_depth": 32,
+    "phaser_center": 64,
+    "phaser_feedback": 8,
+    "phaser_mix": 0,
+    "compressor_enabled": False,
+    "compressor_threshold": 96,
+    "compressor_ratio": 48,
+    "compressor_attack": 20,
+    "compressor_release": 80,
+    "compressor_makeup": 0,
+    "compressor_mix": 127,
+    "vibrato_enabled": False,
+    "vibrato_rate": 52,
+    "vibrato_depth": 0,
+    "portamento_enabled": False,
+    "portamento_time": 48,
+}
+
+BASE_PRESET_OSCILLATOR = {
+    "enabled": True,
+    "waveform": "正弦波",
+    "warp_mode": "关闭",
+    "warp_amount": 0,
+    "wt_position": 0,
+    "wavetable_index": 0,
+    "detune": 0,
+    "phase": 0,
+    "rand": 0,
+    "unison": 1,
+    "attack": 0,
+    "decay": 54,
+    "sustain": 89,
+    "release": 54,
+    "level": 100,
+    "pan": 64,
+}
+
+
+def make_synth_preset(
+    description: str,
+    controls: dict | None = None,
+    osc_a: dict | None = None,
+    osc_b: dict | None = None,
+) -> dict:
+    """从完整基线构造音色，保证预设切换不残留旧参数。"""
+    merged_controls = BASE_PRESET_CONTROLS.copy()
+    merged_controls.update(controls or {})
+    merged_a = BASE_PRESET_OSCILLATOR.copy()
+    merged_a.update(osc_a or {})
+    merged_b = BASE_PRESET_OSCILLATOR.copy()
+    merged_b.update({"enabled": False, "level": 0})
+    merged_b.update(osc_b or {})
+    return {
+        "description": description,
+        "controls": merged_controls,
+        "oscillators": {"A": merged_a, "B": merged_b},
+    }
+
+
 SYNTH_PRESETS = {
-    "合成钢琴（波表8）": {
-        "controls": {
-            "pan": 64,
-            "filter_mode": "低通",
-            "filter_cutoff": 105,
-            "filter_resonance": 8,
-            "filter_mix": 127,
-            "master_level": 105,
-            "effect_mode": "Reverb",
-            "delay_time": 64,
-            "delay_feedback": 32,
-            "delay_mix": 0,
-            "reverb_size": 55,
-            "reverb_decay": 60,
-            "reverb_mix": 22,
-            "distortion_enabled": False,
-            "distortion_type": "Soft Clip",
-            "distortion_drive": 24,
-            "distortion_tone": 127,
-            "distortion_mix": 0,
-            "chorus_enabled": False,
-            "chorus_rate": 12,
-            "chorus_depth": 20,
-            "chorus_delay": 40,
-            "chorus_feedback": 8,
-            "chorus_mix": 0,
-            "phaser_enabled": False,
-            "phaser_rate": 20,
-            "phaser_depth": 32,
-            "phaser_center": 64,
-            "phaser_feedback": 8,
-            "phaser_mix": 0,
-            "compressor_enabled": False,
-            "compressor_threshold": 96,
-            "compressor_ratio": 48,
-            "compressor_attack": 12,
-            "compressor_release": 64,
-            "compressor_makeup": 0,
-            "compressor_mix": 127,
+    "原声模拟｜合成钢琴（波表8）": make_synth_preset(
+        "明亮而短促的波表钢琴；需要SD/DDR中的8号波表。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 105,
+            "filter_resonance": 8, "master_level": 105,
+            "effect_mode": "Reverb", "reverb_size": 55,
+            "reverb_decay": 60, "reverb_mix": 22,
         },
-        "oscillators": {
-            "A": {
-                "enabled": True,
-                "waveform": "SD/DDR波表",
-                "warp_mode": "关闭",
-                "warp_amount": 0,
-                "wavetable_index": 8,
-                "wt_position": 112,
-                "detune": 64,
-                "unison": 1,
-                "level": 105,
-                "attack": 0,
-                "decay": 92,
-                "sustain": 0,
-                "release": 48,
-            },
-            "B": {
-                "enabled": True,
-                "waveform": "SD/DDR波表",
-                "warp_mode": "关闭",
-                "warp_amount": 0,
-                "wavetable_index": 8,
-                "wt_position": 0,
-                "detune": 64,
-                "unison": 1,
-                "level": 28,
-                "attack": 0,
-                "decay": 36,
-                "sustain": 0,
-                "release": 24,
-            },
+        osc_a={
+            "waveform": "SD/DDR波表", "wavetable_index": 8,
+            "wt_position": 112, "detune": 64, "level": 105,
+            "decay": 92, "sustain": 0, "release": 48,
         },
-    },
-    "合成提琴（波表9）": {
-        "controls": {
-            "pan": 64,
-            "filter_mode": "低通",
-            "filter_cutoff": 88,
-            "filter_resonance": 14,
-            "filter_mix": 120,
-            "master_level": 100,
-            "effect_mode": "Reverb",
-            "delay_time": 64,
-            "delay_feedback": 32,
-            "delay_mix": 0,
-            "reverb_size": 65,
-            "reverb_decay": 75,
-            "reverb_mix": 30,
-            "distortion_enabled": False,
-            "distortion_type": "Soft Clip",
-            "distortion_drive": 24,
-            "distortion_tone": 127,
-            "distortion_mix": 0,
-            "chorus_enabled": True,
-            "chorus_rate": 12,
-            "chorus_depth": 24,
-            "chorus_delay": 40,
-            "chorus_feedback": 10,
-            "chorus_mix": 26,
-            "phaser_enabled": False,
-            "phaser_rate": 20,
-            "phaser_depth": 32,
-            "phaser_center": 64,
-            "phaser_feedback": 8,
-            "phaser_mix": 0,
-            "compressor_enabled": False,
-            "compressor_threshold": 96,
-            "compressor_ratio": 48,
-            "compressor_attack": 20,
-            "compressor_release": 80,
-            "compressor_makeup": 0,
-            "compressor_mix": 127,
+        osc_b={
+            "enabled": True, "waveform": "SD/DDR波表",
+            "wavetable_index": 8, "detune": 64, "level": 28,
+            "decay": 36, "sustain": 0, "release": 24,
         },
-        "oscillators": {
-            "A": {
-                "enabled": True,
-                "waveform": "SD/DDR波表",
-                "warp_mode": "关闭",
-                "warp_amount": 0,
-                "wavetable_index": 9,
-                "wt_position": 78,
-                "detune": 24,
-                "unison": 2,
-                "level": 95,
-                "attack": 56,
-                "decay": 40,
-                "sustain": 112,
-                "release": 72,
-            },
-            "B": {
-                "enabled": True,
-                "waveform": "SD/DDR波表",
-                "warp_mode": "关闭",
-                "warp_amount": 0,
-                "wavetable_index": 9,
-                "wt_position": 42,
-                "detune": 18,
-                "unison": 1,
-                "level": 42,
-                "attack": 60,
-                "decay": 48,
-                "sustain": 105,
-                "release": 72,
-            },
+    ),
+    "原声模拟｜弓弦独奏（波表9）": make_synth_preset(
+        "缓慢起音、带轻微颤音和空间感；需要SD/DDR中的9号波表。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 88,
+            "filter_resonance": 14, "filter_mix": 120,
+            "effect_mode": "Reverb", "reverb_size": 68,
+            "reverb_decay": 78, "reverb_mix": 30,
+            "chorus_enabled": True, "chorus_rate": 12,
+            "chorus_depth": 24, "chorus_delay": 40,
+            "chorus_feedback": 10, "chorus_mix": 24,
+            "vibrato_enabled": True, "vibrato_rate": 54,
+            "vibrato_depth": 10,
         },
-    },
+        osc_a={
+            "waveform": "SD/DDR波表", "wavetable_index": 9,
+            "wt_position": 78, "detune": 22, "unison": 2,
+            "level": 92, "pan": 54, "attack": 56,
+            "decay": 40, "sustain": 112, "release": 74,
+        },
+        osc_b={
+            "enabled": True, "waveform": "SD/DDR波表",
+            "wavetable_index": 9, "wt_position": 42,
+            "detune": 16, "level": 40, "pan": 74,
+            "attack": 60, "decay": 48, "sustain": 105,
+            "release": 74,
+        },
+    ),
+    "经典合成｜温暖模拟铜管": make_synth_preset(
+        "双锯齿、柔和低通和有冲击力的包络，适合和弦与短句。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 72,
+            "filter_resonance": 18, "filter_mix": 127,
+            "effect_mode": "Reverb", "reverb_size": 48,
+            "reverb_decay": 48, "reverb_mix": 16,
+            "chorus_enabled": True, "chorus_rate": 10,
+            "chorus_depth": 18, "chorus_mix": 18,
+        },
+        osc_a={
+            "waveform": "锯齿波", "detune": 28, "unison": 2,
+            "level": 82, "pan": 56, "attack": 18,
+            "decay": 68, "sustain": 86, "release": 48,
+        },
+        osc_b={
+            "enabled": True, "waveform": "锯齿波", "detune": 20,
+            "unison": 2, "level": 68, "pan": 72, "phase": 32,
+            "attack": 22, "decay": 72, "sustain": 80,
+            "release": 52,
+        },
+    ),
+    "经典合成｜复古弦乐机": make_synth_preset(
+        "明亮锯齿叠加三角波和慢速合唱，适合持续铺底。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 86,
+            "filter_resonance": 8, "effect_mode": "Reverb",
+            "reverb_size": 76, "reverb_decay": 86,
+            "reverb_mix": 28, "chorus_enabled": True,
+            "chorus_rate": 9, "chorus_depth": 46,
+            "chorus_delay": 56, "chorus_feedback": 18,
+            "chorus_mix": 48,
+        },
+        osc_a={
+            "waveform": "锯齿波", "detune": 32, "unison": 3,
+            "level": 76, "pan": 46, "attack": 48,
+            "decay": 54, "sustain": 110, "release": 82,
+        },
+        osc_b={
+            "enabled": True, "waveform": "三角波", "detune": 20,
+            "unison": 2, "level": 54, "pan": 82,
+            "attack": 52, "decay": 54, "sustain": 108,
+            "release": 86,
+        },
+    ),
+    "Lead｜经典 PWM 主音": make_synth_preset(
+        "带PWM变形、轻微滑音和延迟的经典单音主音。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 96,
+            "filter_resonance": 20, "effect_mode": "Delay + Reverb",
+            "delay_time": 47, "delay_feedback": 42, "delay_mix": 24,
+            "reverb_size": 52, "reverb_decay": 56, "reverb_mix": 16,
+            "vibrato_enabled": True, "vibrato_rate": 57,
+            "vibrato_depth": 7, "portamento_enabled": True,
+            "portamento_time": 24,
+        },
+        osc_a={
+            "waveform": "方波", "warp_mode": "PWM",
+            "warp_amount": 72, "detune": 18, "unison": 2,
+            "level": 90, "pan": 58, "attack": 4,
+            "decay": 48, "sustain": 104, "release": 44,
+        },
+        osc_b={
+            "enabled": True, "waveform": "锯齿波", "detune": 12,
+            "level": 42, "pan": 70, "attack": 4,
+            "decay": 48, "sustain": 98, "release": 44,
+        },
+    ),
+    "Lead｜宽广 Supersaw": make_synth_preset(
+        "七个Unison成员构成的宽广锯齿主音，适合旋律和大和弦。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 108,
+            "filter_resonance": 10, "master_level": 86,
+            "effect_mode": "Delay + Reverb", "delay_time": 58,
+            "delay_feedback": 36, "delay_mix": 20,
+            "reverb_size": 72, "reverb_decay": 72, "reverb_mix": 24,
+            "chorus_enabled": True, "chorus_rate": 14,
+            "chorus_depth": 26, "chorus_mix": 22,
+        },
+        osc_a={
+            "waveform": "锯齿波", "detune": 54, "unison": 4,
+            "level": 68, "pan": 38, "attack": 12,
+            "decay": 50, "sustain": 106, "release": 60,
+        },
+        osc_b={
+            "enabled": True, "waveform": "锯齿波", "detune": 42,
+            "unison": 3, "level": 62, "pan": 90, "phase": 24,
+            "attack": 12, "decay": 50, "sustain": 104,
+            "release": 60,
+        },
+    ),
+    "Bass｜圆润 Sub Bass": make_synth_preset(
+        "以正弦低频为主体、加入少量三角波轮廓的稳定低音。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 68,
+            "filter_resonance": 6, "master_level": 108,
+            "distortion_enabled": True, "distortion_drive": 18,
+            "distortion_tone": 52, "distortion_mix": 12,
+        },
+        osc_a={
+            "waveform": "正弦波", "level": 108, "attack": 0,
+            "decay": 38, "sustain": 112, "release": 30,
+        },
+        osc_b={
+            "enabled": True, "waveform": "三角波", "level": 40,
+            "phase": 16, "attack": 0, "decay": 40,
+            "sustain": 92, "release": 28,
+        },
+    ),
+    "Bass｜Acid 303 风格": make_synth_preset(
+        "Acid多帧波表、强共振和软削波构成的尖锐电子贝斯。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 54,
+            "filter_resonance": 92, "filter_mix": 127,
+            "master_level": 88, "distortion_enabled": True,
+            "distortion_type": "Soft Clip", "distortion_drive": 62,
+            "distortion_tone": 92, "distortion_mix": 52,
+            "portamento_enabled": True, "portamento_time": 18,
+        },
+        osc_a={
+            "waveform": "SD/DDR波表", "wavetable_index": 0,
+            "wt_position": 84, "level": 102, "attack": 0,
+            "decay": 58, "sustain": 54, "release": 24,
+        },
+        osc_b={
+            "enabled": True, "waveform": "方波", "warp_mode": "PWM",
+            "warp_amount": 42, "level": 28, "phase": 32,
+            "attack": 0, "decay": 52, "sustain": 44,
+            "release": 20,
+        },
+    ),
+    "Keys｜明亮拨弦 Pluck": make_synth_preset(
+        "快速衰减的三角/方波拨弦，带清晰的立体声延迟。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 100,
+            "filter_resonance": 24, "effect_mode": "Delay + Reverb",
+            "delay_time": 42, "delay_feedback": 38, "delay_mix": 30,
+            "reverb_size": 58, "reverb_decay": 60, "reverb_mix": 18,
+        },
+        osc_a={
+            "waveform": "三角波", "level": 96, "pan": 52,
+            "decay": 70, "sustain": 0, "release": 42,
+        },
+        osc_b={
+            "enabled": True, "waveform": "方波", "warp_mode": "PWM",
+            "warp_amount": 38, "level": 34, "pan": 76,
+            "phase": 24, "decay": 54, "sustain": 0,
+            "release": 34,
+        },
+    ),
+    "Keys｜晶莹电钢": make_synth_preset(
+        "正弦基音加三角泛音，柔和敲击与慢速合唱形成电钢质感。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 112,
+            "filter_resonance": 5, "effect_mode": "Reverb",
+            "reverb_size": 60, "reverb_decay": 68, "reverb_mix": 22,
+            "chorus_enabled": True, "chorus_rate": 8,
+            "chorus_depth": 30, "chorus_delay": 52,
+            "chorus_feedback": 8, "chorus_mix": 30,
+        },
+        osc_a={
+            "waveform": "正弦波", "level": 104, "decay": 88,
+            "sustain": 34, "release": 62,
+        },
+        osc_b={
+            "enabled": True, "waveform": "三角波", "level": 38,
+            "phase": 32, "decay": 60, "sustain": 0,
+            "release": 46,
+        },
+    ),
+    "Keys｜经典晶体管风琴": make_synth_preset(
+        "方波与三角波的稳定持续音，加入慢速旋转感合唱。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 118,
+            "filter_resonance": 4, "chorus_enabled": True,
+            "chorus_rate": 34, "chorus_depth": 44,
+            "chorus_delay": 46, "chorus_feedback": 14,
+            "chorus_mix": 40, "effect_mode": "Reverb",
+            "reverb_size": 48, "reverb_decay": 50, "reverb_mix": 12,
+        },
+        osc_a={
+            "waveform": "方波", "warp_mode": "PWM",
+            "warp_amount": 28, "level": 78, "attack": 2,
+            "decay": 20, "sustain": 120, "release": 32,
+        },
+        osc_b={
+            "enabled": True, "waveform": "三角波", "level": 64,
+            "phase": 64, "attack": 2, "decay": 20,
+            "sustain": 118, "release": 32,
+        },
+    ),
+    "氛围｜宽广模拟 Pad": make_synth_preset(
+        "慢起音、宽声像和长混响的柔和铺底，适合持续和弦。",
+        controls={
+            "filter_mode": "低通", "filter_cutoff": 70,
+            "filter_resonance": 12, "master_level": 82,
+            "effect_mode": "Reverb", "reverb_size": 102,
+            "reverb_decay": 108, "reverb_mix": 42,
+            "chorus_enabled": True, "chorus_rate": 7,
+            "chorus_depth": 52, "chorus_delay": 60,
+            "chorus_feedback": 20, "chorus_mix": 46,
+        },
+        osc_a={
+            "waveform": "锯齿波", "warp_mode": "Bend +",
+            "warp_amount": 22, "detune": 34, "unison": 3,
+            "level": 66, "pan": 42, "attack": 82,
+            "decay": 72, "sustain": 98, "release": 108,
+        },
+        osc_b={
+            "enabled": True, "waveform": "三角波", "detune": 24,
+            "unison": 2, "level": 58, "pan": 86, "phase": 40,
+            "attack": 88, "decay": 76, "sustain": 94,
+            "release": 112,
+        },
+    ),
 }
 
 
@@ -338,6 +537,9 @@ class MidiUartSender:
         self.channel = tk.IntVar(value=1)
         self.velocity = tk.IntVar(value=100)
         self.preset_name = tk.StringVar(value="选择音色…")
+        self.preset_description = tk.StringVar(
+            value="从下拉框选择音色；连接串口后会立即发送完整参数。"
+        )
         self.pan = tk.IntVar(value=64)
         self.filter_mode = tk.StringVar(value="旁路")
         self.filter_cutoff = tk.IntVar(value=127)
@@ -509,7 +711,7 @@ class MidiUartSender:
             controls,
             textvariable=self.preset_name,
             values=tuple(SYNTH_PRESETS),
-            width=22,
+            width=31,
             state="readonly",
         )
         preset_box.grid(
@@ -522,6 +724,14 @@ class MidiUartSender:
         ttk.Button(
             controls, text="重新应用音色", command=self.apply_selected_preset
         ).grid(row=2, column=3, padx=4, pady=(8, 0), sticky="w")
+        ttk.Label(
+            controls,
+            textvariable=self.preset_description,
+            foreground="#555555",
+            wraplength=760,
+        ).grid(
+            row=3, column=0, columnspan=5, padx=4, pady=(4, 0), sticky="w"
+        )
 
         parameter_controls = ttk.LabelFrame(
             self.main_content, text="双振荡器参数（松开滑块时发送）", padding=10
@@ -1198,6 +1408,7 @@ class MidiUartSender:
             self.status.set("请先选择一个音色预设")
             return
 
+        self.preset_description.set(preset["description"])
         for control_name, value in preset["controls"].items():
             getattr(self, control_name).set(value)
         for osc_name, values in preset["oscillators"].items():
