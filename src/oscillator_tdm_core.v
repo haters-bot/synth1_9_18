@@ -7,7 +7,9 @@ module oscillator_tdm_core #(
     parameter integer PARTIAL_SUM_WIDTH = 24,
     parameter integer INITIAL_PHASE_ENABLE = 0,
     parameter integer REALTIME_DETUNE_ENABLE = 0,
-    parameter integer ENVELOPE_UPDATE_DIV = 16
+    parameter integer ENVELOPE_UPDATE_DIV = 16,
+    // 1：使用平滑固定曲线；0：保留线性曲线，便于对照验证。
+    parameter integer CURVED_ENVELOPE_ENABLE = 1
 )(
     input  wire clk,
     input  wire rst_n,
@@ -230,14 +232,14 @@ module oscillator_tdm_core #(
     reg [15:0] sample_velocity_scaled_envelope;
     reg [31:0] sample_envelope_phase_next;
     reg  sample_envelope_phase_complete;
-    reg [15:0] sample_envelope_phase_fraction;
+    reg [15:0] sample_attack_level_next;
     reg [15:0] sample_segment_multiplicand;
     reg [15:0] sample_segment_factor;
 
     reg [15:0] commit_velocity_scaled_envelope;
     reg [31:0] commit_envelope_phase_next;
     reg  commit_envelope_phase_complete;
-    reg [15:0] commit_envelope_phase_fraction;
+    reg [15:0] commit_attack_level_next;
     reg [15:0] commit_decay_level_next;
     reg [15:0] commit_release_level_next;
 
@@ -274,11 +276,17 @@ module oscillator_tdm_core #(
     wire envelope_phase_complete;
     wire [15:0] envelope_phase_fraction;
     wire [15:0] decay_span;
+    wire [15:0] release_fraction_remaining;
+    wire [15:0] curve_input;
+    wire [31:0] curve_square_product;
+    wire [32:0] curve_square_rounded;
+    wire [15:0] curve_square_fraction;
+    wire [16:0] attack_curve_wide;
+    wire [15:0] attack_level_next;
     reg  [15:0] segment_multiplicand;
     reg  [15:0] segment_factor;
     wire [31:0] segment_product;
     wire [15:0] decay_level_next;
-    wire [15:0] release_fraction_remaining;
     wire [15:0] release_level_next;
     wire commit_enabled;
     wire signed [PARTIAL_SUM_WIDTH-1:0] extended_sample;
@@ -435,7 +443,7 @@ module oscillator_tdm_core #(
     assign enveloped_wave_sample = envelope_scaled[15:0];
 
     // A、D、R都使用0～2^32的阶段进度。改变时间参数只会改变进度速度，
-    // 不会直接改写当前电平。Decay和Release各使用一次16×16插值乘法。
+    // 不会直接改写当前电平。固定曲线在相邻寄存器级间计算，不增加调度延迟。
     always @(*) begin
         case (pipe_envelope_stage)
             ENV_ATTACK:  selected_phase_step = attack_phase_step_batch;
@@ -455,17 +463,41 @@ module oscillator_tdm_core #(
     assign release_fraction_remaining
         = 16'hFFFF - envelope_phase_fraction;
 
-    // Decay与Release互斥，复用同一个16×16阶段插值乘法器。
+    // 固定平滑曲线：
+    // Attack  = 2p - p^2，使峰值附近的斜率逐渐降为0；
+    // Decay   = 1 - (1-S)p^2，使Attack到Decay的连接更平滑；
+    // Release = R0(1-p)^2，使尾部逐渐贴近静音。
+    // Release对剩余进度求平方；Attack和Decay对正向进度求平方。
+    assign curve_input = (pipe_envelope_stage == ENV_RELEASE)
+                       ? release_fraction_remaining
+                       : envelope_phase_fraction;
+
     always @(*) begin
         if (pipe_envelope_stage == ENV_RELEASE) begin
             segment_multiplicand = pipe_release_start_level;
-            segment_factor = release_fraction_remaining;
+            segment_factor = CURVED_ENVELOPE_ENABLE
+                           ? curve_square_fraction
+                           : release_fraction_remaining;
         end else begin
             segment_multiplicand = decay_span;
-            segment_factor = envelope_phase_fraction;
+            segment_factor = CURVED_ENVELOPE_ENABLE
+                           ? curve_square_fraction
+                           : envelope_phase_fraction;
         end
     end
 
+    assign curve_square_product = curve_input * curve_input;
+    assign curve_square_rounded
+        = {1'b0, curve_square_product} + 33'd32768;
+    assign curve_square_fraction = curve_square_rounded[31:16];
+    assign attack_curve_wide
+        = {envelope_phase_fraction, 1'b0}
+        - {1'b0, curve_square_fraction};
+    assign attack_level_next = CURVED_ENVELOPE_ENABLE
+        ? (attack_curve_wide[16] ? 16'hFFFF : attack_curve_wide[15:0])
+        : envelope_phase_fraction;
+
+    // Decay与Release互斥，继续复用原有16×16阶段插值乘法器。
     assign segment_product = sample_segment_multiplicand * sample_segment_factor;
     assign decay_level_next = 16'hFFFF - segment_product[31:16];
     assign release_level_next = segment_product[31:16];
@@ -557,14 +589,14 @@ module oscillator_tdm_core #(
             sample_velocity_scaled_envelope <= 0;
             sample_envelope_phase_next <= 0;
             sample_envelope_phase_complete <= 0;
-            sample_envelope_phase_fraction <= 0;
+            sample_attack_level_next <= 0;
             sample_segment_multiplicand <= 0;
             sample_segment_factor <= 0;
 
             commit_velocity_scaled_envelope <= 0;
             commit_envelope_phase_next <= 0;
             commit_envelope_phase_complete <= 0;
-            commit_envelope_phase_fraction <= 0;
+            commit_attack_level_next <= 0;
             commit_decay_level_next <= 0;
             commit_release_level_next <= 0;
             issue_slot        <= 8'd0;
@@ -814,8 +846,8 @@ module oscillator_tdm_core #(
                 commit_envelope_phase_next <= sample_envelope_phase_next;
                 sample_envelope_phase_complete <= envelope_phase_complete;
                 commit_envelope_phase_complete <= sample_envelope_phase_complete;
-                sample_envelope_phase_fraction <= envelope_phase_fraction;
-                commit_envelope_phase_fraction <= sample_envelope_phase_fraction;
+                sample_attack_level_next <= attack_level_next;
+                commit_attack_level_next <= sample_attack_level_next;
                 sample_segment_multiplicand <= segment_multiplicand;
                 sample_segment_factor <= segment_factor;
                 commit_decay_level_next <= decay_level_next;
@@ -847,7 +879,7 @@ module oscillator_tdm_core #(
                                     envelope_phase[commit_slot] <= 32'd0;
                                 end else begin
                                     envelope_level[commit_slot]
-                                        <= commit_envelope_phase_fraction;
+                                        <= commit_attack_level_next;
                                     envelope_phase[commit_slot]
                                         <= commit_envelope_phase_next;
                                 end
@@ -960,14 +992,16 @@ module oscillator_tdm_core #(
                 phase_step_state[task_update_slot]
                     <= task_update_phase_step;
 
-                if (task_update_enable && task_update_phase_reset) begin
+                // Gate On和连续音高更新都会刷新实时Detune基准；只有
+                // phase_reset=1的首次触发才重置相位并重新进入Attack。
+                if (task_update_enable) begin
                     base_step_state[task_update_slot] <= task_update_base_step;
                     detune_unit_state[task_update_slot] <= task_update_detune_unit;
                     detune_magnitude_state[task_update_slot]
                         <= task_update_detune_magnitude;
                     detune_negative_state[task_update_slot] <= task_update_detune_negative;
                 end
-                if (task_update_enable) begin
+                if (task_update_enable && task_update_phase_reset) begin
                     enable_state[task_update_slot] <= 1'b1;
                     gate_state[task_update_slot] <= 1'b1;
                     envelope_stage[task_update_slot] <= ENV_ATTACK;
@@ -981,7 +1015,8 @@ module oscillator_tdm_core #(
                     if (task_update_phase_reset && !clear_phase)
                         phase_state[task_update_slot] <= INITIAL_PHASE_ENABLE
                             ? task_update_initial_phase : 32'd0;
-                end else if (enable_state[task_update_slot]) begin
+                end else if (!task_update_enable
+                             && enable_state[task_update_slot]) begin
                     gate_state[task_update_slot] <= 1'b0;
                     envelope_stage[task_update_slot] <= ENV_RELEASE;
                     envelope_phase[task_update_slot] <= 32'd0;

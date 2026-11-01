@@ -7,6 +7,10 @@ module tb_adsr_control;
     reg start_tick;
     reg task_update_valid;
     reg task_update_enable;
+    reg [31:0] attack_phase_step;
+    reg [31:0] decay_phase_step;
+    reg [15:0] sustain_level;
+    reg [31:0] release_phase_step;
     reg [6:0] attack_control;
     reg [6:0] decay_control;
     reg [6:0] sustain_control;
@@ -45,10 +49,10 @@ module tb_adsr_control;
         .wt_position(7'd0),
         .warp_mode(4'd0),
         .warp_amount(7'd0),
-        .attack_phase_step(32'hFFFFFFFF),
-        .decay_phase_step(32'hFFFFFFFF),
-        .sustain_level(16'd0),
-        .release_phase_step(32'hFFFFFFFF),
+        .attack_phase_step(attack_phase_step),
+        .decay_phase_step(decay_phase_step),
+        .sustain_level(sustain_level),
+        .release_phase_step(release_phase_step),
         .external_wavetable_enable(1'b0),
         .cache_load_clk(clk), .cache_load_rst_n(rst_n),
         .cache_write_enable(1'b0), .cache_write_bank(1'b0),
@@ -58,9 +62,18 @@ module tb_adsr_control;
         .task_update_valid(task_update_valid),
         .task_update_slot(8'd0),
         .task_update_phase_step(32'h01000000),
+        .task_update_base_step(32'h01000000),
+        .task_update_detune_unit(35'd0),
+        .task_update_detune_magnitude(3'd0),
+        .task_update_detune_negative(1'b0),
+        .detune_amount(7'd0),
+        .glide_override_enable(1'b0),
+        .glide_override_base_step(32'd0),
+        .vibrato_ratio_delta_q16(13'sd0),
         .task_update_velocity(7'd127),
         .task_update_enable(task_update_enable),
         .task_update_phase_reset(1'b1),
+        .task_update_initial_phase(32'd0),
         .partial_sum(partial_sum),
         .partial_valid(partial_valid),
         .busy(busy),
@@ -101,6 +114,10 @@ module tb_adsr_control;
         start_tick = 1'b0;
         task_update_valid = 1'b0;
         task_update_enable = 1'b0;
+        attack_phase_step = 32'h40000000;
+        decay_phase_step = 32'h40000000;
+        sustain_level = 16'd0;
+        release_phase_step = 32'h40000000;
         attack_control = 7'd27;
         decay_control = 7'd54;
         sustain_control = 7'd89;
@@ -122,22 +139,63 @@ module tb_adsr_control;
 
         update_gate(1'b1);
         run_envelope_sample();
-        if (dut.envelope_stage[0] !== 3'd2
-            || dut.envelope_level[0] !== 16'hFFFF) begin
-            $display("ERROR: Attack did not reach Decay at full level");
+        if (dut.envelope_stage[0] !== 3'd1
+            || dut.envelope_level[0] !== 16'd28672) begin
+            $display("ERROR: curved Attack quarter point is incorrect");
             errors = errors + 1;
         end
 
         run_envelope_sample();
-        if (dut.envelope_stage[0] !== 3'd3
-            || dut.envelope_level[0] !== 16'd0
+        if (dut.envelope_level[0] !== 16'd49152) begin
+            $display("ERROR: curved Attack midpoint is incorrect");
+            errors = errors + 1;
+        end
+
+        run_envelope_sample();
+        if (dut.envelope_level[0] !== 16'd61440) begin
+            $display("ERROR: curved Attack three-quarter point is incorrect");
+            errors = errors + 1;
+        end
+
+        run_envelope_sample();
+        if (dut.envelope_stage[0] !== 3'd2
+            || dut.envelope_level[0] !== 16'hFFFF) begin
+            $display("ERROR: curved Attack did not reach Decay at full level");
+            errors = errors + 1;
+        end
+
+        run_envelope_sample();
+        if (dut.envelope_stage[0] !== 3'd2
+            || dut.envelope_level[0] !== 16'd61440) begin
+            $display("ERROR: curved Decay quarter point is incorrect");
+            errors = errors + 1;
+        end
+
+        run_envelope_sample();
+        if (dut.envelope_level[0] !== 16'd49152
             || dut.gate_state[0] !== 1'b1
             || dut.enable_state[0] !== 1'b1) begin
-            $display("ERROR: zero Sustain did not become silent while gate stayed active");
+            $display("ERROR: curved Decay midpoint is incorrect");
             errors = errors + 1;
         end
 
         update_gate(1'b0);
+        run_envelope_sample();
+        if (dut.envelope_stage[0] !== 3'd4
+            || dut.envelope_level[0] < 16'd27640
+            || dut.envelope_level[0] > 16'd27650) begin
+            $display("ERROR: curved Release quarter point is incorrect");
+            errors = errors + 1;
+        end
+
+        run_envelope_sample();
+        if (dut.envelope_level[0] < 16'd12280
+            || dut.envelope_level[0] > 16'd12295) begin
+            $display("ERROR: curved Release midpoint is incorrect");
+            errors = errors + 1;
+        end
+
+        run_envelope_sample();
         run_envelope_sample();
         if (dut.envelope_stage[0] !== 3'd0
             || dut.enable_state[0] !== 1'b0
@@ -146,8 +204,28 @@ module tb_adsr_control;
             errors = errors + 1;
         end
 
+        // 再跑完整A/D周期，确认Sustain=0时只静音而不提前回收槽位。
+        update_gate(1'b1);
+        repeat (8) run_envelope_sample();
+        if (dut.envelope_stage[0] !== 3'd3
+            || dut.envelope_level[0] !== 16'd0
+            || dut.gate_state[0] !== 1'b1
+            || dut.enable_state[0] !== 1'b1) begin
+            $display("ERROR: zero Sustain did not stay gated and silent");
+            errors = errors + 1;
+        end
+
+        update_gate(1'b0);
+        repeat (4) run_envelope_sample();
+        if (dut.envelope_stage[0] !== 3'd0
+            || dut.enable_state[0] !== 1'b0
+            || !task_idle_valid) begin
+            $display("ERROR: silent Sustain note was not released");
+            errors = errors + 1;
+        end
+
         if (errors == 0)
-            $display("PASS: ADSR mapping, zero Sustain, and Release behavior");
+            $display("PASS: ADSR mapping and smooth Attack/Decay/Release curves");
         else
             $display("FAIL: %0d error(s)", errors);
         $finish;

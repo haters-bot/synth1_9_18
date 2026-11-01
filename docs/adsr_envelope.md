@@ -91,19 +91,24 @@ phase_step ≈ 2^32 / (阶段时间 × 48000)
 
 ```text
 phase += attack_phase_step
-level = phase[31:16]
+p = phase / 2^32
+level = 2p - p^2
 ```
 
-进度完成后把电平钳位到满幅，清零阶段进度并进入Decay。
+这条固定缓出曲线起音较快，但接近满幅时斜率逐渐降为0，减少线性Attack直接切换到
+Decay时形成的第二个明显瞬态。进度完成后把电平钳位到满幅，清零阶段进度并进入
+Decay。
 
 ### Decay
 
 ```text
 phase += decay_phase_step
-level = 65535 - (65535 - sustain_level) × phase_fraction
+p = phase / 2^32
+level = 65535 - (65535 - sustain_level) × p^2
 ```
 
-进度完成后进入Sustain。
+Decay开始处的斜率为0，与Attack末端平滑连接；随后逐渐下降到Sustain。进度完成后进入
+Sustain。
 
 ### Sustain
 
@@ -126,11 +131,13 @@ phase = 0
 
 ```text
 phase += release_phase_step
-level = release_start_level × (1 - phase_fraction)
+p = phase / 2^32
+level = release_start_level × (1 - p)^2
 ```
 
 因此无论Note Off发生在Attack、Decay还是Sustain，Release阶段时间都由CC27决定。
-Release完成后电平归零，核心产生`task_idle_valid`脉冲，任务调度器才回收槽位。
+Release尾部的斜率逐渐降为0，减少接近静音时的硬折点。Release完成后电平归零，核心
+产生`task_idle_valid`脉冲，任务调度器才回收槽位。
 
 ## 6. 力度与音频乘法
 
@@ -149,19 +156,24 @@ PCM16 × unsigned Q0.16 → signed 34 bit → 舍入并右移16位 → PCM16
 力度127单独保持满幅。力度缩放后的包络寄存一拍，再参与波形乘法，避免两个乘法器
 在同一条组合路径上级联。
 
-## 7. 曲线边界
+## 7. 曲线实现边界
 
-当前Attack、Decay和Release都是线性幅度曲线。阶段进度和状态接口已经独立，后续可以
-在`phase_fraction`之后加入256点曲线LUT，支持线性、指数和对数形状，而不改变MIDI
-协议和每槽位状态机。
+当前Attack、Decay和Release采用一组固定二次曲线。A/D/R时间、Sustain电平、MIDI
+协议和每槽位状态机语义没有改变；它只改变阶段内部的幅度轨迹。参数
+`CURVED_ENVELOPE_ENABLE=0`可恢复旧线性轨迹，用于A/B验证。
 
-Decay和Release阶段互斥，因此两者复用同一个16×16插值乘法器。该运算器只在共享的
-物理引擎数据路径中出现，不会为32个逻辑槽位各复制一套；实际DSP映射和50 MHz时序
-仍需以Gowin综合、布局布线报告为准。
+平方计算位于已有相邻寄存器级之间，Decay和Release仍复用原有16×16阶段插值乘法器，
+没有增加TDM调度流水线级数。运算器只在共享的物理引擎数据路径中出现，不会为32个
+逻辑槽位各复制一套；实际DSP映射和50 MHz时序仍需以Gowin综合、布局布线报告为准。
+
+这一版没有开放Serum式可调曲率。以后可以把固定二次曲线替换为曲线LUT，同时保持
+现有协议和状态存储不变。
 
 ## 8. 已验证行为
 
 - 默认A/D/S/R控制值到定点参数的映射；
+- Attack在1/4、1/2和3/4进度处的固定平滑曲线电平；
+- Decay和Release的固定平滑曲线电平与最终阶段切换；
 - Sustain为0时，琴键保持按下但声音在Decay后归零；
 - Note Off后Release完成并归还槽位；
 - 通道16的CC24～27正确进入参数寄存器；
