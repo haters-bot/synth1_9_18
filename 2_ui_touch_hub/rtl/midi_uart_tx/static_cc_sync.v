@@ -16,6 +16,12 @@ module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
     reg [6:0] scan;
     reg [COUNT-1:0] initial_pending;
     reg [6:0] sent[0:COUNT-1];
+    // The MIDI ID/FIFO acceptance decoder must end at local registers, rather
+    // than driving the CE of every sent[]/initial_pending bit in the same cycle.
+    // These three fields carry the exact word already accepted by UART.
+    reg accepted_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [6:0] accepted_scan /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    reg [6:0] accepted_value /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     wire [6:0] selected_value,selected_sent;
     wire [COUNT-1:0] selected_pending;
     wire [COUNT-1:0] value_bits[0:6],sent_bits[0:6];
@@ -39,18 +45,28 @@ module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
         if(!rst_n) begin
             scan<=0;initial_pending<={COUNT{1'b1}};startup_sync_done<=0;
             cc_req<=0;cc_param_id<=0;cc_val<=0;
+            accepted_valid<=0;accepted_scan<=0;accepted_value<=0;
             for(i=0;i<COUNT;i=i+1) sent[i]<=0;
-        end else if(PRESET_ENABLE && preset_adopt)begin
+        end else begin
+          accepted_valid<=0;
+          if(accepted_valid)begin
+            sent[accepted_scan]<=accepted_value;initial_pending[accepted_scan]<=0;
+          end
+          if(PRESET_ENABLE && preset_adopt)begin
             for(i=0;i<COUNT;i=i+1)sent[i]<=values[i*7+:7];
             initial_pending<=0;startup_sync_done<=1;cc_req<=0;scan<=0;
-        end else if(PRESET_ENABLE && preset_hold)begin
+          end else if(PRESET_ENABLE && preset_hold)begin
             cc_req<=0;
-        end else begin
+          end else begin
             // Acceptance denotes the exact FIFO write, never merely TX idle.
             if(cc_req && cc_accept) begin
-                sent[scan]<=cc_val;initial_pending[scan]<=0;
+                accepted_valid<=1;accepted_scan<=scan;accepted_value<=cc_val;
                 cc_req<=0;
                 scan<=scan==COUNT-1 ? 0 : scan+1'b1;
+            end else if(accepted_valid)begin
+                // One settling cycle also prevents a duplicate for COUNT=1:
+                // the next comparison must observe the committed shadow.
+                cc_req<=0;
             end else if(cc_req)begin
                 // Under backpressure replace the staged value with the latest
                 // bank value. Acceptance records the OLD staged payload, exactly
@@ -67,6 +83,7 @@ module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
             // Sticky completion means initial values have actually left UART.
             // LFO starts afterwards; further real edits retain Note > CC > SysEx.
             if(initial_pending==0 && !uart_busy && !cc_req) startup_sync_done<=1;
+          end
         end
     end
 endmodule

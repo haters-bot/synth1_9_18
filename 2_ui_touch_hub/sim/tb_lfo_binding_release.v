@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module tb_lfo_binding_release;
-    reg clk=0,rst_n=0,tv=0,td=0;
+    reg clk=0,rst_n=0,tv=0,td=0,cancel=0;
     reg [13:0] x=0,y=0,px=0,py=0;
     reg [1:0] tab=1;
     wire armed,dragging,capture,ev,hit;
@@ -14,8 +14,9 @@ module tb_lfo_binding_release;
     always @(posedge clk) if(ev) events=events+1;
     // Scale the quiet-contact grace for fast lifecycle checks. All decisions
     // still use actual clock edges and independently generated touch packets.
-    lfo_binding_state #(.WATCHDOG_CYCLES(1000)) dut(
+    lfo_binding_state #(.ENABLE_CANCEL(1),.WATCHDOG_CYCLES(1000)) dut(
         .clk(clk),.rst_n(rst_n),.touch_valid(tv),.touch_down(td),.touch_x(x),.touch_y(y),.active_tab(tab),
+        .cancel(cancel),
         .armed(armed),.dragging(dragging),.capture_active(capture),.selected_target(selected),
         .hover_target(hover),.sources(sources),.depths(depths),.event_valid(ev));
     modulation_overlay overlay(.clk(clk),.rst_n(rst_n),.in_x(px),.in_y(py),
@@ -39,6 +40,9 @@ module tb_lfo_binding_release;
                 $fatal(1,"Saved binding not reflected by persistent overlay: %d %b %h",index,hit,rgb);
         end
     endtask
+    reg [105:0] saved_sources;
+    reg [423:0] saved_depths;
+    integer saved_events;
     initial begin
         repeat(5)@(negedge clk);rst_n=1;repeat(10)@(negedge clk);
         start_drag();packet(mod_cx(23),mod_cy(23),1);
@@ -89,7 +93,20 @@ module tb_lfo_binding_release;
             $fatal(1,"Armed mode must survive while stale button contact expires");
         packet(1140,385,1);packet(0,0,0);
         if(armed || capture)$fatal(1,"BIND cancel must release UI immediately on UP");
-        $display("PASS: aiming pause, missing-UP final destination, late-UP deduplication, invalid drop, explicit-UP, tap fallback, state-driven marks, short contact expiry and rapid BIND-to-graph handoff");
+        saved_sources=sources;saved_depths=depths;saved_events=events;
+        start_drag();packet(mod_cx(13),mod_cy(13),1);
+        // Raw navigation cancellation and the header packet arrive together.
+        // Cancellation must reach the state before its pipelined touch packet,
+        // without committing the old hover during the subsequent release.
+        @(negedge clk);cancel=1;tv=1;td=1;x=880;y=20;
+        @(negedge clk);tv=0;repeat(6)@(negedge clk);packet(0,0,0);
+        if(armed || dragging || capture || sources!==saved_sources || depths!==saved_depths || events!=saved_events)
+            $fatal(1,"Navigation cancel committed a stale hover or erased bindings");
+        cancel=0;repeat(6)@(negedge clk);
+        start_drag();packet(mod_cx(13),mod_cy(13),1);packet(0,0,0);
+        if(sources[26+:2]!=1 || depths[104+:8]!=127 || events!=saved_events+1)
+            $fatal(1,"Binding did not resume after navigation cancel");
+        $display("PASS: aiming pause, missing-UP final destination, late-UP deduplication, invalid drop, explicit-UP, tap fallback, state-driven marks, short contact expiry, rapid BIND-to-graph handoff and registered navigation cancel/rebind");
         $finish;
     end
     initial begin #2000000;$fatal(1,"Release regression timeout");end

@@ -28,6 +28,13 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
     reg finger,control_contact;
     reg [1:0] drag_source;
     reg [24:0] watchdog;
+    // navigation_capture includes raw header geometry. Register cancellation
+    // before it fans out to the binding bank; touch packets already have two
+    // decode stages, so navigation still cancels ahead of its own packet.
+    reg cancel_registered /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    always @(posedge clk or negedge rst_n)
+        if(!rst_n)cancel_registered<=0;
+        else cancel_registered<=ENABLE_CANCEL && cancel;
     wire quiet_release = (dragging ? watchdog>=WATCHDOG_CYCLES :
                                     watchdog>=CONTACT_TIMEOUT_CYCLES) &&
                          (finger || dragging || control_contact);
@@ -100,7 +107,7 @@ module lfo_binding_state #(parameter WATCHDOG_CYCLES=25000000,
             else if(watchdog<WATCHDOG_CYCLES) watchdog<=watchdog+1'b1;
             // A fresh packet always wins over expiry. Some HID paths have no
             // explicit UP, so timeout must finish, rather than erase, a drop.
-            if(ENABLE_CANCEL && cancel)begin
+            if(cancel_registered)begin
                 armed<=0;dragging<=0;finger<=0;control_contact<=0;hover_target<=63;
             end else if(packet_valid || quiet_release) begin
                 if(!packet_valid || !packet_down) begin

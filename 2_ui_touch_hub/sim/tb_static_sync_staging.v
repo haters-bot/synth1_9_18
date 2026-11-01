@@ -4,9 +4,13 @@ module tb_static_sync_staging;
  reg clk=0,rst_n=0,cc_accept=0,uart_busy=1;
  reg [279:0] values=0;
  wire cc_req,done;wire [7:0] id;wire [6:0] val;
+ reg one_accept=0;reg [6:0] one_value=64;
+ wire one_req;wire [6:0] one_val;
  always #10 clk=~clk;
  static_cc_sync #(.COUNT(40)) dut(.clk(clk),.rst_n(rst_n),.values(values),.cc_accept(cc_accept),.uart_busy(uart_busy),
   .cc_req(cc_req),.cc_param_id(id),.cc_val(val),.startup_sync_done(done));
+ static_cc_sync #(.COUNT(1)) one(.clk(clk),.rst_n(rst_n),.values(one_value),.cc_accept(one_accept),.uart_busy(1'b0),
+  .cc_req(one_req),.cc_param_id(),.cc_val(one_val),.startup_sync_done());
  integer i,count=0,race_slot=12;reg [6:0] previous;
  task wait_request;integer n;begin
   n=0;while(!cc_req && n<100)begin @(negedge clk);n=n+1;end
@@ -17,6 +21,8 @@ module tb_static_sync_staging;
   if(dut.scan!==expected_slot[6:0] || val!==expected_value)
    $fatal(1,"staged mismatch slot=%0d expected=%0d val=%0d expected=%0d",dut.scan,expected_slot,val,expected_value);
   cc_accept=1;@(negedge clk);cc_accept=0;count=count+1;
+  if(!dut.accepted_valid || dut.accepted_value!==expected_value)$fatal(1,"FIFO acceptance payload not captured");
+  @(negedge clk);
   if(dut.sent[expected_slot]!==expected_value)$fatal(1,"accepted payload ownership lost");
  end endtask
  initial begin
@@ -35,6 +41,8 @@ module tb_static_sync_staging;
     previous=val;cc_accept=1;
     @(posedge clk);values[race_slot*7+:7]<=7'd111;
     @(negedge clk);cc_accept=0;count=count+1;
+    if(!dut.accepted_valid || dut.accepted_value!==previous)$fatal(1,"accept-edge edit changed captured payload");
+    @(negedge clk);
     if(dut.sent[race_slot]!==previous)$fatal(1,"accept-edge edit falsely acknowledged");
    end else accept_value(i,i+1);
   end
@@ -47,6 +55,13 @@ module tb_static_sync_staging;
   // Pending live edits survive reset only as the current authoritative bank.
   values[39*7+:7]=93;wait_request;accept_value(39,93);
   repeat(100)@(negedge clk);if(cc_req)$fatal(1,"unchanged live value replayed");
+  if(!one_req || one_val!=64)$fatal(1,"single-slot startup missing");
+  one_accept=1;@(posedge clk);one_value<=65;
+  @(negedge clk);one_accept=0;
+  repeat(8)@(negedge clk);
+  if(!one_req || one_val!=65 || one.sent[0]!=64)$fatal(1,"single-slot acceptance/edit ownership lost");
+  one_accept=1;@(negedge clk);one_accept=0;repeat(12)@(negedge clk);
+  if(one_req || one.sent[0]!=65)$fatal(1,"single-slot duplicate after delayed acknowledgement");
   $display("PASS: stalled CURRENT startup slot refreshes to99; acceptance-edge edit sends old then111 once, exact sent ownership, no stale replay, drain gating and live reconciliation");$finish;
  end
  initial begin #1000000;$fatal(1,"staging watchdog");end
