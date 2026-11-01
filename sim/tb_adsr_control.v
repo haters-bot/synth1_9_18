@@ -73,6 +73,7 @@ module tb_adsr_control;
         .task_update_velocity(7'd127),
         .task_update_enable(task_update_enable),
         .task_update_phase_reset(1'b1),
+        .task_update_is_continuous(1'b0),
         .task_update_initial_phase(32'd0),
         .partial_sum(partial_sum),
         .partial_valid(partial_valid),

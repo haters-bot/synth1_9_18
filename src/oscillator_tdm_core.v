@@ -51,6 +51,7 @@ module oscillator_tdm_core #(
     input  wire [6:0]            task_update_velocity,
     input  wire                  task_update_enable,
     input  wire                  task_update_phase_reset,
+    input  wire                  task_update_is_continuous,
     input wire [31:0] task_update_initial_phase,
 
     output reg signed [PARTIAL_SUM_WIDTH-1:0] partial_sum,
@@ -98,6 +99,8 @@ module oscillator_tdm_core #(
         + signed_live_detune_delta;
     reg [31:0] phase_step_state [0:SLOTS_PER_ENGINE-1];
     reg        enable_state [0:SLOTS_PER_ENGINE-1];
+    // 每个槽位记录来源；MIDI 滑音不能覆盖滑带的独立音高。
+    reg        continuous_state [0:SLOTS_PER_ENGINE-1];
     reg        gate_state [0:SLOTS_PER_ENGINE-1];
     reg [2:0]  envelope_stage [0:SLOTS_PER_ENGINE-1];
     reg [15:0] envelope_level [0:SLOTS_PER_ENGINE-1];
@@ -332,10 +335,10 @@ module oscillator_tdm_core #(
         end
     endfunction
 
-    assign issue_live_base_step = glide_override_enable_batch
+    assign issue_live_base_step = (glide_override_enable_batch && !continuous_state[issue_slot])
                                 ? glide_override_base_step_batch
                                 : base_step_state[issue_slot];
-    assign issue_live_detune_unit = glide_override_enable_batch
+    assign issue_live_detune_unit = (glide_override_enable_batch && !continuous_state[issue_slot])
                                   ? make_live_detune_unit(
                                         glide_override_base_step_batch,
                                         detune_magnitude_state[issue_slot])
@@ -502,9 +505,13 @@ module oscillator_tdm_core #(
     assign decay_level_next = 16'hFFFF - segment_product[31:16];
     assign release_level_next = segment_product[31:16];
 
+    // 连续音高更新只改变后续相位步进，不应丢弃在途样本。
+    wire task_update_cancels_sample = task_update_valid
+        && (!task_update_enable || task_update_phase_reset);
+
     assign commit_enabled = commit_valid && commit_enable && !commit_cancel
                           && !clear_phase
-                          && !(task_update_valid && task_update_slot == commit_slot);
+                          && !(task_update_cancels_sample && task_update_slot == commit_slot);
     assign extended_sample = commit_enabled
         ? {{(PARTIAL_SUM_WIDTH-16){enveloped_wave_sample[15]}},
            enveloped_wave_sample}
@@ -668,6 +675,7 @@ module oscillator_tdm_core #(
                 detune_magnitude_state[reset_index] <= 3'd0;
                 detune_negative_state[reset_index] <= 0;
                 enable_state[reset_index] <= 1'b0;
+                continuous_state[reset_index] <= 1'b0;
                 gate_state[reset_index] <= 1'b0;
                 envelope_stage[reset_index] <= ENV_IDLE;
                 envelope_level[reset_index] <= 16'd0;
@@ -739,7 +747,7 @@ module oscillator_tdm_core #(
                 pipe_valid <= request_valid;
                 if (request_valid) begin
                     pipe_cancel <= request_cancel || clear_phase
-                                || (task_update_valid
+                                || (task_update_cancels_sample
                                     && (task_update_slot == request_slot));
                     pipe_slot <= request_slot;
                     pipe_phase <= request_phase;
@@ -765,7 +773,7 @@ module oscillator_tdm_core #(
                 // 每拍推进上下文，暂停发出后valid自然排空；绝不等待整批槽位。
                 read_valid <= 0;
                 prepare_valid <= read_valid;
-                prepare_cancel <= read_cancel || clear_phase || (task_update_valid && task_update_slot == read_slot);
+                prepare_cancel <= read_cancel || clear_phase || (task_update_cancels_sample && task_update_slot == read_slot);
                 prepare_slot <= read_slot;
                 prepare_phase <= read_phase;
                 prepare_phase_step <= read_phase_step;
@@ -779,7 +787,7 @@ module oscillator_tdm_core #(
                 prepare_envelope_phase <= read_envelope_phase;
                 prepare_release_start_level <= read_release_start_level;
                 multiply_valid <= prepare_valid;
-                multiply_cancel <= prepare_cancel || clear_phase || (task_update_valid && task_update_slot == prepare_slot);
+                multiply_cancel <= prepare_cancel || clear_phase || (task_update_cancels_sample && task_update_slot == prepare_slot);
                 multiply_slot <= prepare_slot;
                 multiply_phase <= prepare_phase;
                 multiply_phase_step <= prepare_phase_step;
@@ -794,7 +802,7 @@ module oscillator_tdm_core #(
                 multiply_release_start_level <= prepare_release_start_level;
                 // Warp乘积 → ROM地址级。
                 request_valid <= multiply_valid;
-                request_cancel <= multiply_cancel || clear_phase || (task_update_valid && task_update_slot == multiply_slot);
+                request_cancel <= multiply_cancel || clear_phase || (task_update_cancels_sample && task_update_slot == multiply_slot);
                 request_slot <= multiply_slot;
                 request_phase <= multiply_phase;
                 request_wave_address <= issue_warped_wave_address;
@@ -810,7 +818,7 @@ module oscillator_tdm_core #(
                 request_release_start_level <= multiply_release_start_level;
                 // ROM返回/插值 → 样本寄存器。
                 sample_valid <= pipe_valid;
-                sample_cancel <= pipe_cancel || clear_phase || (task_update_valid && task_update_slot == pipe_slot);
+                sample_cancel <= pipe_cancel || clear_phase || (task_update_cancels_sample && task_update_slot == pipe_slot);
                 sample_slot <= pipe_slot;
                 sample_phase <= pipe_phase;
                 sample_phase_step <= pipe_phase_step;
@@ -821,7 +829,7 @@ module oscillator_tdm_core #(
                 sample_velocity_envelope_level <= pipe_velocity_envelope_level;
                 // 样本 → 增益乘积/提交上下文。
                 commit_valid <= sample_valid;
-                commit_cancel <= sample_cancel || clear_phase || (task_update_valid && task_update_slot == sample_slot);
+                commit_cancel <= sample_cancel || clear_phase || (task_update_cancels_sample && task_update_slot == sample_slot);
                 commit_slot <= sample_slot;
                 commit_phase <= sample_phase;
                 commit_phase_step <= sample_phase_step;
@@ -955,7 +963,7 @@ module oscillator_tdm_core #(
                 // 与提交并行，只读取下一个槽位。最后一个读出后，等待所有在途级排空。
                 if (issue_active) begin
                     read_valid  <= 1'b1;
-                    read_cancel <= clear_phase || (task_update_valid
+                    read_cancel <= clear_phase || (task_update_cancels_sample
                                    && (task_update_slot == issue_slot));
                     read_slot   <= issue_slot;
                     read_phase  <= phase_state[issue_slot];
@@ -995,6 +1003,7 @@ module oscillator_tdm_core #(
                 // Gate On和连续音高更新都会刷新实时Detune基准；只有
                 // phase_reset=1的首次触发才重置相位并重新进入Attack。
                 if (task_update_enable) begin
+                    continuous_state[task_update_slot] <= task_update_is_continuous;
                     base_step_state[task_update_slot] <= task_update_base_step;
                     detune_unit_state[task_update_slot] <= task_update_detune_unit;
                     detune_magnitude_state[task_update_slot]

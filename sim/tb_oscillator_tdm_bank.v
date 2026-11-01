@@ -87,6 +87,7 @@ module tb_oscillator_tdm_bank;
         .task_update_velocity      (task_update_velocity),
         .task_update_enable        (task_update_enable),
         .task_update_phase_reset   (task_update_phase_reset),
+        .task_update_is_continuous(1'b0),
         .task_update_initial_phase (32'd0),
         .task_update_base_step     (32'd0),
         .task_update_detune_unit   (35'd0),

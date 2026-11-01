@@ -5,6 +5,8 @@ module tb_pitch_modulated_core;
     reg rst_n;
     reg start_tick;
     reg task_update_valid;
+    reg task_update_is_continuous;
+    reg task_update_phase_reset;
     reg glide_override_enable;
     reg [31:0] glide_override_base_step;
     reg signed [12:0] vibrato_ratio_delta_q16;
@@ -41,7 +43,9 @@ module tb_pitch_modulated_core;
         .glide_override_base_step(glide_override_base_step),
         .vibrato_ratio_delta_q16(vibrato_ratio_delta_q16),
         .task_update_velocity(7'd127), .task_update_enable(1'b1),
-        .task_update_phase_reset(1'b1),
+        .task_update_phase_reset(task_update_phase_reset),
+        .task_update_is_continuous(task_update_is_continuous),
+        .task_update_initial_phase(32'd0),
         .partial_sum(partial_sum), .partial_valid(partial_valid), .busy(busy),
         .debug_slot(), .debug_slot_commit(), .schedule_overrun(),
         .task_idle_valid(), .task_idle_slot()
@@ -65,6 +69,8 @@ module tb_pitch_modulated_core;
         rst_n = 1'b0;
         start_tick = 1'b0;
         task_update_valid = 1'b0;
+        task_update_is_continuous = 1'b0;
+        task_update_phase_reset = 1'b1;
         glide_override_enable = 1'b0;
         glide_override_base_step = 32'd0;
         vibrato_ratio_delta_q16 = 13'sd0;
@@ -102,6 +108,32 @@ module tb_pitch_modulated_core;
                      dut.pipe_phase_step);
             errors = errors + 1;
         end
+
+        wait (!busy);
+        // 同一实体振荡器中的滑带槽位不能继承 MIDI 的滑音步进。
+        @(negedge clk);
+        task_update_is_continuous = 1'b1;
+        task_update_phase_reset = 1'b1;
+        task_update_valid = 1'b1;
+        @(negedge clk);
+        task_update_valid = 1'b0;
+        run_batch();
+        if (dut.pipe_phase_step !== 32'd1000000) begin
+            $display("ERROR: MIDI glide overrode ribbon pitch: %0d", dut.pipe_phase_step);
+            errors = errors + 1;
+        end
+        // 音高更新与流水线重叠时不得取消当前样本。
+        @(negedge clk);
+        task_update_phase_reset = 1'b0;
+        task_update_valid = 1'b1;
+        @(posedge clk); #1;
+        if (dut.sample_cancel !== 1'b0) begin
+            $display("ERROR: continuous update cancelled in-flight sample");
+            errors = errors + 1;
+        end
+        @(negedge clk);
+        task_update_valid = 1'b0;
+        wait (!busy);
 
         if (errors == 0)
             $display("PASS: realtime vibrato ratio and shared glide base step");

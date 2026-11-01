@@ -27,6 +27,7 @@ module tb_oscillator_task_scheduler;
     wire [6:0] task_update_velocity;
     wire task_update_enable;
     wire task_update_phase_reset;
+    wire task_update_is_continuous;
     wire [6:0] active_task_count;
     wire scheduler_busy;
 
@@ -62,6 +63,7 @@ module tb_oscillator_task_scheduler;
         .task_update_velocity(task_update_velocity),
         .task_update_enable(task_update_enable),
         .task_update_phase_reset(task_update_phase_reset),
+        .task_update_is_continuous(task_update_is_continuous),
         .active_task_count(active_task_count),
         .scheduler_busy(scheduler_busy)
     );
@@ -69,8 +71,13 @@ module tb_oscillator_task_scheduler;
     always #10 clk = ~clk;
 
     always @(posedge clk) begin
-        if (task_update_valid)
+        if (task_update_valid) begin
             update_count = update_count + 1;
+            if (task_update_enable && task_update_is_continuous !== dut.pending_is_continuous) begin
+                $display("ERROR: task source flag does not match event source");
+                errors = errors + 1;
+            end
+        end
     end
 
     task reset_dut;

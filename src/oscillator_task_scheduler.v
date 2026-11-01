@@ -42,6 +42,7 @@ module oscillator_task_scheduler #(
     output reg [6:0]  task_update_velocity,
     output reg        task_update_enable,
     output reg        task_update_phase_reset,
+    output reg        task_update_is_continuous,
     output reg [31:0] task_update_initial_phase,
     // 8 个复音各使用 8 个 Unison 成员时共有 64 个任务，6 位无法表示 64。
     output reg [6:0]  active_task_count,
@@ -290,6 +291,7 @@ module oscillator_task_scheduler #(
             task_update_velocity <= 7'd0;
             task_update_enable <= 1'b0;
             task_update_phase_reset <= 1'b0;
+            task_update_is_continuous <= 1'b0;
             task_update_initial_phase<=0; pending_phase_control<=0; pending_rand_control<=0;
             random_product_stage<=0; random_state<=RANDOM_SEED==0 ? 32'd1 : RANDOM_SEED;
             pending_note <= 7'd0;
@@ -513,6 +515,7 @@ module oscillator_task_scheduler #(
                                    pending_member_index];
                         task_update_velocity <= pending_velocity;
                         task_update_enable <= 1'b1;
+                        task_update_is_continuous <= pending_is_continuous;
                         task_update_phase_reset <= 1'b1;
                         task_update_initial_phase<=pending_member_initial_phase[pending_member_index];
                         task_update_base_step <= pending_base_phase_step_latched;
@@ -597,6 +600,7 @@ module oscillator_task_scheduler #(
                                        pending_member_index];
                             task_update_velocity <= pending_velocity;
                             task_update_enable <= 1'b1;
+                            task_update_is_continuous <= pending_is_continuous;
                             task_update_phase_reset <= 1'b1;
                             task_update_initial_phase<=pending_member_initial_phase[pending_member_index];
                             task_update_base_step <= pending_base_phase_step_latched;
@@ -684,6 +688,7 @@ module oscillator_task_scheduler #(
                         task_update_velocity
                             <= slot_velocity[scan_index];
                         task_update_enable <= 1'b1;
+                        task_update_is_continuous <= pending_is_continuous;
                         task_update_phase_reset <= 1'b0;
                         task_update_initial_phase <= 32'd0;
                         slot_phase_step[scan_index]

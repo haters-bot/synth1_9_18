@@ -133,6 +133,7 @@ module top #(
     wire [6:0]  osc_a_task_update_velocity;
     wire        osc_a_task_update_enable;
     wire        osc_a_task_update_phase_reset;
+    wire        osc_a_task_update_is_continuous;
     wire        osc_a_scheduler_busy;
 
     wire        osc_b_task_update_valid;
@@ -146,6 +147,7 @@ module top #(
     wire [6:0]  osc_b_task_update_velocity;
     wire        osc_b_task_update_enable;
     wire        osc_b_task_update_phase_reset;
+    wire        osc_b_task_update_is_continuous;
     wire        osc_b_scheduler_busy;
 
     wire [7:0] uart_byte;
@@ -1115,6 +1117,7 @@ module top #(
         .task_update_velocity    (osc_a_task_update_velocity),
         .task_update_enable      (osc_a_task_update_enable),
         .task_update_phase_reset (osc_a_task_update_phase_reset),
+        .task_update_is_continuous (osc_a_task_update_is_continuous),
         .task_update_initial_phase(osc_a_task_update_initial_phase),
         .active_task_count       (osc_a_active_task_count),
         .scheduler_busy          (osc_a_scheduler_busy)
@@ -1151,6 +1154,7 @@ module top #(
         .task_update_velocity    (osc_b_task_update_velocity),
         .task_update_enable      (osc_b_task_update_enable),
         .task_update_phase_reset (osc_b_task_update_phase_reset),
+        .task_update_is_continuous (osc_b_task_update_is_continuous),
         .task_update_initial_phase(osc_b_task_update_initial_phase),
         .active_task_count       (osc_b_active_task_count),
         .scheduler_busy          (osc_b_scheduler_busy)
@@ -1200,6 +1204,7 @@ module top #(
         .task_update_velocity      (osc_a_task_update_velocity),
         .task_update_enable        (osc_a_task_update_enable),
         .task_update_phase_reset   (osc_a_task_update_phase_reset),
+        .task_update_is_continuous (osc_a_task_update_is_continuous),
         .task_update_initial_phase(osc_a_task_update_initial_phase),
         .active_task_count         (osc_a_active_task_count),
         .sample_out                (osc_a_mix),
@@ -1255,6 +1260,7 @@ module top #(
         .task_update_velocity      (osc_b_task_update_velocity),
         .task_update_enable        (osc_b_task_update_enable),
         .task_update_phase_reset   (osc_b_task_update_phase_reset),
+        .task_update_is_continuous (osc_b_task_update_is_continuous),
         .task_update_initial_phase(osc_b_task_update_initial_phase),
         .active_task_count         (osc_b_active_task_count),
         .sample_out                (osc_b_mix),
