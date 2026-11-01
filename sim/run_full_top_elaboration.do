@@ -20,6 +20,7 @@ vlog -sv -work work_full_top \
     src/synth_control_router.v \
     src/adsr_parameter_mapper.v \
     src/performance_pitch_controller.v \
+    src/ads1256_debug_uart.v \
     src/ads1256_scanner.v \
     src/ribbon_pitch_processor.v \
     src/ribbon_pitch_to_step.v \

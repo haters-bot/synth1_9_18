@@ -18,13 +18,21 @@ module ribbon_controller_6ch #(
     output wire [2:0]  continuous_event_source,
     output wire [31:0] continuous_event_base_step,
     output wire [6:0]  continuous_event_velocity,
-    output wire        adc_initialized
+    output wire        adc_initialized,
+    output wire [5:0]  adc_debug_state,
+    output wire        adc_debug_drdy,
+    output wire        adc_sample_accepted,
+    output wire [2:0]  adc_sample_channel,
+    output wire [23:0] adc_sample_data
 );
 
     wire sample_valid;
     wire sample_ready;
     wire [2:0] sample_channel;
     wire signed [23:0] sample_data;
+    assign adc_sample_accepted = sample_valid && sample_ready;
+    assign adc_sample_channel = sample_channel;
+    assign adc_sample_data = sample_data;
     wire pitch_event_valid;
     wire pitch_event_ready;
     wire pitch_event_on;
@@ -48,7 +56,8 @@ module ribbon_controller_6ch #(
         .sample_ready(sample_ready),
         .sample_channel(sample_channel),
         .sample_data(sample_data),
-        .initialized(adc_initialized)
+        .initialized(adc_initialized),
+        .debug_state(adc_debug_state), .debug_drdy(adc_debug_drdy)
     );
 
     ribbon_pitch_processor #(

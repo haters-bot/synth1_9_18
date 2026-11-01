@@ -24,7 +24,9 @@ module ads1256_scanner #(
     input  wire               sample_ready,
     output reg [2:0]          sample_channel,
     output reg signed [23:0]  sample_data,
-    output reg                initialized
+    output reg                initialized,
+    output wire [5:0]         debug_state,
+    output wire               debug_drdy
 );
 
     localparam integer SCLK_HALF_DIV = SYS_CLK_HZ / (SCLK_HZ * 2);
@@ -70,12 +72,14 @@ module ads1256_scanner #(
     localparam [1:0] Q_WAIT   = 2'd2;
 
     reg [5:0] state;
+    assign debug_state = state;
     reg [5:0] state_after_gap;
     reg [31:0] delay_counter;
     reg [2:0] current_channel;
     reg [2:0] target_channel;
     reg drdy_meta;
     reg drdy_sync;
+    assign debug_drdy = drdy_sync;
     reg drdy_seen_high;
 
     reg [1:0] sequence_state;

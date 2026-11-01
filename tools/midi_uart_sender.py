@@ -523,6 +523,8 @@ class MidiUartSender:
         self.root.minsize(640, 480)
 
         self.port = None
+        self._rx_buffer = bytearray()
+        self._rx_after_id = None
         self.port_lookup: dict[str, str] = {}
         self.active_notes: set[int] = set()
         self.keyboard_notes: set[int] = set()
@@ -1278,8 +1280,34 @@ class MidiUartSender:
         self.status.set(f"已连接 {device} @ {baud} baud")
         self._append_log(f"连接 {device} @ {baud}")
         self.send_all_synth_controls()
+        self._rx_buffer.clear()
+        self._poll_serial_input()
+
+    def _poll_serial_input(self) -> None:
+        self._rx_after_id = None
+        if self.port is None or not self.port.is_open:
+            return
+        try:
+            data = self.port.read(min(self.port.in_waiting, 4096))
+        except serial.SerialException as exc:
+            self._append_log(f"接收失败：{exc}")
+            self.disconnect()
+            return
+        self._rx_buffer.extend(data)
+        while b"\n" in self._rx_buffer:
+            line, _, remaining = self._rx_buffer.partition(b"\n")
+            self._rx_buffer = bytearray(remaining)
+            text = line.rstrip(b"\r").decode("ascii", errors="replace")
+            if text:
+                self._append_log("RX " + text)
+        if len(self._rx_buffer) > 4096:
+            self._rx_buffer.clear()
+        self._rx_after_id = self.root.after(100, self._poll_serial_input)
 
     def disconnect(self) -> None:
+        if self._rx_after_id is not None:
+            self.root.after_cancel(self._rx_after_id)
+            self._rx_after_id = None
         if self.port is None:
             return
         self.all_notes_off()
@@ -1641,6 +1669,8 @@ class MidiUartSender:
     def _append_log(self, text: str) -> None:
         self.log.configure(state=tk.NORMAL)
         self.log.insert(tk.END, text + "\n")
+        if int(self.log.index("end-1c").split(".")[0]) > 250:
+            self.log.delete("1.0", "51.0")
         self.log.see(tk.END)
         self.log.configure(state=tk.DISABLED)
 

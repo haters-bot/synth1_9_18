@@ -12,6 +12,7 @@
         <File path="src/acid_wavetable_reader.v" type="file.verilog" enable="1"/>
         <File path="src/acid_wavetable_rom.v" type="file.verilog" enable="1"/>
         <File path="src/adsr_parameter_mapper.v" type="file.verilog" enable="1"/>
+        <File path="src/ads1256_debug_uart.v" type="file.verilog" enable="1"/>
         <File path="src/ads1256_scanner.v" type="file.verilog" enable="1"/>
         <File path="src/advanced_fir_filter/fir_decimator_8x_ip.v" type="file.verilog" enable="1"/>
         <File path="src/async_fifo.v" type="file.verilog" enable="1"/>

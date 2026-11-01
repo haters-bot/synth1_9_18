@@ -8,6 +8,7 @@ module top #(
     parameter integer SLOTS_PER_ENGINE = 32,
     parameter integer EXTERNAL_WAVETABLE_ENABLE = 1
 )(
+    output wire uart_tx,
     input wire adc_drdy_n, adc_dout,
     output wire adc_cs_n, adc_sclk, adc_din, adc_reset_n,
     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
@@ -1041,6 +1042,17 @@ module top #(
     wire [31:0] ribbon_event_base_step;
     wire [6:0] ribbon_event_velocity;
     wire ribbon_adc_initialized;
+    wire [5:0] adc_debug_state;
+    wire adc_debug_drdy, adc_sample_accepted;
+    wire [2:0] adc_sample_channel;
+    wire [23:0] adc_sample_data;
+    ads1256_debug_uart #(.BAUD_RATE(UART_BAUD_RATE)) u_ads1256_debug_uart (
+        .clk(clk_sys), .rst_n(rst_n_sys), .initialized(ribbon_adc_initialized),
+        .drdy(adc_debug_drdy), .scanner_state(adc_debug_state),
+        .sample_valid(adc_sample_accepted), .sample_channel(adc_sample_channel),
+        .sample_data(adc_sample_data), .midi_overflow(midi_scheduler_overflow),
+        .uart_tx(uart_tx)
+    );
     assign ribbon_event_ready = schedulers_ready && (midi_scheduler_count == 0) && !pitch_note_event_valid;
     always @(posedge clk_sys or negedge rst_n_sys) begin
         if (!rst_n_sys) begin
@@ -1066,7 +1078,10 @@ module top #(
         .scheduler_ready(ribbon_event_ready), .continuous_event_valid(ribbon_event_valid),
         .continuous_event_on(ribbon_event_on), .continuous_event_source(ribbon_event_source),
         .continuous_event_base_step(ribbon_event_base_step), .continuous_event_velocity(ribbon_event_velocity),
-        .adc_initialized(ribbon_adc_initialized)
+        .adc_initialized(ribbon_adc_initialized),
+        .adc_debug_state(adc_debug_state), .adc_debug_drdy(adc_debug_drdy),
+        .adc_sample_accepted(adc_sample_accepted), .adc_sample_channel(adc_sample_channel),
+        .adc_sample_data(adc_sample_data)
     );
 
     oscillator_task_scheduler #(
