@@ -21,6 +21,9 @@ FILES = {
     'midi_uart_tx.v': 'rtl/midi_uart_tx/midi_uart_tx.v',
     'params.vh': 'rtl/ui_vector_engine/params.vh',
     'mod_targets.vh': 'rtl/ui_vector_engine/mod_targets.vh',
+    'audio_capabilities.vh': 'rtl/ui_vector_engine/audio_capabilities.vh',
+    'audio_extra_controls.vh': 'rtl/ui_vector_engine/audio_extra_controls.vh',
+    'wavetable_catalog.vh': 'rtl/ui_vector_engine/wavetable_catalog.vh',
     'lfo_route_probe.v': 'sim/lfo_route_probe.v',
     'tb_lfo_route_probe.v': 'sim/tb_lfo_route_probe.v',
 }

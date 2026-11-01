@@ -201,6 +201,27 @@ module performance_pcm_store #(
     wire timed_out=transaction_active && (watchdog>=RESPONSE_TIMEOUT-1);
     wire transaction_failed=transaction_active && (!init_done || timed_out);
 
+    // Payload metadata settles before a reply is exposed by return_valid.
+    // Keep live DDR reset/calibration (online) out of this 64-bit hold/load
+    // enable: it previously drove every payload bit through a deep fault mux.
+    // Error qualification remains live in the control process below.
+    always @(posedge mem_clk or negedge mem_rst_n)begin
+        if(!mem_rst_n)return_data[63:0]<=0;
+        else begin
+            if(mem_state==M_VALIDATE)begin
+                return_data[63:32]<=pending_kind==T_READ ? pending_command_data[31:0] :
+                    pending_kind==T_BEGIN ? 32'd0 : committed;
+                return_data[31:0]<=0;
+            end
+            if(transaction_active)begin
+                return_data[63:32]<=req_write ? committed : pending_read_index;
+                return_data[31:0]<=0;
+            end
+            if(mem_state==M_COMPLETE && !req_write)
+                return_data[31:0]<=completion_read_data;
+        end
+    end
+
     always @(posedge mem_clk or negedge mem_rst_n)begin
         if(!mem_rst_n)begin
             mem_state<=M_IDLE;session<=0;session_error<=0;poisoned<=0;last_good<=0;
@@ -209,7 +230,7 @@ module performance_pcm_store #(
             pending_kind<=0;pending_command_frames<=0;
             pending_command_addr<=0;pending_command_mask<=0;pending_command_data<=0;
             expected_command_addr<=0;pending_end_frame<=0;
-            req_write<=0;req_addr<=0;req_wdata<=0;req_wmask<=0;return_valid<=0;return_data<=0;
+            req_write<=0;req_addr<=0;req_wdata<=0;req_wmask<=0;return_valid<=0;return_data[66:64]<=0;
         end else begin
             // These payloads settle before req_valid and cannot change while a
             // transaction is outstanding. Avoid a shared state-decode enable
@@ -267,13 +288,13 @@ module performance_pcm_store #(
                         mem_state<=M_IDLE;
                         session<=1;session_error<=session || !online;last_good<=0;
                         memory_base<=pending_command_addr;memory_limit<=pending_command_data[31:0];committed<=0;
-                        if(session || !online)begin return_valid<=1;return_data<={R_FAULT,1'b1,32'd0,32'd0};end
+                        if(session || !online)begin return_valid<=1;return_data[66:64]<={R_FAULT,1'b1};end
                     end
                     T_DATA:begin
                         if(!session || session_error || !online)begin
                             mem_state<=M_IDLE;
                             session_error<=1;
-                            if(!session_error)begin return_valid<=1;return_data<={R_FAULT,1'b1,committed,32'd0};end
+                            if(!session_error)begin return_valid<=1;return_data[66:64]<={R_FAULT,1'b1};end
                         end else if(pending_write_invalid)begin
                             // Defer the response one state so the wide limit
                             // compare is not on the DDR status return path.
@@ -285,7 +306,7 @@ module performance_pcm_store #(
                     T_END:begin
                         mem_state<=M_IDLE;
                         return_valid<=1;
-                        return_data<={R_END,(!session || session_error || !online || pending_command_mask[0] || pending_command_data[31:0]!=committed),committed,32'd0};
+                        return_data[66:64]<={R_END,(!session || session_error || !online || pending_command_mask[0] || pending_command_data[31:0]!=committed)};
                         last_frames<=committed;last_base<=memory_base;
                         last_good<=session && !session_error && online && !pending_command_mask[0] && pending_command_data[31:0]==committed;
                         session<=0;
@@ -294,7 +315,7 @@ module performance_pcm_store #(
                         pending_read_index<=pending_command_data[31:0];
                         if(session || !last_good || !online || pending_read_out_of_range)begin
                             mem_state<=M_IDLE;
-                            return_valid<=1;return_data<={R_READ,1'b1,pending_command_data[31:0],32'd0};
+                            return_valid<=1;return_data[66:64]<={R_READ,1'b1};
                         end else begin
                             mem_state<=M_REQUEST;
                         end
@@ -304,17 +325,17 @@ module performance_pcm_store #(
             if(mem_state==M_FAULT)begin
                 mem_state<=M_IDLE;
                 session_error<=1;return_valid<=1;
-                return_data<={R_FAULT,1'b1,committed,32'd0};
+                return_data[66:64]<={R_FAULT,1'b1};
             end
             if(mem_state==M_COMPLETE)begin
                 mem_state<=M_IDLE;
                 if(req_write)begin
                     if(completion_error)begin
-                        session_error<=1;return_valid<=1;return_data<={R_FAULT,1'b1,committed,32'd0};
+                        session_error<=1;return_valid<=1;return_data[66:64]<={R_FAULT,1'b1};
                     end else committed<=pending_end_frame[31:0];
                 end else begin
                     return_valid<=1;
-                    return_data<={R_READ,completion_error,pending_read_index,completion_read_data};
+                    return_data[66:64]<={R_READ,completion_error};
                 end
             end
             // Payload staging is deliberately independent of command-valid
@@ -332,7 +353,7 @@ module performance_pcm_store #(
                 // A late response cannot be safely associated with a retry.
                 // Quarantine this memory port until a coordinated reset.
                 poisoned<=1;mem_state<=M_IDLE;session_error<=1;return_valid<=1;
-                return_data<=req_write ? {R_FAULT,1'b1,committed,32'd0} : {R_READ,1'b1,pending_read_index,32'd0};
+                return_data[66:64]<=req_write ? {R_FAULT,1'b1} : {R_READ,1'b1};
             end
             // Preload the reply KIND independently of live calibration and
             // success gates. No reply is visible until return_valid, and no

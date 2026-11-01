@@ -123,39 +123,40 @@ module lfo_sysex_tx #(
     // shadow, guaranteeing one batch describes one consistent snapshot).
     reg [15:0] entry_value;
     reg [7:0]  entry_id;
-    wire [6:0] mode_bank = scan - 7'd21;   // 0..2 when scan is 21..23
-    wire [6:0] sync_bank = scan - 7'd24;   // 0..2 when scan is 24..26
-    wire [6:0] route_idx = scan - 7'd27;   // 0..52 when scan is 27..79
-    integer route_select;
+    // Decode into a local registered one-hot bank before selecting payloads.
+    // This breaks scan/subtract -> 53-way priority mux -> frame on GW5A.
+    // The tag prevents the extra decode cycle from sending the previous entry.
+    reg [79:0] entry_select /* synthesis syn_preserve=1 syn_keep=1 */;
+    reg [6:0] entry_scan /* synthesis syn_preserve=1 syn_keep=1 */;
+    integer decode_entry,encode_point,encode_bank,encode_route;
+    always @(posedge clk or negedge rst_n) begin
+        if(!rst_n)begin entry_select<=80'd1;entry_scan<=0;end
+        else begin
+            entry_scan<=scan;
+            for(decode_entry=0;decode_entry<80;decode_entry=decode_entry+1)
+                entry_select[decode_entry]<=scan==decode_entry;
+        end
+    end
     always @(*) begin
-        entry_id    = ID_POINT0 + scan[6:0];
+        entry_id    = 8'd0;
         entry_value = 16'd0;
-        if (scan >= 7'd27) begin
-            entry_id    = ID_ROUTE0 + route_idx;
-            // 14-bit payload layout: source occupies value[9:8], while the
-            // signed depth keeps its raw two's-complement pattern in [7:0].
-            // Elaborate constant slices: Gowin 1.9.11.03 produced zero route
-            // payloads for the variable-index slices despite valid shadows.
-            // Keep the RTL/post-PnR UART comparison in test_lfo_route_gate.py.
-            for (route_select = 0; route_select < 53; route_select = route_select + 1)
-                if (route_idx == route_select[6:0])
-                    entry_value = {6'd0, sh_sources[route_select*2 +: 2],
-                                   sh_depths[route_select*8 +: 8]};
-        end else if (scan >= 7'd24) begin
-            entry_id    = ID_SYNC;
-            entry_value = 16'd4 + {14'd0, sync_bank[1:0]}; // bank | 0x0004 restart
-        end else if (scan >= 7'd21) begin
-            entry_id    = ID_MODE0 + mode_bank;
-            // Constant slices avoid the same Gowin indexed-read mismatch as
-            // routes: valid q/sh rate bits otherwise became zero in the .vo.
-            case (mode_bank)
-                0: entry_value = {11'd0, sh_once[0], sh_steps[0], sh_rates[2:0]};
-                1: entry_value = {11'd0, sh_once[1], sh_steps[1], sh_rates[5:3]};
-                2: entry_value = {11'd0, sh_once[2], sh_steps[2], sh_rates[8:6]};
-                default: entry_value = 16'd0;
-            endcase
-        end else begin
-            entry_value = {9'd0, sh_nodes[scan*7 +: 7]};
+        // Constant slices retain the existing workaround for Gowin's
+        // variable-index route/mode reads. Parallel masks avoid priority chains.
+        for(encode_point=0;encode_point<21;encode_point=encode_point+1)begin
+            entry_id=entry_id|({8{entry_select[encode_point]}}&(ID_POINT0+encode_point[7:0]));
+            entry_value=entry_value|({16{entry_select[encode_point]}}&{9'd0,sh_nodes[encode_point*7+:7]});
+        end
+        for(encode_bank=0;encode_bank<3;encode_bank=encode_bank+1)begin
+            entry_id=entry_id|({8{entry_select[21+encode_bank]}}&(ID_MODE0+encode_bank[7:0]));
+            entry_id=entry_id|({8{entry_select[24+encode_bank]}}&ID_SYNC);
+            entry_value=entry_value|({16{entry_select[21+encode_bank]}}&
+                {11'd0,sh_once[encode_bank],sh_steps[encode_bank],sh_rates[encode_bank*3+:3]});
+            entry_value=entry_value|({16{entry_select[24+encode_bank]}}&(16'd4+encode_bank[15:0]));
+        end
+        for(encode_route=0;encode_route<53;encode_route=encode_route+1)begin
+            entry_id=entry_id|({8{entry_select[27+encode_route]}}&(ID_ROUTE0+encode_route[7:0]));
+            entry_value=entry_value|({16{entry_select[27+encode_route]}}&
+                {6'd0,sh_sources[encode_route*2+:2],sh_depths[encode_route*8+:8]});
         end
     end
 
@@ -225,7 +226,7 @@ module lfo_sysex_tx #(
                 S_STREAM: begin
                     if (dirty == 80'd0) begin
                         state <= S_COMMIT;
-                    end else if (dirty[scan]) begin
+                    end else if (dirty[scan] && entry_scan==scan) begin
                         sysex_msgs <= {8'hF0, 8'h7D, entry_id,
                                        1'b0, entry_value[13:7],
                                        1'b0, entry_value[6:0], 8'hF7};
@@ -235,7 +236,7 @@ module lfo_sysex_tx #(
                             sysex_req   <= 1'b0;
                             scan        <= (scan == 7'd79) ? 7'd0 : scan + 7'd1;
                         end
-                    end else begin
+                    end else if(!dirty[scan]) begin
                         scan <= (scan == 7'd79) ? 7'd0 : scan + 7'd1;
                     end
                 end
