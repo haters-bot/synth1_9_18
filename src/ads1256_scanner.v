@@ -30,6 +30,8 @@ module ads1256_scanner #(
 );
 
     localparam integer SCLK_HALF_DIV = SYS_CLK_HZ / (SCLK_HZ * 2);
+    // 末个SCLK下降沿后保持CS至少2 us，覆盖7.68 MHz时8个CLKIN的要求。
+    localparam integer CS_HOLD_CYCLES = (SYS_CLK_HZ + 499999) / 500000;
 
     localparam [3:0] SEQ_RESET     = 4'd0;
     localparam [3:0] SEQ_SDATAC    = 4'd1;
@@ -70,6 +72,7 @@ module ads1256_scanner #(
     localparam [1:0] Q_IDLE   = 2'd0;
     localparam [1:0] Q_LAUNCH = 2'd1;
     localparam [1:0] Q_WAIT   = 2'd2;
+    localparam [1:0] Q_HOLD   = 2'd3;
 
     reg [5:0] state;
     assign debug_state = state;
@@ -88,6 +91,8 @@ module ads1256_scanner #(
     reg sequence_start;
     reg [3:0] sequence_start_kind;
     reg sequence_done;
+    reg read_cs_held;
+    reg [31:0] cs_hold_counter;
     reg [23:0] read_data_shift;
 
     reg spi_start;
@@ -221,13 +226,15 @@ module ads1256_scanner #(
             spi_start <= 1'b0;
             spi_start_byte <= 8'd0;
             adc_cs_n <= 1'b1;
+            read_cs_held <= 1'b0;
+            cs_hold_counter <= 0;
             read_data_shift <= 24'd0;
         end else begin
             sequence_done <= 1'b0;
             spi_start <= 1'b0;
             case (sequence_state)
                 Q_IDLE: begin
-                    adc_cs_n <= 1'b1;
+                    adc_cs_n <= !read_cs_held;
                     if (sequence_start) begin
                         sequence_kind <= sequence_start_kind;
                         sequence_index <= 3'd0;
@@ -256,14 +263,28 @@ module ads1256_scanner #(
                                 <= {read_data_shift[15:0], spi_rx_byte};
                         if (sequence_index
                             == sequence_last_index(sequence_kind)) begin
-                            adc_cs_n <= 1'b1;
-                            sequence_done <= 1'b1;
-                            sequence_state <= Q_IDLE;
+                            cs_hold_counter <= 0;
+                            sequence_state <= Q_HOLD;
                         end else begin
                             sequence_index <= sequence_index + 3'd1;
                             sequence_state <= Q_LAUNCH;
                         end
                     end
+                end
+
+                Q_HOLD: begin
+                    if (cs_hold_counter >= CS_HOLD_CYCLES-1) begin
+                        sequence_done <= 1'b1;
+                        sequence_state <= Q_IDLE;
+                        if (sequence_kind == SEQ_RDATA) begin
+                            // RDATA命令、t6等待及24位数据属于同一CS事务。
+                            read_cs_held <= 1'b1;
+                            adc_cs_n <= 1'b0;
+                        end else begin
+                            read_cs_held <= 1'b0;
+                            adc_cs_n <= 1'b1;
+                        end
+                    end else cs_hold_counter <= cs_hold_counter + 1'b1;
                 end
 
                 default: sequence_state <= Q_IDLE;
