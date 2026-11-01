@@ -44,6 +44,9 @@ module tb_oscillator_tdm_bank;
     integer commit_count;
     integer valid_count;
     integer enabled_schedule_count;
+    reg [31:0] saved_continuous_phase;
+    reg [2:0] saved_continuous_envelope_stage;
+    reg [15:0] saved_continuous_envelope_level;
     integer init_index;
     integer check_index;
     reg     saw_nonzero_sample;
@@ -188,6 +191,9 @@ module tb_oscillator_tdm_bank;
         enabled_schedule_count = 0;
         saw_nonzero_sample = 1'b0;
         saw_slot5_idle = 1'b0;
+        saved_continuous_phase = 32'd0;
+        saved_continuous_envelope_stage = 3'd0;
+        saved_continuous_envelope_level = 16'd0;
 
         repeat (4) @(posedge clk);
         rst_n = 1'b1;
@@ -272,6 +278,32 @@ module tb_oscillator_tdm_bank;
         if (dut.target_gain_q16 !== 17'd2048
             || dut.mix_gain_q16 >= 17'd65536) begin
             $display("ERROR: dynamic 32-voice normalization did not engage");
+            errors = errors + 1;
+        end
+
+        // 连续音高更新使用enable=1、phase_reset=0：只改step，不能清相位
+        // 或把当前包络重新拉回Attack。
+        saved_continuous_phase = dut.GEN_ENGINE[0].u_oscillator_tdm_core
+            .phase_state[4];
+        saved_continuous_envelope_stage
+            = dut.GEN_ENGINE[0].u_oscillator_tdm_core.envelope_stage[4];
+        saved_continuous_envelope_level
+            = dut.GEN_ENGINE[0].u_oscillator_tdm_core.envelope_level[4];
+        update_voice_slot(4, 32'h0002A000, 1'b1, 1'b0);
+        #1;
+        if (dut.GEN_ENGINE[0].u_oscillator_tdm_core.phase_state[4]
+                !== saved_continuous_phase
+            || dut.GEN_ENGINE[0].u_oscillator_tdm_core.envelope_stage[4]
+                !== saved_continuous_envelope_stage
+            || dut.GEN_ENGINE[0].u_oscillator_tdm_core.envelope_level[4]
+                !== saved_continuous_envelope_level) begin
+            $display("ERROR: continuous pitch update changed phase/ADSR phase %h->%h stage %0d->%0d level %h->%h",
+                saved_continuous_phase,
+                dut.GEN_ENGINE[0].u_oscillator_tdm_core.phase_state[4],
+                saved_continuous_envelope_stage,
+                dut.GEN_ENGINE[0].u_oscillator_tdm_core.envelope_stage[4],
+                saved_continuous_envelope_level,
+                dut.GEN_ENGINE[0].u_oscillator_tdm_core.envelope_level[4]);
             errors = errors + 1;
         end
 

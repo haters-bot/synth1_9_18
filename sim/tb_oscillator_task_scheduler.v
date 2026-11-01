@@ -15,6 +15,11 @@ module tb_oscillator_task_scheduler;
     reg [3:0] unison_count;
     reg [6:0] detune_amount;
     reg [TOTAL_SLOTS-1:0] task_idle_mask;
+    reg continuous_event_valid;
+    reg continuous_event_on;
+    reg [2:0] continuous_event_source;
+    reg [31:0] continuous_event_base_step;
+    reg [6:0] continuous_event_velocity;
 
     wire task_update_valid;
     wire [7:0] task_update_slot;
@@ -46,6 +51,11 @@ module tb_oscillator_task_scheduler;
         .unison_count(unison_count),
         .detune_amount(detune_amount),
         .task_idle_mask(task_idle_mask),
+        .continuous_event_valid(continuous_event_valid),
+        .continuous_event_on(continuous_event_on),
+        .continuous_event_source(continuous_event_source),
+        .continuous_event_base_step(continuous_event_base_step),
+        .continuous_event_velocity(continuous_event_velocity),
         .task_update_valid(task_update_valid),
         .task_update_slot(task_update_slot),
         .task_update_phase_step(task_update_phase_step),
@@ -70,10 +80,39 @@ module tb_oscillator_task_scheduler;
             note_event_velocity = 7'd100;
             detune_amount = 7'd64;
             task_idle_mask = {TOTAL_SLOTS{1'b0}};
+            continuous_event_valid = 1'b0;
+            continuous_event_on = 1'b0;
+            continuous_event_source = 3'd0;
+            continuous_event_base_step = 32'd0;
+            continuous_event_velocity = 7'd100;
             repeat (4) @(posedge clk);
             @(negedge clk);
             rst_n = 1'b1;
             repeat (2) @(posedge clk);
+        end
+    endtask
+
+    task send_continuous;
+        input event_on;
+        input [2:0] source;
+        input [31:0] base_step;
+        input [3:0] members;
+        begin
+            while (scheduler_busy)
+                @(posedge clk);
+            @(negedge clk);
+            continuous_event_on = event_on;
+            continuous_event_source = source;
+            continuous_event_base_step = base_step;
+            continuous_event_velocity = 7'd100;
+            unison_count = members;
+            continuous_event_valid = 1'b1;
+            @(negedge clk);
+            continuous_event_valid = 1'b0;
+            @(posedge clk);
+            while (scheduler_busy)
+                @(posedge clk);
+            #1;
         end
     endtask
 
@@ -117,8 +156,43 @@ module tb_oscillator_task_scheduler;
         note_event_note = 7'd0;
         unison_count = 4'd1;
         task_idle_mask = 32'd0;
+        continuous_event_valid = 1'b0;
+        continuous_event_on = 1'b0;
+        continuous_event_source = 3'd0;
+        continuous_event_base_step = 32'd0;
+        continuous_event_velocity = 7'd100;
         errors = 0;
         update_count = 0;
+
+        reset_dut();
+
+        // 连续音高源首次触发分配4个成员，滑动时只更新step而不改变任务数。
+        detune_amount = 7'd0;
+        send_continuous(1'b1, 3'd2, 32'h0016534C, 4'd4);
+        if (active_task_count != 7'd4) begin
+            $display("ERROR: ribbon Gate On did not allocate four tasks");
+            errors = errors + 1;
+        end
+        send_continuous(1'b1, 3'd2, 32'h00170000, 4'd4);
+        if (active_task_count != 7'd4) begin
+            $display("ERROR: ribbon pitch update changed task count");
+            errors = errors + 1;
+        end
+        for (i = 0; i < TOTAL_SLOTS; i = i + 1)
+            if (dut.slot_active[i] && dut.slot_continuous[i]
+                && dut.slot_source[i] == 3'd2
+                && dut.slot_phase_step[i] != 32'h00170000) begin
+                $display("ERROR: ribbon pitch update missed task %0d", i);
+                errors = errors + 1;
+            end
+        send_continuous(1'b0, 3'd2, 32'h00170000, 4'd4);
+        for (i = 0; i < TOTAL_SLOTS; i = i + 1)
+            if (dut.slot_active[i] && dut.slot_continuous[i]
+                && dut.slot_source[i] == 3'd2
+                && !dut.slot_releasing[i]) begin
+                $display("ERROR: ribbon Gate Off missed task %0d", i);
+                errors = errors + 1;
+            end
 
         reset_dut();
 

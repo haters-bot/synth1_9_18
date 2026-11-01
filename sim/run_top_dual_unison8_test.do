@@ -32,7 +32,6 @@ vlog -work work_top_dual_unison8 \
     src/oscillator_tdm_bank.v \
     src/fir_decimator_8x_wrapper.v \
     src/global_svf_filter.v \
-    src/global_comb_filter.v \
     src/global_filter.v \
     src/global_delay.v \
     src/global_reverb.v \

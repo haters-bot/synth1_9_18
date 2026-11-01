@@ -97,175 +97,18 @@ module tb_global_filter;
             errors = errors + 1;
         end
 
-        // Cutoff必须实际改变Comb延迟地址，覆盖低、中、高三个控制点。
-        filter_mode = 3'd5;
-        resonance_control = 7'd0;
-        mix_control = 7'd0;
-        cutoff_control_q8 = {7'd0, 8'd0};
-        process_sample(16'sd0);
-        // 干湿乘积独立寄存后，Comb路径增加一拍。
-        if (latency_cycles != 17) begin
-            $display("ERROR: Catmull Comb latency mismatch: %0d",
-                     latency_cycles);
-            errors = errors + 1;
-        end
-        if (dut.u_global_comb_filter.delay_length_latched !== 12'd2045) begin
-            $display("ERROR: Comb Cutoff=0 delay mapping failed: %0d",
-                     dut.u_global_comb_filter.delay_length_latched);
-            errors = errors + 1;
-        end
-        if (dut.u_global_comb_filter.delay_fraction_latched !== 8'd0) begin
-            $display("ERROR: Comb Cutoff=0 fraction failed: %0d",
-                     dut.u_global_comb_filter.delay_fraction_latched);
-            errors = errors + 1;
-        end
-        cutoff_control_q8 = {7'd64, 8'd0};
-        process_sample(16'sd0);
-        if (dut.u_global_comb_filter.delay_length_latched !== 12'd127) begin
-            $display("ERROR: Comb Cutoff=64 delay mapping failed: %0d",
-                     dut.u_global_comb_filter.delay_length_latched);
-            errors = errors + 1;
-        end
-        if (dut.u_global_comb_filter.delay_fraction_latched !== 8'd240) begin
-            $display("ERROR: Comb Cutoff=64 fraction failed: %0d",
-                     dut.u_global_comb_filter.delay_fraction_latched);
-            errors = errors + 1;
-        end
-        cutoff_control_q8 = {7'd127, 8'd0};
-        process_sample(16'sd0);
-        if (dut.u_global_comb_filter.delay_length_latched !== 12'd8) begin
-            $display("ERROR: Comb Cutoff=127 delay mapping failed: %0d",
-                     dut.u_global_comb_filter.delay_length_latched);
-            errors = errors + 1;
-        end
-        if (dut.u_global_comb_filter.delay_fraction_latched !== 8'd96) begin
-            $display("ERROR: Comb Cutoff=127 fraction failed: %0d",
-                     dut.u_global_comb_filter.delay_fraction_latched);
-            errors = errors + 1;
-        end
-
-        // 半个CC刻度必须落在相邻两组延迟映射之间。
-        cutoff_control_q8 = {7'd126, 8'd128};
-        process_sample(16'sd0);
-        if (dut.u_global_comb_filter.delay_length_mapped_q8
-            >= dut.u_global_comb_filter.delay_at_integer_q8
-            || dut.u_global_comb_filter.delay_length_mapped_q8
-               <= dut.u_global_comb_filter.delay_at_next_q8) begin
-            $display("ERROR: fractional Cutoff interpolation failed");
-            errors = errors + 1;
-        end
-
-        // 最高Cutoff对应8点延迟。Resonance=0时前馈梳状项仍必须存在，
-        // 证明Cutoff并不依赖反馈才能改变频率响应。
-        reset_dut();
-        filter_mode = 3'd5;
-        cutoff_control_q8 = {7'd127, 8'd0};
-        resonance_control = 7'd0;
+        // 已移除的模式5/6与未知模式必须保持安全旁路。
         mix_control = 7'd127;
-        process_sample(16'sd12000);
-        for (sample_index = 1; sample_index < 7;
-             sample_index = sample_index + 1)
-            process_sample(16'sd0);
-        process_sample(16'sd0);
-        if (captured_sample > -16'sd350
-            || captured_sample < -16'sd550) begin
-            $display("ERROR: Catmull leading tap failed: %0d",
-                     captured_sample);
-            errors = errors + 1;
-        end
-        process_sample(16'sd0);
-        if (captured_sample < 16'sd4260
-            || captured_sample > 16'sd4470) begin
-            $display("ERROR: Catmull main tap failed: %0d",
-                     captured_sample);
-            errors = errors + 1;
-        end
-        process_sample(16'sd0);
-        if (captured_sample < 16'sd2230
-            || captured_sample > 16'sd2440) begin
-            $display("ERROR: Catmull second main tap failed: %0d",
-                     captured_sample);
-            errors = errors + 1;
-        end
-        process_sample(16'sd0);
-        if (captured_sample > -16'sd170
-            || captured_sample < -16'sd360) begin
-            $display("ERROR: Catmull trailing tap failed: %0d",
-                     captured_sample);
-            errors = errors + 1;
-        end
-
-        // 延迟改为127点后，第8个样本不应再出现回声，证明Cutoff确实移动梳齿。
-        reset_dut();
         filter_mode = 3'd5;
-        cutoff_control_q8 = {7'd64, 8'd0};
-        resonance_control = 7'd0;
-        mix_control = 7'd127;
-        process_sample(16'sd12000);
-        for (sample_index = 1; sample_index < 8;
-             sample_index = sample_index + 1)
-            process_sample(16'sd0);
-        process_sample(16'sd0);
-        if (captured_sample !== 16'sd0) begin
-            $display("ERROR: Comb Cutoff did not move echo position: %0d",
-                     captured_sample);
-            errors = errors + 1;
-        end
-
-        // 提高Resonance后仍应保留正极性的梳状输出。
-        reset_dut();
-        filter_mode = 3'd5;
-        cutoff_control_q8 = {7'd127, 8'd0};
-        resonance_control = 7'd127;
-        mix_control = 7'd127;
-        process_sample(16'sd12000);
-        for (sample_index = 1; sample_index < 8;
-             sample_index = sample_index + 1)
-            process_sample(16'sd0);
-        process_sample(16'sd0);
-        if (captured_sample < 16'sd4000) begin
-            $display("ERROR: positive Comb polarity failed: %0d", captured_sample);
-            errors = errors + 1;
-        end
-
-        // 中间Mix应按比例减小同一个首回声。
-        reset_dut();
-        filter_mode = 3'd5;
-        cutoff_control_q8 = {7'd127, 8'd0};
-        resonance_control = 7'd127;
-        mix_control = 7'd64;
-        process_sample(16'sd12000);
-        for (sample_index = 1; sample_index < 8;
-             sample_index = sample_index + 1)
-            process_sample(16'sd0);
-        process_sample(16'sd0);
-        if (captured_sample < 16'sd2080 || captured_sample > 16'sd2280) begin
-            $display("ERROR: intermediate Mix scaling failed: %0d",
-                     captured_sample);
-            errors = errors + 1;
-        end
-
-        // 负反馈使用相同延迟，首个回声必须反相。
-        reset_dut();
-        filter_mode = 3'd6;
-        cutoff_control_q8 = {7'd127, 8'd0};
-        resonance_control = 7'd127;
-        mix_control = 7'd127;
-        process_sample(16'sd12000);
-        for (sample_index = 1; sample_index < 8;
-             sample_index = sample_index + 1)
-            process_sample(16'sd0);
-        process_sample(16'sd0);
-        if (captured_sample > -16'sd4000) begin
-            $display("ERROR: negative Comb echo missing: %0d", captured_sample);
-            errors = errors + 1;
-        end
-
-        // Mix=0在Comb模式下也必须保持精确旁路。
-        mix_control = 7'd0;
         process_sample(-16'sd23456);
         if (captured_sample !== -16'sd23456) begin
-            $display("ERROR: Comb dry Mix endpoint failed: %0d", captured_sample);
+            $display("ERROR: removed mode 5 did not bypass");
+            errors = errors + 1;
+        end
+        filter_mode = 3'd6;
+        process_sample(16'sd12345);
+        if (captured_sample !== 16'sd12345) begin
+            $display("ERROR: removed mode 6 did not bypass");
             errors = errors + 1;
         end
 
@@ -275,7 +118,7 @@ module tb_global_filter;
         end
 
         if (errors == 0)
-            $display("PASS: global filter Mix and positive/negative Comb responses");
+            $display("PASS: global filter Mix and removed-mode bypass");
         else
             $display("FAIL: %0d error(s)", errors);
         $finish;

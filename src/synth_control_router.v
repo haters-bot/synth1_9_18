@@ -366,7 +366,7 @@ module synth_control_router #(
                     CC_B_WARP_AMOUNT:
                         osc_b_warp_amount <= raw_control_change_value;
                     CC_FILTER_MODE:
-                        filter_mode <= (raw_control_change_value <= 7'd6)
+                        filter_mode <= (raw_control_change_value <= 7'd4)
                                      ? raw_control_change_value[2:0] : 3'd0;
                     CC_FILTER_CUTOFF:
                         filter_cutoff <= raw_control_change_value;

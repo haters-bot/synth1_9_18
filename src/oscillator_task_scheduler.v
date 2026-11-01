@@ -24,6 +24,14 @@ module oscillator_task_scheduler #(
     input wire [6:0] phase_control, rand_control,
     input  wire [(ENGINE_COUNT*SLOTS_PER_ENGINE)-1:0] task_idle_mask,
 
+    // 连续音高源接口。source用于区分六条滑条；Gate On只分配一次，
+    // 后续step更新保持原相位和ADSR状态，Gate Off才进入Release。
+    input  wire       continuous_event_valid,
+    input  wire       continuous_event_on,
+    input  wire [2:0] continuous_event_source,
+    input  wire [31:0] continuous_event_base_step,
+    input  wire [6:0] continuous_event_velocity,
+
     output reg        task_update_valid,
     output reg [7:0]  task_update_slot,
     output reg [31:0] task_update_phase_step,
@@ -41,25 +49,33 @@ module oscillator_task_scheduler #(
 );
 
     localparam integer TOTAL_SLOTS = ENGINE_COUNT * SLOTS_PER_ENGINE;
-    localparam [2:0] STATE_IDLE         = 3'd0;
-    localparam [2:0] STATE_ALLOCATE     = 3'd1;
-    localparam [2:0] STATE_REPLACE_NOTE = 3'd2;
-    localparam [2:0] STATE_RELEASE_NOTE = 3'd3;
-    localparam [2:0] STATE_LATCH_STEP   = 3'd4;
-    localparam [2:0] STATE_DETUNE_PREP  = 3'd5;
-    localparam [2:0] STATE_DETUNE_MULT  = 3'd6;
-    localparam [2:0] STATE_DETUNE_STORE = 3'd7;
+    localparam [3:0] STATE_IDLE              = 4'd0;
+    localparam [3:0] STATE_ALLOCATE          = 4'd1;
+    localparam [3:0] STATE_REPLACE_NOTE      = 4'd2;
+    localparam [3:0] STATE_RELEASE_NOTE      = 4'd3;
+    localparam [3:0] STATE_LATCH_STEP        = 4'd4;
+    localparam [3:0] STATE_DETUNE_PREP       = 4'd5;
+    localparam [3:0] STATE_DETUNE_MULT       = 4'd6;
+    localparam [3:0] STATE_DETUNE_STORE      = 4'd7;
+    localparam [3:0] STATE_UPDATE_CONTINUOUS = 4'd8;
 
-    reg [2:0] state;
+    reg [3:0] state;
     reg [6:0] slot_note [0:TOTAL_SLOTS-1];
     reg [31:0] slot_phase_step [0:TOTAL_SLOTS-1];
     reg [6:0] slot_velocity [0:TOTAL_SLOTS-1];
     reg slot_active [0:TOTAL_SLOTS-1];
     reg slot_releasing [0:TOTAL_SLOTS-1];
+    reg slot_continuous [0:TOTAL_SLOTS-1];
+    reg [2:0] slot_source [0:TOTAL_SLOTS-1];
+    reg [3:0] slot_member_index [0:TOTAL_SLOTS-1];
+    reg [3:0] slot_group_count [0:TOTAL_SLOTS-1];
 
     reg [6:0] pending_note;
     reg [6:0] pending_velocity;
     reg [3:0] pending_unison_count;
+    reg pending_is_continuous;
+    reg [2:0] pending_source;
+    reg [31:0] pending_continuous_base_step;
     reg [6:0] pending_detune_amount;
     // 触发时锁存参数；每个Unison成员计算独立随机相位，不额外占用音频TDM拍数。
     reg [6:0] pending_phase_control, pending_rand_control;
@@ -75,10 +91,12 @@ module oscillator_task_scheduler #(
     endfunction
     reg [3:0] pending_member_index;
     reg [6:0] victim_note;
+    reg victim_is_continuous;
+    reg [2:0] victim_source;
     reg [5:0] scan_index;
     reg [5:0] scan_count;
     reg [5:0] allocation_cursor;
-    reg [2:0] state_after_latch;
+    reg [3:0] state_after_latch;
     reg [31:0] pending_base_phase_step_latched;
     reg [34:0] pending_member_detune_unit [0:MAX_UNISON-1];
     reg [2:0] pending_member_detune_magnitude [0:MAX_UNISON-1];
@@ -99,8 +117,13 @@ module oscillator_task_scheduler #(
     wire [31:0] calculated_phase_step;
 
     reg matching_note_found;
+    reg matching_continuous_found;
+    reg matching_continuous_releasing;
+    reg [3:0] matching_continuous_count;
     reg steal_note_found;
     reg [6:0] steal_note;
+    reg steal_is_continuous;
+    reg [2:0] steal_source;
     reg [6:0] retired_task_count;
     integer search_index;
     integer reset_index;
@@ -201,8 +224,13 @@ module oscillator_task_scheduler #(
 
     always @(*) begin
         matching_note_found = 1'b0;
+        matching_continuous_found = 1'b0;
+        matching_continuous_releasing = 1'b0;
+        matching_continuous_count = 4'd1;
         steal_note_found = 1'b0;
         steal_note = 7'd0;
+        steal_is_continuous = 1'b0;
+        steal_source = 3'd0;
         retired_task_count = 7'd0;
 
         for (search_index = 0;
@@ -213,16 +241,37 @@ module oscillator_task_scheduler #(
                 retired_task_count = retired_task_count + 7'd1;
 
             if (slot_active[search_index]) begin
-                if (slot_note[search_index] == note_event_note)
+                if (!slot_continuous[search_index]
+                    && (slot_note[search_index] == note_event_note))
                     matching_note_found = 1'b1;
+
+                if (slot_continuous[search_index]
+                    && (slot_source[search_index]
+                        == continuous_event_source)) begin
+                    matching_continuous_found = 1'b1;
+                    matching_continuous_count
+                        = slot_group_count[search_index];
+                    if (slot_releasing[search_index])
+                        matching_continuous_releasing = 1'b1;
+                end
 
                 // Never choose a task that already belongs to the new note;
                 // this prevents repeated partial steals when resources are
                 // completely occupied.
                 if (!steal_note_found
-                    && (slot_note[search_index] != pending_note)) begin
+                    && ((slot_continuous[search_index]
+                         != pending_is_continuous)
+                        || (slot_continuous[search_index]
+                            && (slot_source[search_index]
+                                != pending_source))
+                        || (!slot_continuous[search_index]
+                            && (slot_note[search_index]
+                                != pending_note)))) begin
                     steal_note_found = 1'b1;
                     steal_note = slot_note[search_index];
+                    steal_is_continuous
+                        = slot_continuous[search_index];
+                    steal_source = slot_source[search_index];
                 end
             end
         end
@@ -246,9 +295,14 @@ module oscillator_task_scheduler #(
             pending_note <= 7'd0;
             pending_velocity <= 7'd0;
             pending_unison_count <= 4'd1;
+            pending_is_continuous <= 1'b0;
+            pending_source <= 3'd0;
+            pending_continuous_base_step <= 32'd0;
             pending_detune_amount <= 7'd64;
             pending_member_index <= 4'd0;
             victim_note <= 7'd0;
+            victim_is_continuous <= 1'b0;
+            victim_source <= 3'd0;
             scan_index <= 6'd0;
             scan_count <= 6'd0;
             allocation_cursor <= 6'd0;
@@ -271,6 +325,10 @@ module oscillator_task_scheduler #(
                 slot_velocity[reset_index] <= 7'd0;
                 slot_active[reset_index] <= 1'b0;
                 slot_releasing[reset_index] <= 1'b0;
+                slot_continuous[reset_index] <= 1'b0;
+                slot_source[reset_index] <= 3'd0;
+                slot_member_index[reset_index] <= 4'd0;
+                slot_group_count[reset_index] <= 4'd1;
             end
         end else begin
             task_update_valid <= 1'b0;
@@ -303,6 +361,8 @@ module oscillator_task_scheduler #(
                         && (note_event_note <= MAX_NOTE)) begin
                         pending_note <= note_event_note;
                         pending_velocity <= note_event_velocity;
+                        pending_is_continuous <= 1'b0;
+                        pending_source <= 3'd0;
                         pending_unison_count
                             <= clamp_unison_count(unison_count);
                         pending_detune_amount <= detune_amount;
@@ -316,6 +376,7 @@ module oscillator_task_scheduler #(
                         if (note_event_on) begin
                             if (matching_note_found) begin
                                 victim_note <= note_event_note;
+                                victim_is_continuous <= 1'b0;
                                 state_after_latch <= STATE_REPLACE_NOTE;
                             end else begin
                                 scan_index <= allocation_cursor;
@@ -325,6 +386,50 @@ module oscillator_task_scheduler #(
                             state <= STATE_LATCH_STEP;
                         end else if (matching_note_found) begin
                             victim_note <= note_event_note;
+                            victim_is_continuous <= 1'b0;
+                            state_after_latch <= STATE_RELEASE_NOTE;
+                            state <= STATE_LATCH_STEP;
+                        end else begin
+                            scheduler_busy <= 1'b0;
+                        end
+                    end else if (continuous_event_valid) begin
+                        pending_note <= 7'd0;
+                        pending_velocity <= continuous_event_velocity;
+                        pending_is_continuous <= 1'b1;
+                        pending_source <= continuous_event_source;
+                        pending_continuous_base_step
+                            <= continuous_event_base_step;
+                        pending_unison_count <= matching_continuous_found
+                            ? matching_continuous_count
+                            : clamp_unison_count(unison_count);
+                        pending_detune_amount <= detune_amount;
+                        pending_phase_control <= phase_control;
+                        pending_rand_control <= rand_control;
+                        pending_member_index <= 4'd0;
+                        phase_calc_index <= 4'd0;
+                        scan_index <= 6'd0;
+                        scan_count <= 6'd0;
+                        scheduler_busy <= 1'b1;
+
+                        if (continuous_event_on) begin
+                            if (matching_continuous_found
+                                && matching_continuous_releasing) begin
+                                victim_is_continuous <= 1'b1;
+                                victim_source <= continuous_event_source;
+                                state_after_latch <= STATE_REPLACE_NOTE;
+                            end else if (matching_continuous_found) begin
+                                victim_is_continuous <= 1'b1;
+                                victim_source <= continuous_event_source;
+                                state_after_latch
+                                    <= STATE_UPDATE_CONTINUOUS;
+                            end else begin
+                                scan_index <= allocation_cursor;
+                                state_after_latch <= STATE_ALLOCATE;
+                            end
+                            state <= STATE_LATCH_STEP;
+                        end else if (matching_continuous_found) begin
+                            victim_is_continuous <= 1'b1;
+                            victim_source <= continuous_event_source;
                             state_after_latch <= STATE_RELEASE_NOTE;
                             state <= STATE_LATCH_STEP;
                         end else begin
@@ -337,7 +442,9 @@ module oscillator_task_scheduler #(
                 // 该边界切断pending_note到32个槽位相位步进寄存器的长路径。
                 STATE_LATCH_STEP: begin
                     pending_base_phase_step_latched
-                        <= pending_base_phase_step;
+                        <= pending_is_continuous
+                           ? pending_continuous_base_step
+                           : pending_base_phase_step;
 
                     // Note Off沿用槽位中保存的相位步进，不需要重新计算Detune。
                     if (state_after_latch == STATE_RELEASE_NOTE)
@@ -423,6 +530,14 @@ module oscillator_task_scheduler #(
                             <= pending_velocity;
                         slot_active[allocation_candidate] <= 1'b1;
                         slot_releasing[allocation_candidate] <= 1'b0;
+                        slot_continuous[allocation_candidate]
+                            <= pending_is_continuous;
+                        slot_source[allocation_candidate]
+                            <= pending_source;
+                        slot_member_index[allocation_candidate]
+                            <= pending_member_index;
+                        slot_group_count[allocation_candidate]
+                            <= pending_unison_count;
                         active_task_count
                             <= active_task_count - retired_task_count + 7'd1;
 
@@ -445,6 +560,9 @@ module oscillator_task_scheduler #(
                     end else if (scan_count == TOTAL_SLOTS-1) begin
                         if (steal_note_found) begin
                             victim_note <= steal_note;
+                            victim_is_continuous
+                                <= steal_is_continuous;
+                            victim_source <= steal_source;
                             scan_index <= 6'd0;
                             scan_count <= 6'd0;
                             state <= STATE_REPLACE_NOTE;
@@ -461,7 +579,14 @@ module oscillator_task_scheduler #(
 
                 STATE_REPLACE_NOTE: begin
                     if (slot_active[scan_index]
-                        && (slot_note[scan_index] == victim_note)) begin
+                        && ((victim_is_continuous
+                             && slot_continuous[scan_index]
+                             && (slot_source[scan_index]
+                                 == victim_source))
+                            || (!victim_is_continuous
+                                && !slot_continuous[scan_index]
+                                && (slot_note[scan_index]
+                                    == victim_note)))) begin
                         task_update_valid <= 1'b1;
                         task_update_slot <= scan_index;
 
@@ -486,6 +611,13 @@ module oscillator_task_scheduler #(
                                        pending_member_index];
                             slot_velocity[scan_index] <= pending_velocity;
                             slot_releasing[scan_index] <= 1'b0;
+                            slot_continuous[scan_index]
+                                <= pending_is_continuous;
+                            slot_source[scan_index] <= pending_source;
+                            slot_member_index[scan_index]
+                                <= pending_member_index;
+                            slot_group_count[scan_index]
+                                <= pending_unison_count;
                             pending_member_index
                                 <= pending_member_index + 4'd1;
                         end else begin
@@ -500,7 +632,14 @@ module oscillator_task_scheduler #(
 
                     if (scan_index == TOTAL_SLOTS-1) begin
                         if ((slot_active[scan_index]
-                             && (slot_note[scan_index] == victim_note)
+                             && ((victim_is_continuous
+                                  && slot_continuous[scan_index]
+                                  && (slot_source[scan_index]
+                                      == victim_source))
+                                 || (!victim_is_continuous
+                                     && !slot_continuous[scan_index]
+                                     && (slot_note[scan_index]
+                                         == victim_note)))
                              && (pending_member_index
                                  < pending_unison_count)
                              && (pending_member_index + 4'd1
@@ -519,9 +658,57 @@ module oscillator_task_scheduler #(
                     end
                 end
 
+                // 同一滑条的连续音高更新只改相位步进和实时Detune基准。
+                // task_update_phase_reset=0使TDM核心保留当前相位与包络阶段。
+                STATE_UPDATE_CONTINUOUS: begin
+                    if (slot_active[scan_index]
+                        && slot_continuous[scan_index]
+                        && (slot_source[scan_index]
+                            == pending_source)) begin
+                        task_update_valid <= 1'b1;
+                        task_update_slot <= scan_index;
+                        task_update_phase_step
+                            <= pending_member_phase_step[
+                                   slot_member_index[scan_index]];
+                        task_update_base_step
+                            <= pending_base_phase_step_latched;
+                        task_update_detune_unit
+                            <= pending_member_detune_unit[
+                                   slot_member_index[scan_index]];
+                        task_update_detune_magnitude
+                            <= pending_member_detune_magnitude[
+                                   slot_member_index[scan_index]];
+                        task_update_detune_negative
+                            <= pending_member_detune_negative[
+                                   slot_member_index[scan_index]];
+                        task_update_velocity
+                            <= slot_velocity[scan_index];
+                        task_update_enable <= 1'b1;
+                        task_update_phase_reset <= 1'b0;
+                        task_update_initial_phase <= 32'd0;
+                        slot_phase_step[scan_index]
+                            <= pending_member_phase_step[
+                                   slot_member_index[scan_index]];
+                    end
+
+                    if (scan_index == TOTAL_SLOTS-1) begin
+                        state <= STATE_IDLE;
+                        scheduler_busy <= 1'b0;
+                    end else begin
+                        scan_index <= scan_index + 6'd1;
+                    end
+                end
+
                 STATE_RELEASE_NOTE: begin
                     if (slot_active[scan_index]
-                        && (slot_note[scan_index] == victim_note)) begin
+                        && ((victim_is_continuous
+                             && slot_continuous[scan_index]
+                             && (slot_source[scan_index]
+                                 == victim_source))
+                            || (!victim_is_continuous
+                                && !slot_continuous[scan_index]
+                                && (slot_note[scan_index]
+                                    == victim_note)))) begin
                         task_update_valid <= 1'b1;
                         task_update_slot <= scan_index;
                         task_update_phase_step <= slot_phase_step[scan_index];

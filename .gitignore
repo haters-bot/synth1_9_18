@@ -3,6 +3,7 @@
 
 # Simulation output
 /sim/work*/
+/work*/
 *.wlf
 /transcript
 /modelsim.ini
