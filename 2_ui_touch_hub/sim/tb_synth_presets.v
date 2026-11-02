@@ -58,7 +58,7 @@ module tb_synth_presets;
   .cc_req(busy?bcc:scc),.cc_param_id(busy?bid:sid),.cc_val(busy?bv:sv),
   .sysex_req(busy?bsx:ssx),.sysex_msgs(busy?bm:sm),.sysex_accept(sa),.cc_accept(ca),
   .uart_tx(tx),.tx_busy(tx_busy),.note_ready(note_ready));
- reg [7:0] golden[0:11342]; // 16 batches, then ordinary CC and LFO rebind
+ reg [7:0] golden[0:12050]; // 17 batches, then ordinary CC and LFO rebind
  reg [7:0] received,msg[0:5];
  integer bitno,mi=0,expected_len=0,position=0,notes=0,loads=0,trace;
  reg collect=0;
@@ -81,7 +81,7 @@ module tb_synth_presets;
      notes=notes+1;
     end else begin
      for(mi=0;mi<expected_len;mi=mi+1)begin
-      if(position>=11343 || msg[mi]!==golden[position])$fatal(1,"FAIL: UART[%0d] got %02h expected %02h",position,msg[mi],golden[position]);
+      if(position>=12051 || msg[mi]!==golden[position])$fatal(1,"FAIL: UART[%0d] got %02h expected %02h",position,msg[mi],golden[position]);
       $fwrite(trace,"%02x\n",msg[mi]);position=position+1;
      end
     end
@@ -121,10 +121,10 @@ module tb_synth_presets;
   if(sources[13:12]!==1)$fatal(1,"FAIL: test failed to create prior binding");
   wait(!lf_busy && !tx_busy);repeat(1000)@(negedge clk);wait(!lf_busy && !tx_busy);
   collect=1;
-  for(k=0;k<12;k=k+1)begin request(k);finished();$display("CHECK: preset %0d complete, all 74 live values and 708 serial bytes match",k);end
-  request(11);finished(); // Full reapply even if every value is unchanged.
-  request(0);wait(load);repeat(7)@(negedge clk);request(5);request(6);request(11);
-  if(!pending || pending_index!=11)$fatal(1,"FAIL: latest request not retained");
+  for(k=0;k<13;k=k+1)begin request(k);finished();$display("CHECK: preset %0d complete, all 74 live values and 708 serial bytes match",k);end
+  request(12);finished(); // Reapply the new piano even if every value is unchanged.
+  request(0);wait(load);repeat(7)@(negedge clk);request(5);request(6);request(12);
+  if(!pending || pending_index!=12)$fatal(1,"FAIL: latest new-piano request not retained");
   // A conflicting Note wins FIFO acceptance over bulk controls.
   wait(bcc && !tx_busy);@(negedge clk);note_on=1;
   #1;if(ca)$fatal(1,"FAIL: CC stole priority from Note");
@@ -133,22 +133,22 @@ module tb_synth_presets;
   #1;if(sa)$fatal(1,"FAIL: SysEx stole priority from Note");
   @(negedge clk);note_off=0;
   finished();
-  if(loads!=15 || notes!=2 || position!=10620 || mi!=0)$fatal(1,"FAIL: totals loads=%0d Notes=%0d bytes=%0d",loads,notes,position);
+  if(loads!=16 || notes!=2 || position!=11328 || mi!=0)$fatal(1,"FAIL: totals loads=%0d Notes=%0d bytes=%0d",loads,notes,position);
   // Recall before the normal startup sync has even sent its first CC. The
   // adopted shadows must not append a second boot/LFO transaction afterward.
   @(negedge clk);rst_n=0;repeat(5)@(negedge clk);
   index=2;apply=1;rst_n=1;@(negedge clk);apply=0;finished();
-  if(loads!=16 || position!=11328)$fatal(1,"FAIL: boot-time recall totals");
-  request(15);repeat(4)@(negedge clk);if(busy || loads!=16)$fatal(1,"FAIL: invalid request altered state");
+  if(loads!=17 || position!=12036)$fatal(1,"FAIL: boot-time recall totals");
+  request(15);repeat(4)@(negedge clk);if(busy || loads!=17)$fatal(1,"FAIL: invalid request altered state");
   // With hooks ENABLED, normal physical CC edits and real LFO binding still
   // work after adoption; a stale shadow or stuck hold fails serial equality.
   @(negedge clk);knob_valid=1;knob_id=`PARAM_ID_MASTER_VOL;knob_value=25;
-  @(negedge clk);knob_valid=0;wait(position==11331);wait(!tx_busy);
+  @(negedge clk);knob_valid=0;wait(position==12039);wait(!tx_busy);
   packet(1,1160,384);packet(0,0,0);packet(1,1000,460);packet(1,134,268);packet(0,0,0);
-  wait(position==11343);wait(!tx_busy);repeat(200)@(negedge clk);
-  if(position!=11343 || sources[13:12]!=1 || depths[55:48]!=127)$fatal(1,"FAIL: post-preset CC/LFO editing");
+  wait(position==12051);wait(!tx_busy);repeat(200)@(negedge clk);
+  if(position!=12051 || sources[13:12]!=1 || depths[55:48]!=127)$fatal(1,"FAIL: post-preset CC/LFO editing");
   $fclose(trace);
-  $display("PASS: 12 presets + full reapply + latest pending + boot recall; 11343 exact serial bytes, all state banks, LFO clear/adopt, Note priority and subsequent CC/rebind");$finish;
+  $display("PASS: 13 presets + full reapply + latest pending + boot recall; 12051 exact serial bytes, all state banks, LFO clear/adopt, Note priority and subsequent CC/rebind");$finish;
  end
  initial begin #50000000;$fatal(1,"FAIL: preset bench timeout");end
 endmodule

@@ -23,6 +23,7 @@ module synth_preset_controller(
  output reg invalid_request
 );
  `include "synth_presets.vh"
+ `include "synth_preset_layout.vh"
  `include "static_cc_slots.vh"
  localparam IDLE=0,DRAIN=1,LOAD=2,SETTLE=3,CC_SELECT=4,CC_STAGE=5,
             CC_SEND=6,CC_DRAIN=7,SX_SELECT=8,SX_STAGE=9,SX_SEND=10,
@@ -79,10 +80,10 @@ module synth_preset_controller(
    message_index<=0;slot<=0;sx_index<=0;cc_id<=0;cc_value<=0;sysex_msgs<=0;
    saved_nodes<=0;saved_rates<=0;saved_steps<=0;saved_once<=0;invalid_request<=0;
   end else begin
-   invalid_request<=apply_req && apply_index>=12;
-   if(apply_req && apply_index<12 && busy)begin pending<=1;pending_index<=apply_index;end
+   invalid_request<=apply_req && apply_index>=SYNTH_PRESET_COUNT;
+   if(apply_req && apply_index<SYNTH_PRESET_COUNT && busy)begin pending<=1;pending_index<=apply_index;end
    case(state)
-    IDLE:if(apply_req && apply_index<12)begin
+    IDLE:if(apply_req && apply_index<SYNTH_PRESET_COUNT)begin
      active_index<=apply_index;pending<=0;state<=DRAIN;
     end
     DRAIN:if(!uart_busy)state<=LOAD;
@@ -113,7 +114,7 @@ module synth_preset_controller(
     FINISH:begin
      applied_valid<=1;
      // Latest same-cycle request wins over the previous pending selection.
-     if(apply_req && apply_index<12)begin active_index<=apply_index;pending<=0;state<=DRAIN;end
+     if(apply_req && apply_index<SYNTH_PRESET_COUNT)begin active_index<=apply_index;pending<=0;state<=DRAIN;end
      else if(pending)begin active_index<=pending_index;pending<=0;state<=DRAIN;end
      else state<=IDLE;
     end

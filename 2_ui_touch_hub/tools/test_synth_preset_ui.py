@@ -37,7 +37,7 @@ module tb_synth_preset_ui;
    ui_touch_valid=1;ui_touch_down=0;@(negedge clk);ui_touch_valid=0;repeat(20)@(negedge clk);
   end
  endtask
- integer category,row,expected=0,before_count,n,j,choice;
+ integer category,row,expected=0,visited=0,before_count,n,j,choice;
  reg [23:0] expected_rgb[0:6];
  initial begin
   repeat(5)@(negedge clk);rst_n=1;repeat(30)@(negedge clk);
@@ -48,13 +48,15 @@ module tb_synth_preset_ui;
   for(category=0;category<6;category=category+1)begin
    tap(120,192+category*68);
    if(dut.preset_category!=category)$fatal(1,"FAIL: category touch target");
-   for(row=0;row<(category==4?3:category==5?1:2);row=row+1)begin
+   for(row=0;row<((category==0 || category==4)?3:category==5?1:2);row=row+1)begin
+    if(category==0)expected=row==0?0:row==1?12:1;
+    else expected=category==1?2+row:category==2?4+row:category==3?6+row:category==4?8+row:11;
     tap(480,224+row*128);
-    if(last!=expected || count!=expected+1)$fatal(1,"FAIL: card %d request count=%d index=%d",expected,count,last);
-    expected=expected+1;
+    visited=visited+1;
+    if(last!=expected || count!=visited)$fatal(1,"FAIL: card %d request count=%d index=%d",expected,count,last);
    end
   end
-  tap(360,628);if(count!=13 || last!=11)$fatal(1,"FAIL: full reapply button");
+  tap(360,628);if(count!=14 || last!=11)$fatal(1,"FAIL: full reapply button");
   before_count=count;tap(920,628);
   if(count!=before_count || !dut.preset_custom_notice)$fatal(1,"FAIL: custom reserve falsely applies a preset");
   // Independently specified solid colors on the NEW page, streamed every
@@ -76,7 +78,7 @@ module tb_synth_preset_ui;
   tap(550,628);
   if(dut.navigation_view!=3)$fatal(1,"FAIL: return switched outside VSYNC");
   frame();if(dut.navigation_view!=0)$fatal(1,"FAIL: return to synthesizer");
-  $display("PASS: real ui_top_renderer SYSTEM navigation, six categories, all 12 cards, reapply, reserved custom, 512 seven-clock pixel checks and VSYNC return");$finish;
+  $display("PASS: real ui_top_renderer SYSTEM navigation, all 13 cards; Acoustic order 0/12/1, reapply, reserved custom, 512 seven-clock pixel checks and VSYNC return");$finish;
  end
  initial begin #1000000;$fatal(1,"FAIL: preset UI timeout");end
 endmodule
@@ -135,7 +137,7 @@ endmodule
   montage.paste(im,((c%2)*640,(c//2)*360))
  montage.save(out/'preset_panels.png')
  matches=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items())
- (out/'result.json').write_text(json.dumps({'passed':True,'workspace_matches_snapshot':matches,'source_sha256':hashes,'cards':12,'categories':6,'rendered_pixels':1382400,'synthesis_or_hardware':False},indent=2))
+ (out/'result.json').write_text(json.dumps({'passed':True,'workspace_matches_snapshot':matches,'source_sha256':hashes,'cards':13,'categories':6,'rendered_pixels':1382400,'synthesis_or_hardware':False},indent=2))
  assert matches
  print('PASS: UI and simulated panel screenshots retained: '+str(out))
 

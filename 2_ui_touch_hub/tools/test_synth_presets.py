@@ -52,13 +52,15 @@ def main():
  raw,ns=reference_data();rows=expanded_rows(ns)
  catalog=json.loads((ROOT/'tools/synth_presets_reference.json').read_text(encoding='utf-8'))
  assert catalog['rows']==json.loads(json.dumps(rows))
+ baseline=json.loads(subprocess.check_output(['git','show','9ee5dce:2_ui_touch_hub/tools/synth_presets_reference.json'],cwd=ROOT))
+ assert catalog['rows'][:12]==baseline['rows'],'An original factory preset changed'
  expected=[python_oracle(raw,ns,row['full']) for row in rows]
- order=list(range(12))+[11,0,11,2]
+ order=list(range(len(rows)))+[12,0,12,2]
  stream=sum((expected[n] for n in order),[])+[0xBF,0x30,0x19,0xF0,0x7D,0x4F,0x02,0x7F,0xF7,0xF0,0x7D,0x7E,0,0,0xF7]
  (out/'preset_expected.hex').write_text(''.join(f'{b:02x}\n' for b in stream))
  (out/'pinned_midi_uart_sender.py').write_bytes(raw)
  sources=project_verilog_sources(ROOT,'2_ui_touch_hub.gprj')+[ROOT/'sim/tb_synth_presets.v']
- inputs=list(dict.fromkeys(sources+list((ROOT/'rtl/ui_vector_engine').glob('*.vh'))+[ROOT/'2_ui_touch_hub.gprj',Path(__file__),ROOT/'tools/generate_synth_presets.py',ROOT/'tools/synth_presets_reference.json']))
+ inputs=list(dict.fromkeys(sources+list((ROOT/'rtl/ui_vector_engine').glob('*.vh'))+[ROOT/'2_ui_touch_hub.gprj',Path(__file__),ROOT/'tools/generate_synth_presets.py',ROOT/'tools/synth_presets_reference.json',ROOT/'tools/sampled_piano_preset.json']))
  hashes={str(p.relative_to(ROOT)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs}
  for p in inputs:
   target=out/'src'/p.relative_to(ROOT);target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(p.read_bytes())
@@ -73,11 +75,11 @@ def main():
  assert 'PASS:' in log
  actual=[int(s,16) for s in (out/'preset_actual.hex').read_text().split()]
  assert actual==stream
- representatives={rows[n]['name']:{'complete_hex':' '.join(f'{b:02X}' for b in expected[n]),'bytes':len(expected[n])} for n in (0,5,6,11)}
+ representatives={rows[n]['name']:{'complete_hex':' '.join(f'{b:02X}' for b in expected[n]),'bytes':len(expected[n])} for n in (0,5,6,11,12)}
  (out/'representative_midi.json').write_text(json.dumps(representatives,ensure_ascii=False,indent=2),encoding='utf-8')
  matches=all(hashlib.sha256((ROOT/p).read_bytes()).hexdigest()==h for p,h in hashes.items())
  result={'passed':True,'reference_commit':REFERENCE,'reference_sha256':hashlib.sha256(raw).hexdigest(),
-         'presets':12,'cc_values':888,'complete_batch_bytes':708,'serial_bytes_checked':len(actual),
+         'presets':len(rows),'cc_values':len(rows)*74,'complete_batch_bytes':708,'serial_bytes_checked':len(actual),'original_12_unchanged':True,
          'source_sha256':hashes,'workspace_matches_snapshot':matches,'gowin_or_hardware_used':False}
  (out/'result.json').write_text(json.dumps(result,indent=2))
  assert matches

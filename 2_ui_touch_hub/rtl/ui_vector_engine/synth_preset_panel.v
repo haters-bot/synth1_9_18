@@ -13,12 +13,7 @@ module synth_preset_panel(
  output reg [23:0] rgb
 );
  `include "synth_preset_text.vh"
- function [3:0] first_index;
-  input [2:0] c;begin case(c)
-   0:first_index=0;1:first_index=2;2:first_index=4;3:first_index=6;
-   4:first_index=8;default:first_index=11;
-  endcase end
- endfunction
+ `include "synth_preset_layout.vh"
  reg [23:0] bg,fg;
  reg [287:0] line;
  reg [5:0] column;
@@ -40,23 +35,23 @@ module synth_preset_panel(
  endtask
  always @* begin
   bg=24'h101820;fg=24'hDDE7F4;line=0;column=0;glyph_x=0;glyph_y=0;text_valid=0;
-  text_at(applied_valid || busy ? 6+active_index : 30,280,144,1);
+  text_at(applied_valid || busy ? PRESET_TITLE_BASE+active_index : PRESET_TEXT_SELECT,280,144,1);
   for(i=0;i<6;i=i+1)begin
    if(x>=40 && x<248 && y>=172+i*68 && y<228+i*68)
     bg=category==i ? 24'h246B68 : 24'h1B3044;
    text_at(i,56,192+i*68,1);
   end
   for(i=0;i<3;i=i+1)begin
-   row_y=192+i*128;idx=first_index(category)+i;
-   if((i<2 || category==4) && (category!=5 || i==0))begin
+   row_y=192+i*128;idx=synth_preset_row_index(category,i);
+   if(synth_preset_row_visible(category,i))begin
     if(x>=280 && x<1248 && y>=row_y && y<row_y+112)begin
      bg=(applied_valid || busy) && active_index==idx ? 24'h1D4D4E : 24'h182A3B;
      // Thin colored spine doubles as a is_large, unambiguous touch-card cue.
      if(x<288)bg=24'h52CCBB;
      if(y==row_y || y==row_y+111)bg=24'h34596A;
     end
-    text_at(6+idx,312,row_y+20,1);
-    text_at(18+idx,312,row_y+68,1);
+    text_at(PRESET_TITLE_BASE+idx,312,row_y+20,1);
+    text_at(PRESET_DETAIL_BASE+idx,312,row_y+68,1);
    end
   end
   if(y>=612 && y<660)begin
@@ -64,10 +59,10 @@ module synth_preset_panel(
    if(x>=504 && x<696)bg=24'h22374C;
    if(x>=800 && x<1248)bg=24'h28313A;
   end
-  text_at(33,304,628,1);text_at(34,528,628,1);text_at(35,824,628,1);
-  text_at(pending ? 39 : busy ? 31 : 32,800,148,1);
-  text_at(custom_notice ? 36 : 37,40,680,0);
-  text_at(38,800,680,0);
+  text_at(PRESET_TEXT_REAPPLY,304,628,1);text_at(PRESET_TEXT_BACK,528,628,1);text_at(PRESET_TEXT_CUSTOM,824,628,1);
+  text_at(pending ? PRESET_TEXT_QUEUED : busy ? PRESET_TEXT_APPLYING : PRESET_TEXT_READY,800,148,1);
+  text_at(custom_notice ? PRESET_TEXT_NOTICE : PRESET_TEXT_FOOTER,40,680,0);
+  text_at(PRESET_TEXT_SD,800,680,0);
  end
  reg h0,h1,h2;
  reg [287:0] line0;

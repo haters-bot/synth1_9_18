@@ -3,6 +3,8 @@
 // Real touch state + live banks + FIFO arbitration + serial UART, decoded by
 // the frozen audio team's unmodified MIDI parser and synth_control_router.
 module tb_audio_protocol_alignment;
+ `include "wavetable_catalog.vh"
+ localparam WT_COUNT=`UI_WAVETABLE_COUNT;
  reg clk=0,rst_n=0,tv=0,td=0,cancel=0,ext=0,sv=0,bv=0;
  reg [13:0] x=0,y=0;reg [7:0] eid=0,sid=0,bid=0;reg [6:0] ev=0,svalue=0;
  reg [1:0] action=0;
@@ -91,13 +93,13 @@ module tb_audio_protocol_alignment;
    if((p==0 ? audio.osc_a_warp_mode : audio.osc_b_warp_mode)!==mode[3:0])$fatal(1,"audio WARP decode");
   end
   if(bank.val_osca_warp!==64 || bank.val_oscb_warp!==64)$fatal(1,"mode changed independent Amount");
-  // The supplied WTB1 header has TEN tables. Do not expose six duplicate IDs.
+  // Follow the validated WTB1 count, including newly appended piano banks.
   for(p=0;p<2;p=p+1)begin
-   for(k=1;k<=10;k=k+1)begin click(380+p*416,222);check(p==0?49:50,k%10);end
-   click(270+p*416,222);check(p==0?49:50,9);
-   absolute(p==0?`PARAM_ID_OSCA_WT_INDEX:`PARAM_ID_OSCB_WT_INDEX,127);check(p==0?49:50,9);
+   for(k=1;k<=WT_COUNT;k=k+1)begin click(380+p*416,222);check(p==0?49:50,k%WT_COUNT);end
+   click(270+p*416,222);check(p==0?49:50,WT_COUNT-1);
+   absolute(p==0?`PARAM_ID_OSCA_WT_INDEX:`PARAM_ID_OSCB_WT_INDEX,127);check(p==0?49:50,WT_COUNT-1);
   end
-  if(audio.osc_a_wavetable_index!==9 || audio.osc_b_wavetable_index!==9)$fatal(1,"audio WT index");
+  if(audio.osc_a_wavetable_index!==(WT_COUNT-1) || audio.osc_b_wavetable_index!==(WT_COUNT-1))$fatal(1,"audio WT index");
   // Every FX tab, enable/type and six existing D/R parameters through touch.
   for(p=0;p<5;p=p+1)begin
    click(440+p*58,385);if(page!==p[2:0])$fatal(1,"FX tab");
@@ -152,7 +154,7 @@ module tb_audio_protocol_alignment;
   // No explicit UP: quiet-release makes the next press a new menu/tab event.
   touch(440,385,1);repeat(220)step;click(510,385);if(page!==1)$fatal(1,"quiet contact release");
   click(80,222);if(menu!=1)$fatal(1,"popup");cancel=1;step;cancel=0;step;if(menu!=0)$fatal(1,"navigation leaves popup captured");
-  $display("PASS: all74 boot CC exactly once; real touch 24 WARP selections/20 bank steps matching real10-table WTB, five FX plus sixth PITCH tab; vibrato/portamento switches and drags/absolute/queued values decoded by latest audio parser/router; bypass retains settings, 0/64/127 PAN, 10 Notes");$finish;
+  $display("PASS: all74 boot CC exactly once; real touch 24 WARP selections/all catalog bank steps, five FX plus sixth PITCH tab; vibrato/portamento switches and drags/absolute/queued values decoded by frozen audio parser/router; bypass retains settings, 0/64/127 PAN, 10 Notes");$finish;
  end
  initial begin #100000000;$fatal(1,"protocol test watchdog");end
 endmodule

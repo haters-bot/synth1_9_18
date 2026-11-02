@@ -31,13 +31,15 @@ OSC_KEYS = ['enabled','waveform','warp_mode','warp_amount','wavetable_index','wt
 # Presentation-only translations: parameter values always come from Git.
 TITLES = ['SYNTH PIANO','SOLO BOWED STRINGS','WARM ANALOG BRASS','RETRO STRING MACHINE',
           'CLASSIC PWM LEAD','WIDE SUPERSAW','ROUND SUB BASS','ACID 303',
-          'BRIGHT PLUCK','CRYSTAL ELECTRIC PIANO','TRANSISTOR ORGAN','WIDE ANALOG PAD']
+          'BRIGHT PLUCK','CRYSTAL ELECTRIC PIANO','TRANSISTOR ORGAN','WIDE ANALOG PAD',
+          'SAMPLED GRAND PIANO']
 DETAILS = ['SD BANK 08 : DECAYING PIANO', 'SD BANK 09 : EXPRESSIVE STRINGS',
            'WARM FILTERED DUAL OSCILLATORS', 'VINTAGE ENSEMBLE TEXTURE',
            'PULSE WIDTH LEAD', '7 UNISON MEMBERS : REDUCED POLYPHONY',
            'SOLID LOW FREQUENCY FOUNDATION','SD BANK 00 : RESONANT ACID BASS',
            'FAST ATTACK : BRIGHT PLUCK','CLEAR BELL LIKE KEYS',
-           'CLASSIC ORGAN TONE','5 UNISON MEMBERS : REDUCED POLYPHONY']
+           'CLASSIC ORGAN TONE','5 UNISON MEMBERS : REDUCED POLYPHONY',
+           'SD10 BODY + SD11 BRIGHT ATTACK']
 CATEGORIES = ['ACOUSTIC','CLASSIC','LEAD','BASS','KEYS','ATMOSPHERE']
 
 def reference_data():
@@ -60,7 +62,9 @@ def reference_data():
 
 def expanded_rows(ns):
     rows=[]
-    for name,preset in ns['SYNTH_PRESETS'].items():
+    extension=json.loads((ROOT/'tools/sampled_piano_preset.json').read_text(encoding='utf-8'))
+    presets=list(ns['SYNTH_PRESETS'].items())+[(extension['name'],extension['full'])]
+    for name,preset in presets:
         by_cc={}
         for key,value in preset['controls'].items():
             if isinstance(value,bool): value=127 if value else 0
@@ -90,7 +94,7 @@ def expanded_rows(ns):
         assert len(sequence)==74 and len(set(sequence))==74
         rows.append({'name':name,'description':preset['description'],'full':preset,
                      'ui_values':values,'cc_values':by_cc,'cc_sequence':sequence})
-    assert len(rows)==12
+    assert len(rows)==13
     return rows
 
 def main():
@@ -108,16 +112,22 @@ def main():
     out.append("default:synth_preset_send_slot=0;endcase end endfunction\n")
     (ROOT/'rtl/ui_vector_engine/synth_presets.vh').write_text(''.join(out),encoding='utf-8')
     catalog={'reference_commit':REFERENCE,'reference_sha256':hashlib.sha256(raw).hexdigest(),
+             'extension_file':'tools/sampled_piano_preset.json',
+             'extension_sha256':hashlib.sha256((ROOT/'tools/sampled_piano_preset.json').read_bytes()).hexdigest(),
              'slot_ccs':SLOT_CCS,'categories':CATEGORIES,'rows':rows}
     (ROOT/'tools/synth_presets_reference.json').write_text(json.dumps(catalog,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     chars=json.loads((ROOT/'tools/ui_font_7x10.json').read_text())['characters']
     texts=CATEGORIES+TITLES+DETAILS+['SELECT A SOUND','APPLYING : NOTE PRIORITY',
           'READY','REAPPLY','BACK','CUSTOM : RESERVED',
           'CUSTOM SAVE AND DELETE ARE NOT IMPLEMENTED',
-          '12 FACTORY SOUNDS : COMPLETE PARAMETER RECALL',
+          '13 FACTORY SOUNDS : COMPLETE PARAMETER RECALL',
           'SD SOUNDS REQUIRE THE AUDIO BOARD WAVE BANK',
           'QUEUED : LATEST SELECTION']
+    names=['SELECT','APPLYING','READY','REAPPLY','BACK','CUSTOM','NOTICE','FOOTER','SD','QUEUED']
     text_rom=['// Generated presentation text; factory data is in synth_presets.vh.\n',
+              f'localparam PRESET_TITLE_BASE=6, PRESET_DETAIL_BASE={6+len(rows)};\n']
+    for i,name in enumerate(names):text_rom.append(f'localparam PRESET_TEXT_{name}={6+2*len(rows)+i};\n')
+    text_rom += [
               'function [287:0] synth_preset_text; input [5:0] index; begin case(index)\n']
     for index,t in enumerate(texts):
         assert len(t)<=48,t
@@ -128,7 +138,7 @@ def main():
     # Reserved, versioned custom snapshot interchange contract. No user slots
     # are enabled in hardware and this creates no save/delete functionality.
     limits={3:(0,4),13:(0,4),4:(1,8),14:(1,8),22:(0,4),
-            40:(0,11),41:(0,11),42:(0,9),43:(0,9),44:(0,3),46:(0,2)}
+            40:(0,11),41:(0,11),42:(0,11),43:(0,11),44:(0,3),46:(0,2)}
     fields=[]
     for i,cc in enumerate(SLOT_CCS):
         lo,hi=limits.get(i,(0,127))
@@ -142,6 +152,6 @@ def main():
               'description':{'type':'string','maxLength':160},
               'values':{'type':'array','prefixItems':fields,'items':False,'minItems':74,'maxItems':74}}}
     (ROOT/'doc/SYNTH_CUSTOM_PRESET_SCHEMA_V1.json').write_text(json.dumps(schema,indent=2)+'\n',encoding='utf-8')
-    print('PASS: 12 complete presets / 888 CC values generated from '+REFERENCE)
+    print('PASS: 12 unchanged upstream presets + sampled piano / 962 CC values; pinned base '+REFERENCE)
 
 if __name__=='__main__': main()

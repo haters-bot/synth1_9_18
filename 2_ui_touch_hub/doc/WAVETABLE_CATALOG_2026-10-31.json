@@ -1,13 +1,13 @@
 {
   "format": "WTB1",
-  "count": 10,
+  "count": 12,
   "frames_per_table": 256,
   "samples_per_frame": 256,
   "sample_bits": 16,
   "endian": "little",
   "names_in_file": false,
-  "bytes": 1310752,
-  "sha256": "59a09d279c4a55883cb92085a890e405e0b3494d5b03048ffad6765c05ae2a90",
+  "bytes": 1572896,
+  "sha256": "ac2253f3eacc7397ace79c6d9f54f266409eac6f69383c45ad1d8da7f95437ee",
   "tables": [
     {
       "index": 0,
@@ -78,6 +78,20 @@
       "sha256": "3a7291eebf39ff8dbb5339c8f975432a86a28a0dc3b9e324a437536ea70e4114",
       "min": -31129,
       "max": 9439
+    },
+    {
+      "index": 10,
+      "label": "SD 10",
+      "sha256": "4efe9fb0326d5296e27ce0c5ad2d65dbb9eaa7949edeb80842b9af07e502ebe5",
+      "min": -26882,
+      "max": 29490
+    },
+    {
+      "index": 11,
+      "label": "SD 11",
+      "sha256": "cb8e8aea0ad6c8c79c2afe1c196d60cc09976178c54ee626508d101c5fc9c614",
+      "min": -24009,
+      "max": 29490
     }
   ],
   "preview": {
@@ -85,8 +99,8 @@
     "frames": 16,
     "phase_samples": 128,
     "sample_bits": 8,
-    "rom_bytes": 20480,
+    "rom_bytes": 24576,
     "frame_interpolation": true,
-    "canonical_lf_sha256": "1cd9358e0eddeda2f001a126374c210e70289db9f28d3703978aefea586c84a7"
+    "canonical_lf_sha256": "d188a7f8523d01dcb72f6c00813a50b4517724ccf18cf4424ea85fb66e8828ec"
   }
 }

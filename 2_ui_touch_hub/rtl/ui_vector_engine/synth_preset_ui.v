@@ -15,12 +15,7 @@ module synth_preset_ui #(parameter CONTACT_CYCLES=2500000)(
  reg finger;
  reg [21:0] quiet;
  integer i;
- function [3:0] category_first;
-  input [2:0] c;begin case(c)
-   0:category_first=0;1:category_first=2;2:category_first=4;
-   3:category_first=6;4:category_first=8;default:category_first=11;
-  endcase end
- endfunction
+ `include "synth_preset_layout.vh"
  always @(posedge clk or negedge rst_n)begin
   if(!rst_n)begin
    finger<=0;quiet<=0;category<=0;apply_req<=0;apply_index<=0;back_req<=0;custom_notice<=0;
@@ -39,8 +34,8 @@ module synth_preset_ui #(parameter CONTACT_CYCLES=2500000)(
        end
       for(i=0;i<3;i=i+1)
        if(touch_x>=280 && touch_x<1248 && touch_y>=192+i*128 && touch_y<304+i*128 &&
-          (i<2 || category==4) && (category!=5 || i==0))begin
-        apply_index<=category_first(category)+i;apply_req<=1;custom_notice<=0;
+          synth_preset_row_visible(category,i))begin
+        apply_index<=synth_preset_row_index(category,i);apply_req<=1;custom_notice<=0;
        end
       if(touch_y>=612 && touch_y<660)begin
        if(touch_x>=280 && touch_x<488 && applied_valid)begin apply_index<=active_index;apply_req<=1;end

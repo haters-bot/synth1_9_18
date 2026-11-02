@@ -20,12 +20,13 @@ def main():
  catalog=out/'catalog'
  (catalog/'rtl/ui_vector_engine').mkdir(parents=True);(catalog/'doc').mkdir()
  metadata=import_catalog(args.bank,catalog)
- assert metadata['count']==10,'bench currently targets the shipped 10-table bank'
+ count=metadata['count']
+ assert 1<=count<=16
  generated=['wavetable_catalog.vh','wavetable_preview_data.vh','wavetable_preview_map.vh']
  for name in generated:
   assert (catalog/'rtl/ui_vector_engine'/name).read_bytes()==(ROOT/'rtl/ui_vector_engine'/name).read_bytes(),name
  data=args.bank.read_bytes();gold=[]
- for bank in range(10):
+ for bank in range(count):
   pcm=struct.unpack_from('<65536h',data,32+bank*131072)
   for position in range(128):
    anchor,remainder=divmod(position*15,127);weight=remainder*128//127
