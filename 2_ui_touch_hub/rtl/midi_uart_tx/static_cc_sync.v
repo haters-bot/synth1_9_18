@@ -22,6 +22,11 @@ module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
     reg accepted_valid /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg [6:0] accepted_scan /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
     reg [6:0] accepted_value /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=32 */;
+    // Read the current slot, then compare on the next clock. Otherwise the
+    // 74-way read/reduction and changed-value test feed scan's CE in one path.
+    // cc_val itself is the captured live value; stalled requests still refresh.
+    reg probe_valid,probe_pending;
+    reg [6:0] probe_sent;
     wire [6:0] selected_value,selected_sent;
     wire [COUNT-1:0] selected_pending;
     wire [COUNT-1:0] value_bits[0:6],sent_bits[0:6];
@@ -46,6 +51,7 @@ module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
             scan<=0;initial_pending<={COUNT{1'b1}};startup_sync_done<=0;
             cc_req<=0;cc_param_id<=0;cc_val<=0;
             accepted_valid<=0;accepted_scan<=0;accepted_value<=0;
+            probe_valid<=0;probe_pending<=0;probe_sent<=0;
             for(i=0;i<COUNT;i=i+1) sent[i]<=0;
         end else begin
           accepted_valid<=0;
@@ -54,9 +60,9 @@ module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
           end
           if(PRESET_ENABLE && preset_adopt)begin
             for(i=0;i<COUNT;i=i+1)sent[i]<=values[i*7+:7];
-            initial_pending<=0;startup_sync_done<=1;cc_req<=0;scan<=0;
+            initial_pending<=0;startup_sync_done<=1;cc_req<=0;scan<=0;probe_valid<=0;
           end else if(PRESET_ENABLE && preset_hold)begin
-            cc_req<=0;
+            cc_req<=0;probe_valid<=0;
           end else begin
             // Acceptance denotes the exact FIFO write, never merely TX idle.
             if(cc_req && cc_accept) begin
@@ -73,12 +79,14 @@ module static_cc_sync #(parameter COUNT=74,parameter PRESET_ENABLE=0)(
                 // the word written to UART that edge; a simultaneous later edit
                 // remains different from sent[] and is reconciled on the next lap.
                 cc_val<=selected_value;
-            end else begin
-                // Cut scan/value selection from MIDI ID decode/FIFO/arbitration.
-                cc_param_id<=static_cc_id(scan);cc_val<=selected_value;
-                cc_req<=(|selected_pending) || selected_value!=selected_sent;
-                if(!((|selected_pending) || selected_value!=selected_sent))
+            end else if(probe_valid)begin
+                probe_valid<=0;
+                cc_req<=probe_pending || cc_val!=probe_sent;
+                if(!(probe_pending || cc_val!=probe_sent))
                     scan<=scan==COUNT-1 ? 0 : scan+1'b1;
+            end else begin
+                cc_param_id<=static_cc_id(scan);cc_val<=selected_value;
+                probe_sent<=selected_sent;probe_pending<=|selected_pending;probe_valid<=1;
             end
             // Sticky completion means initial values have actually left UART.
             // LFO starts afterwards; further real edits retain Note > CC > SysEx.

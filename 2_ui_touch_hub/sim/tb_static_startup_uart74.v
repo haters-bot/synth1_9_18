@@ -63,10 +63,14 @@ module tb_static_startup_uart74;
  task button(input [7:0] p,input [1:0] a);begin step;bid=p;action=a;bv=1;step;bv=0;repeat(5)step;end endtask
  task curve(input [1:0] bank_id,input [34:0] v);begin step;ct=bank_id;cvalues=v;cv=1;step;cv=0;repeat(7)step;end endtask
  task note;begin wait(ready);step;note_req=1;step;note_req=0;note_sent=note_sent+1;end endtask
- task drain;integer z;begin
-  z=0;repeat(100)step;
-  while((busy || sbusy || req) && z<100000)begin step;z=z+1;end
-  if(busy || sbusy || req)$fatal(1,"failed to drain");repeat(50)step;
+ task drain;integer z,quiet;begin
+  // Idle for a complete scan window, not a single gap between requests.
+  // This covers the registered slot-read stage at the accelerated test baud.
+  z=0;quiet=0;
+  while(quiet<200 && z<100000)begin
+   step;z=z+1;if(busy || sbusy || req)quiet=0;else quiet=quiet+1;
+  end
+  if(quiet<200)$fatal(1,"failed to drain");
  end endtask
  task reset;begin
   rst_n=0;repeat(5)step;
