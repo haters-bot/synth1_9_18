@@ -33,6 +33,18 @@ module ribbon_controller_6ch #(
     assign adc_sample_accepted = sample_valid && sample_ready;
     assign adc_sample_channel = sample_channel;
     assign adc_sample_data = sample_data;
+    // ADC故障后向Gate处理器轮流送静音样本，释放已发声的滑带，防止挂音。
+    // 这些样本不进入ADC串口遥测；日志保留最后真实读数和故障状态。
+    wire adc_fault = adc_debug_state >= 6'h3A;
+    reg [1:0] fault_channel;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) fault_channel <= 0;
+        else if (adc_fault && sample_ready) fault_channel <= fault_channel + 1'b1;
+    end
+    wire processor_sample_valid = adc_fault || sample_valid;
+    wire [2:0] processor_sample_channel = adc_fault ? {1'b0, fault_channel} : sample_channel;
+    wire signed [23:0] processor_sample_data = adc_fault ? 24'sd0 : sample_data;
+
     wire pitch_event_valid;
     wire pitch_event_ready;
     wire pitch_event_on;
@@ -66,9 +78,9 @@ module ribbon_controller_6ch #(
     ) u_ribbon_pitch_processor (
         .clk(clk),
         .rst_n(rst_n),
-        .sample_valid(sample_valid),
-        .sample_channel(sample_channel),
-        .sample_data(sample_data),
+        .sample_valid(processor_sample_valid),
+        .sample_channel(processor_sample_channel),
+        .sample_data(processor_sample_data),
         .sample_ready(sample_ready),
         .event_valid(pitch_event_valid),
         .event_ready(pitch_event_ready),
