@@ -10,8 +10,6 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
-import android.net.Network;
-import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -38,7 +36,6 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.UUID;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -53,6 +50,8 @@ public final class MainActivity extends Activity {
     private volatile OutputStream bluetoothOut;
     private volatile Socket wifiSocket;
     private volatile OutputStream wifiOut;
+    private volatile WifiNetworkSession wifiNetwork;
+    private long connectionGeneration;
     private volatile boolean destroyed;
     private final ExecutorService writes=Executors.newSingleThreadExecutor();
     private final ExecutorService files=Executors.newSingleThreadExecutor();
@@ -180,11 +179,14 @@ public final class MainActivity extends Activity {
                 catch(Exception e){error(e);}
             }).setNegativeButton("取消",null).show();
     }
-    private void disconnect() {
+    private synchronized void disconnect() {
+        connectionGeneration++;
         BluetoothSocket old=socket;socket=null;bluetoothOut=null;
         if(old!=null)try{old.close();}catch(Exception ignored){}
         Socket oldWifi=wifiSocket;wifiSocket=null;wifiOut=null;
         if(oldWifi!=null)try{oldWifi.close();}catch(Exception ignored){}
+        WifiNetworkSession oldNetwork=wifiNetwork;wifiNetwork=null;
+        if(oldNetwork!=null)oldNetwork.close();
     }
     private void connect(BluetoothDevice device) {
         disconnect();
@@ -204,29 +206,43 @@ public final class MainActivity extends Activity {
         },"HC07-RFCOMM").start();
     }
     private void connectWifi(String host,int port) {
-        disconnect();
+        final long generation;
+        synchronized(this){disconnect();generation=connectionGeneration;}
+        event("onNativeConnecting","wifi://"+host+":"+port);
         new Thread(()->{
             Socket current=null;
+            WifiNetworkSession session=null;
             try {
                 if(host==null || host.trim().isEmpty() || port<1 || port>65535)throw new Exception("Wi-Fi地址或端口无效");
                 ConnectivityManager connectivity=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
-                Network wifi=null;
-                if(connectivity!=null)for(Network candidate:connectivity.getAllNetworks()){
-                    NetworkCapabilities capabilities=connectivity.getNetworkCapabilities(candidate);
-                    if(capabilities!=null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)){wifi=candidate;break;}
+                if(connectivity==null)throw new Exception("手机Wi-Fi网络服务不可用");
+                session=new WifiNetworkSession(connectivity,8000,message->event("onNativeError",message));
+                synchronized(MainActivity.this){
+                    if(connectionGeneration!=generation || destroyed)return;
+                    wifiNetwork=session;
                 }
-                if(wifi==null)throw new Exception("手机尚未连接 ESP-01S Wi-Fi 热点；连接热点并选择保持连接后重试");
-                current=wifi.getSocketFactory().createSocket();wifiSocket=current;
-                current.connect(new InetSocketAddress(host.trim(),port),5000);
-                if(wifiSocket!=current){current.close();return;}
-                current.setTcpNoDelay(true);
-                wifiOut=current.getOutputStream();InputStream input=current.getInputStream();
-                event("onNativeConnected","wifi://"+host.trim()+":"+port);
+                current=session.connect(host.trim(),port,5000);
+                synchronized(MainActivity.this){
+                    if(connectionGeneration!=generation || destroyed)return;
+                    wifiSocket=current;wifiOut=current.getOutputStream();
+                    event("onNativeConnected","wifi://"+host.trim()+":"+port);
+                }
+                InputStream input=current.getInputStream();
                 byte[] buffer=new byte[4096];int count;
                 while(wifiSocket==current && (count=input.read(buffer))!=-1)
                     event("onNativeBytes",Base64.encodeToString(buffer,0,count,Base64.NO_WRAP));
                 if(wifiSocket==current)throw new Exception("Wi-Fi TCP连接已关闭");
-            }catch(Exception e){if(wifiSocket==current){disconnect();event("onNativeDisconnected",e.getMessage()==null?"Wi-Fi连接失败":e.getMessage());}}
+            }catch(Exception e){
+                synchronized(MainActivity.this){
+                    if(connectionGeneration==generation && !destroyed){
+                        String detail=session==null?"Wi-Fi连接准备失败："+e.toString():session.describe(e);
+                        disconnect();event("onNativeDisconnected",detail);
+                    }
+                }
+            }finally{
+                if(current!=null)try{current.close();}catch(Exception ignored){}
+                if(session!=null)session.close();
+            }
         },"ESP8266-TCP").start();
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] granted) {
@@ -265,6 +281,11 @@ public final class MainActivity extends Activity {
 
     private void closeWav(){try{wavStore.close();}catch(Exception ignored){}}
     public final class PhoneBridge {
+        @JavascriptInterface public String appInfo(){
+            try{return new JSONObject().put("version",getPackageManager().getPackageInfo(getPackageName(),0).versionName)
+                .put("manufacturer",Build.MANUFACTURER).put("model",Build.MODEL).put("sdk",Build.VERSION.SDK_INT).toString();}
+            catch(Exception e){return "{}";}
+        }
         @JavascriptInterface public void downloadAction(int request,String action,String encoded){
             if(action.equals("confirmOverwrite") || action.equals("confirmDiscard")){
                 runOnUiThread(()->new AlertDialog.Builder(MainActivity.this)

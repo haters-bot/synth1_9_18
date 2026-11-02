@@ -59,9 +59,74 @@
     return { format, division, duration_us, events };
   }
 
-  // Keep the original song immutable. Pitch adaptation runs only on the upload
-  // copy, against the range acknowledged by the FPGA.
-  function adaptToRange(song, base, count) {
+  function sourceKey(e) { return `${e.track || 0}:${e.channel || 1}:${e.note}`; }
+
+  // Preserve pitch classes relative to the final whole-song transposition.
+  // Optimize octave choices per track/channel; this is an explicit engineering
+  // cost, not a claim of perceptually optimal or lossless piano reduction.
+  function octavePlan(ordered, low, high, count, duration) {
+    const voices=new Map(), owners=new Map(), instances=[];
+    for(const item of ordered) {
+      const e=item.event,key=sourceKey(e);
+      if(e.on && e.velocity>0) {
+        const instance={index:item.index,event:e,relative:e.note-low,end:duration};
+        instances.push(instance);
+        if(!owners.has(key))owners.set(key,{notes:[],at:0});
+        owners.get(key).notes.push(instance);
+        const voice=`${e.track || 0}:${e.channel || 1}`;
+        if(!voices.has(voice))voices.set(voice,[]);
+        voices.get(voice).push(instance);
+      } else {
+        const queue=owners.get(key);
+        if(queue && queue.at<queue.notes.length)queue.notes[queue.at++].end=e.time_us;
+      }
+    }
+    const scale=(count-1)/(high-low), mapping=new Map();let cost=0;
+    for(const voice of voices.values()) {
+      for(let i=0;i<voice.length;i++) {
+        const n=voice[i], target=n.relative*scale;
+        n.options=[];
+        // Anchor the song's lowest pitch at key zero, as requested.
+        if(!n.relative)n.options.push(0);
+        else for(let q=n.relative%12;q<count;q+=12)n.options.push(q);
+        const weight=1+Math.min(4,Math.max(0,n.end-n.event.time_us)/500000)*(n.event.velocity/127);
+        n.costs=[];n.back=[];
+        for(let j=0;j<n.options.length;j++) {
+          const q=n.options[j],unary=weight*(q-target)**2;
+          if(!i){n.costs.push(unary);n.back.push(-1);continue;}
+          const prev=voice[i-1],delta=n.relative-prev.relative;
+          let best=Infinity,bestAt=0;
+          for(let k=0;k<prev.options.length;k++) {
+            const movement=q-prev.options[k];let transition=0;
+            if(n.event.time_us-prev.end<=2000000) {
+              transition=0.75*(movement-delta*scale)**2;
+              if(delta*movement<0)transition+=36+4*Math.abs(movement);
+              if(!delta)transition+=6*Math.abs(movement);
+            }
+            const candidate=prev.costs[k]+transition+unary;
+            if(candidate<best){best=candidate;bestAt=k;}
+          }
+          n.costs.push(best);n.back.push(bestAt);
+        }
+      }
+      const tail=voice[voice.length-1];let at=0;
+      for(let j=1;j<tail.costs.length;j++)if(tail.costs[j]<tail.costs[at])at=j;
+      cost+=tail.costs[at];
+      for(let i=voice.length-1;i>=0;i--){const n=voice[i];mapping.set(n.index,n.options[at]);at=n.back[at];}
+    }
+    let highMapped=0,folded=0,maxOctaves=0;
+    for(const n of instances) {
+      const relative=mapping.get(n.index),octaves=Math.abs(relative-n.relative)/12;
+      highMapped=Math.max(highMapped,relative);if(octaves)folded++;
+      maxOctaves=Math.max(maxOctaves,octaves);
+    }
+    return {mapping,highMapped,folded,maxOctaves,cost};
+  }
+
+  // The optional placement is 0=left through 1=right. Legacy three-argument
+  // callers retain octave-priority whole-song transposition. The phone always
+  // passes its explicit position, initially zero. Original MIDI is immutable.
+  function adaptToRange(song, base, count, options={}) {
     const last = base + count - 1;
     if (!Number.isInteger(base) || !Number.isInteger(count) || base < 0 || last > 127 || count < 12)
       throw new Error("板卡音域无效，至少需要一个完整八度");
@@ -71,9 +136,17 @@
     if (!sounding.length) throw new Error("曲谱没有 Note On 事件");
     for (const e of sounding) { low = Math.min(low, e.note); high = Math.max(high, e.note); }
     const width = high - low + 1;
-    if (width > count) throw new Error(`曲谱音域 MIDI ${low}–${high}，含两端共${width}键，超过本次校准的${count}键；不能整体移调容纳，已禁止传输。请另行导出音域较小的编曲`);
+    const position=options.position==null?null:Number(options.position);
+    if(position!==null && (!Number.isFinite(position) || position<0 || position>1))throw new Error("琴键位置必须在最左和最右之间");
+    if (width > count && options.compress!==true) throw new Error(`曲谱音域 MIDI ${low}–${high}，含两端共${width}键，超过本次校准的${count}键；已禁止传输。可勾选“允许八度压缩”后预览有损适配，或选择较小音域的编曲`);
+    const ordered=song.events.map((event,index)=>({event,index})).sort((a,b)=>a.event.time_us-b.event.time_us || Number(a.event.on)-Number(b.event.on) || a.index-b.index);
+    const plan=width>count?octavePlan(ordered,low,high,count,song.duration_us):null;
     let shift = 0, strategy = "original";
-    if (low < base || high > last) {
+    const spare=plan?count-1-plan.highMapped:count-width;
+    const offset=Math.round(spare*(position || 0));
+    if(plan){shift=base+offset-low;strategy="octave-fold-dp";}
+    else if(position!==null){shift=base+offset-low;strategy=shift?"transpose":"original";}
+    else if (low < base || high > last) {
       const minShift = base - low, maxShift = last - high;
       if (minShift <= maxShift) {
         // Prefer whole octaves: the key signature and intervals stay intact.
@@ -83,35 +156,41 @@
         strategy = "transpose";
       }
     }
-    const mapNote = note => note + shift;
     // Tracks may share a physical key. Keep it down until all owners release it.
     const active = new Map(), held = new Map(), events = [];
-    let foldedOn = 0, mergedOn = 0, orphanOff = 0, closedNotes = 0;
-    const ordered = song.events.slice().sort((a,b) => a.time_us-b.time_us || Number(a.on)-Number(b.on));
-    for (const e of ordered) {
-      const note = mapNote(e.note), key = `${e.track || 0}:${e.channel || 1}:${e.note}`;
-      const refs = active.get(note) || 0, own = held.get(key) || 0;
-      if (e.on) {
-        if (note !== e.note + shift) foldedOn++;
-        held.set(key, own + 1); active.set(note, refs + 1);
+    let foldedOn = plan?plan.folded:0, mergedOn = 0, orphanOff = 0, closedNotes = 0;
+    for (const item of ordered) {
+      const e=item.event,key=sourceKey(e);
+      if (e.on && e.velocity>0) {
+        const note=plan?low+shift+plan.mapping.get(item.index):e.note+shift;
+        if(!Number.isInteger(note) || note<base || note>last)throw new Error("音域适配结果越界，未发送");
+        if(!held.has(key))held.set(key,{notes:[],at:0});
+        held.get(key).notes.push(note);
+        const refs=active.get(note) || 0;active.set(note,refs+1);
         if (!refs) events.push({...e, note}); else mergedOn++;
-      } else if (own) {
-        held.set(key, own - 1); active.set(note, refs - 1);
-        if (refs === 1) events.push({...e, note});
-      } else orphanOff++;
+      } else {
+        const queue=held.get(key);
+        if(queue && queue.at<queue.notes.length) {
+          const note=queue.notes[queue.at++],refs=active.get(note);
+          active.set(note,refs-1);if(refs===1)events.push({...e,note,on:false});
+        } else orphanOff++;
+      }
     }
     for (const [note, refs] of active) if (refs) {
       events.push({time_us:song.duration_us, note, velocity:0, on:false}); closedNotes++;
     }
     let mappedLow = 127, mappedHigh = 0;
     for (const e of events) { mappedLow = Math.min(mappedLow, e.note); mappedHigh = Math.max(mappedHigh, e.note); }
-    const pitchText = strategy === "original" ? "保持原调" :
+    const pitchText = !shift ? "保持原调" :
       `整曲${shift > 0 ? "升" : "降"}${Math.abs(shift)}个半音`;
     const details = [pitchText, `MIDI ${low}–${high} → ${mappedLow}–${mappedHigh}`];
+    if(position!==null || plan)details.push(`最低音从第${mappedLow-base+1}键开始`);
+    if(plan)details.push(`有损八度压缩：调整${foldedOn}/${sounding.length}个音，最多${plan.maxOctaves}个八度；节奏保持，旋律音程及和弦位置会改变`);
     if (mergedOn) details.push(`合并${mergedOn}个重叠同键音`);
     if (orphanOff) details.push(`忽略${orphanOff}个无对应按下的松键`);
     if (closedNotes) details.push(`末尾补齐${closedNotes}个松键`);
     return {...song, events, adaptation:{strategy, shift, foldedOn, mergedOn, orphanOff, closedNotes,
+      position,availableShift:spare,startKey:mappedLow-base+1,compressed:!!plan,maxOctaveShift:plan?plan.maxOctaves:0,optimizationCost:plan?plan.cost:0,
       originalLow:low, originalHigh:high, mappedLow, mappedHigh, summary:details.join("；")}};
   }
 

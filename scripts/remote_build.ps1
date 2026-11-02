@@ -132,6 +132,10 @@ $tclProjectPath = $projectPath.Replace("\", "/")
     # impl/ is intentionally not versioned, so make the required HDL dialect
     # explicit for clean clones and remote build machines.
     "set_option -verilog_std sysv2017"
+    # R19/U21 are multiplexed CPU/SSPI package pins. Release both dedicated
+    # functions so the visualization I2S outputs can use them as GPIO.
+    "set_option -use_cpu_as_gpio 1"
+    "set_option -use_sspi_as_gpio 1"
     "set_option -top_module top"
     "run all"
     "run close"

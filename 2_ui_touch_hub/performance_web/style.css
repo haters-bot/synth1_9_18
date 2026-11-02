@@ -55,6 +55,12 @@ label { color: var(--muted); display: grid; gap: 7px; }
 .hint { color: var(--muted); margin: 12px 2px 0; }
 .log { min-height: 1.4em; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 .recording-tools { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 4px; }
+.adaptation-tools { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.compression-option { display: flex; align-items: center; gap: 9px; }
+.compression-option input { width: 20px; height: 20px; flex: 0 0 20px; }
+.placement-option { display: grid; gap: 7px; }
+.placement-option input { width: 100%; accent-color: var(--cyan); }
+.placement-option output { color: var(--muted); font-size: .9rem; }
 .recording-tools .button-group { margin-top: 10px; }
 .local-recordings { margin-top: 12px; color: var(--muted); }
 .download-entry { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--line); }

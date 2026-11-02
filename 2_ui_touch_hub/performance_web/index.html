@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:">
   <title>FPGA Performance</title>
-  <link rel="stylesheet" href="style.css?v=0.3.0">
+  <link rel="stylesheet" href="style.css?v=0.3.3">
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
-        <div class="eyebrow">FPGA PERFORMANCE · 0.3.0</div>
+        <div id="appVersion" class="eyebrow">FPGA PERFORMANCE · 0.3.3</div>
         <h1>演奏控制台</h1>
       </div>
       <div class="status-row">
@@ -63,7 +63,16 @@
         <strong id="songTitle">尚未选择曲谱</strong>
         <span id="songMeta">上传 MIDI 后显示事件和时长</span>
       </div>
-      <p id="adaptationStatus" class="hint" role="status">自动适配：能放下则保留原调，否则优先整曲移八度，再考虑整体移半音。最高音−最低音＋1超过32时，警告并禁止传输。原 MIDI 文件不变。</p>
+      <div class="adaptation-tools">
+        <label class="compression-option"><input id="compressRange" type="checkbox">允许八度压缩（仅超出音域时生效，有损）</label>
+        <label class="placement-option">琴键位置：左 ↔ 右
+          <input id="songPosition" type="range" min="0" max="100" step="1" value="0" aria-label="歌曲在32键上的左右位置">
+          <output id="songPositionValue">默认最低音从第1键开始</output>
+        </label>
+        <div class="button-group"><button id="positionLeft">靠左</button><button id="positionCenter">居中</button><button id="positionRight">靠右</button></div>
+        <p class="hint">正常曲目整曲移调，节奏和音程保持。超范围可选八度压缩：保留节奏及移调后的音名，但旋律音程、和弦位置可能改变；重叠同键会合并。原MIDI文件不变，修改后请重新发送。音域压缩不会解除板卡事件容量限制。</p>
+      </div>
+      <p id="adaptationStatus" class="hint" role="status">默认最低音从最左键开始。超出32键时，可主动开启有损八度压缩并预览。</p>
       <div class="progress-track"><div id="progress" class="progress"></div></div>
       <div id="progressLabel" class="progress-label">未开始传输</div>
       <div class="recording-tools">
@@ -96,8 +105,8 @@
 
     <pre id="log" class="log" aria-live="polite"></pre>
   </main>
-  <script src="protocol.js?v=0.3.0"></script>
-  <script src="midi.js?v=0.3.0"></script>
-  <script src="phone_app.js?v=0.3.0"></script>
+  <script src="protocol.js?v=0.3.3"></script>
+  <script src="midi.js?v=0.3.3"></script>
+  <script src="phone_app.js?v=0.3.3"></script>
 </body>
 </html>

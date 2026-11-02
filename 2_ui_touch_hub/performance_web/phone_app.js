@@ -2,7 +2,8 @@
  "use strict";
  const P=PerformanceProtocol,T=P.TYPES,$=id=>document.getElementById(id);
  const state={client:null,socket:null,song:null,status:null,working:false,selecting:false,saving:false,saveWait:null,writeWait:null,linkConnected:false,helloPayload:null,handshakePromise:null,handshakeAttempts:0,link:null,
-  device:"",transport:"蓝牙",baud:null,recordInfo:null,recordCapabilities:false,downloads:[],downloading:false,pauseDownload:false};
+  device:"",transport:"蓝牙",baud:null,recordInfo:null,recordCapabilities:false,downloads:[],downloading:false,pauseDownload:false,
+  placement:0,compress:false,adaptationCache:null};
  const native=window.PhoneNative;
  const durable=!!native?.downloadAction,downloadRequests=new Map();let downloadRequest=0;
  function nativeAction(action,data={}){
@@ -35,11 +36,32 @@
  function bytes64(bytes){let s="";for(const b of bytes)s+=String.fromCharCode(b);return btoa(s);}
  function decode64(value){return Uint8Array.from(atob(value),c=>c.charCodeAt(0));}
  function calibrated(s){return !!s?.calibrationSupported && s.calibrated;}
+ function adaptationOptions(){return {position:state.placement/100,compress:state.compress};}
+ function adaptationPreview(){
+  const output=$("songPositionValue"),target=$("adaptationStatus"),s=state.status;
+  if(output)output.textContent=`${state.placement===0?"靠左":state.placement===100?"靠右":state.placement+"%"} · 校准后显示起始键`;
+  if(!state.song){target.textContent="默认最低音从最左键开始。超过32键可主动开启有损八度压缩；调整后需重新发送到板卡。";return null;}
+  if(!calibrated(s)){target.textContent="请先在UI板校准最左键，再按本次音域预览。原MIDI不变；八度压缩默认关闭。";return null;}
+  const key=`${s.baseNote}:${s.keyCount}:${state.placement}:${state.compress}`;
+  if(state.adaptationCache?.song!==state.song || state.adaptationCache.key!==key){
+   try{state.adaptationCache={song:state.song,key,result:PerformanceMidi.adaptToRange(state.song,s.baseNote,s.keyCount,adaptationOptions())};}
+   catch(e){state.adaptationCache={song:state.song,key,error:e.message};}
+  }
+  const cache=state.adaptationCache;
+  target.textContent=cache.error?cache.error:`适配预览：${cache.result.adaptation.summary}`;
+  if(output && cache.result){const a=cache.result.adaptation;output.textContent=`最低音从第${a.startKey}键开始 · 可右移${a.availableShift}键${!a.availableShift?"（已占满音域）":""}`;}
+  return cache;
+ }
  function controls(){
   const ready=calibrated(state.status),s=state.status;
+  const preview=adaptationPreview();
   $("connectButton").textContent=state.linkConnected && !s?"重试板卡应答":"连接设备";
   $("connectButton").disabled=state.working || !!state.handshakePromise;
-  $("uploadButton").disabled=state.working || state.selecting || !ready || !state.song || state.song.noteMax-state.song.noteMin>=32;
+  $("uploadButton").disabled=state.working || state.selecting || !ready || !state.song ||
+   (state.song.noteMax-state.song.noteMin+1>(s?.keyCount || 32) && !state.compress) || !!preview?.error;
+  if($("compressRange")){$("compressRange").checked=state.compress;$("compressRange").disabled=state.working;}
+  if($("songPosition")){$("songPosition").value=String(state.placement);$("songPosition").disabled=state.working || !state.song || preview?.result?.adaptation.availableShift===0;}
+  for(const id of ["positionLeft","positionCenter","positionRight"])if($(id))$(id).disabled=state.working || !state.song || preview?.result?.adaptation.availableShift===0;
   $("playButton").disabled=state.working || !ready || !s.loaded;
   $("pauseButton").disabled=state.working || !ready || !s.loaded;
   $("downloadButton").disabled=state.working || !s?.storedFrames || s.busy;
@@ -138,7 +160,9 @@
   const c=new P.Client(send,{onStatus:s=>{if(state.client===c && (s.request!==T.HELLO || !s.code))refresh(s);},onTrace:event=>{if(state.client===c)linkTrace(event);}});
   state.client=c;controls();return handshake();
  }
- window.onNativeConnected=address=>{state.device=String(address||"");state.transport=state.device.startsWith("wifi://")?"Wi-Fi TCP":"蓝牙";return attach(bytes=>native.sendBase64(bytes64(bytes)));};
+ function nativeTransport(address){state.device=String(address||"");state.transport=state.device.startsWith("wifi://")?"Wi-Fi TCP":"蓝牙";}
+ window.onNativeConnecting=address=>{nativeTransport(address);disconnected(`正在连接 ${state.device}`);badge("gatewayStatus",`${state.transport}连接中…`);};
+ window.onNativeConnected=address=>{nativeTransport(address);return attach(bytes=>native.sendBase64(bytes64(bytes)));};
  window.onNativeBytes=data=>state.client?.receive(decode64(data));
  window.onNativeDisconnected=message=>disconnected(message||"通信连接已断开");
  window.onNativeError=message=>log(message);
@@ -163,26 +187,33 @@
  }
  async function work(action){
   if(state.working)return;state.working=true;
-  const controlIds=["chooseMidiButton","connectButton","uploadButton","playButton","pauseButton","stopButton","recordButton","downloadButton","refreshRecordingButton","discardRecordingButton"];
+  const controlIds=["chooseMidiButton","connectButton","uploadButton","playButton","pauseButton","stopButton","recordButton","downloadButton","refreshRecordingButton","discardRecordingButton","compressRange","songPosition","positionLeft","positionCenter","positionRight"];
   controlIds.forEach(id=>{if($(id))$(id).disabled=true;});
   try {await action();} catch(e){const message=e.message||String(e);log(message);feedback(message,"error");}
   finally {state.working=false;controlIds.forEach(id=>{if($(id))$(id).disabled=false;});$("chooseMidiButton").disabled=state.selecting;if(state.status)refresh(state.status);controls();}
  }
  function client(){if(!state.client || !state.status)throw Error("先连接模块并收到板卡应答");return state.client;}
  $("connectButton").onclick=()=>connect().catch(e=>log(e.message));
+ function changedAdaptation(){
+  state.adaptationCache=null;controls();
+  if(state.song)feedback($("adaptationStatus").textContent,state.adaptationCache?.error?"error":"info");
+ }
+ if($("compressRange"))$("compressRange").onchange=()=>{if(state.working)return;state.compress=!!$("compressRange").checked;changedAdaptation();};
+ if($("songPosition"))$("songPosition").oninput=()=>{if(state.working)return;state.placement=Math.max(0,Math.min(100,Number($("songPosition").value)||0));changedAdaptation();};
+ for(const [id,position] of [["positionLeft",0],["positionCenter",50],["positionRight",100]])if($(id))$(id).onclick=()=>{if(state.working)return;state.placement=position;changedAdaptation();};
  function finishSelection(){state.selecting=false;$("chooseMidiButton").disabled=state.working;controls();}
  function selectionError(message){state.song=null;$("songTitle").textContent="尚未选择曲谱";$("songMeta").textContent=String(message);$("eventStats").textContent="0 events";finishSelection();feedback(message,"error");log(message);}
  function selectedMidi(name,data){
   try {
    const song=PerformanceMidi.parseMidi(data);if(!song.events.length)throw Error("曲谱没有 Note 事件，请选择含音符的标准 MIDI");
-   song.name=name;state.song=song;$("adaptationStatus").textContent="上传前按板端本次校准音域整体移调，原文件不变；超过32键时拒绝传输。";
+   song.name=name;state.song=song;state.adaptationCache=null;
    let low=127,high=0;for(const event of song.events)if(event.on && event.velocity>0){if(event.note<low)low=event.note;if(event.note>high)high=event.note;}
    if(low>high)throw Error("曲谱没有 Note On 事件");
    song.noteMin=low;song.noteMax=high;
    $("songTitle").textContent=name;$("songMeta").textContent=`${(song.duration_us/1e6).toFixed(1)} 秒 · ${song.events.length} Note事件 · MIDI ${low}–${high}`;
    $("eventStats").textContent=`${song.events.length} events`;finishSelection();
-   if(high-low+1>32){feedback(`曲谱音域含两端共${high-low+1}键，超过32键，禁止传输；请选择较小音域的编曲。`,"error");log("曲谱已解析，但音域过宽，未向板卡发送。");}
-   else {feedback(`曲谱音域共${high-low+1}键；校准成功后将整体移调到当前32键范围。`,"info");log("MIDI 已解析，等待板端校准并确认音域后上传。");}
+   if(high-low+1>(state.status?.keyCount || 32) && !state.compress){feedback(`曲谱音域含两端共${high-low+1}键，超过32键，暂时禁止传输；可主动勾选“允许八度压缩”后预览有损适配。`,"error");log("曲谱已解析，尚未发送；八度压缩可选，原MIDI不变。");}
+   else {feedback(calibrated(state.status)?$("adaptationStatus").textContent:`曲谱音域共${high-low+1}键；校准后按所选位置适配。`,"info");log("MIDI已解析；琴键位置及压缩修改后，需点击发送才能在板卡生效。");}
   }catch(e){selectionError(e.message||String(e));}
  }
  window.onNativeMidiSelected=(name,encoded)=>{try{selectedMidi(name,decode64(encoded).buffer);}catch(e){selectionError(e.message);}};
@@ -213,7 +244,7 @@
   if(!original?.events.length)throw Error("请选择含音符的 MIDI 曲谱");
   if(!s.calibrationSupported)throw Error("未发送：请更新支持起音校准的 UI 固件；仅更新 APK 不足以完成此流程。");
   if(!calibrated(s))throw Error("未发送：请先在 UI 板点击 CALIBRATE，按实体最左键，等待校准 OK。");
-  const song=PerformanceMidi.adaptToRange(original,s.baseNote,s.keyCount);
+  const song=PerformanceMidi.adaptToRange(original,s.baseNote,s.keyCount,adaptationOptions());
   if(!song.events.length)throw Error("曲谱没有可演奏的 Note On 事件");
   if(song.events.length>s.maxEvents)throw Error(`适配后有 ${song.events.length} 事件，超过板卡 ${s.maxEvents} 容量；请分段导出 MIDI，不能截断上传`);
   $("adaptationStatus").textContent=song.adaptation.summary;
@@ -376,5 +407,6 @@
   else if(state.handshakeAttempts<3)return handshake();
  },2500);
  piano();controls();log(native?"可选蓝牙串口或ESP-01S Wi-Fi TCP；连接后在 UI 板校准最左键。Wi-Fi方式需先连接ESP热点。":"此网页可离线解析 MIDI；蓝牙或ESP-01S直连需配套安卓 APK。");
+ if(native?.appInfo){try{const info=JSON.parse(native.appInfo());if(info.version){$("appVersion").textContent=`FPGA PERFORMANCE · ${info.version}`;log(`App ${info.version} · Android API ${info.sdk} · ${info.manufacturer} ${info.model}`);}}catch(e){log("读取App版本信息失败："+e.message);}}
  if(durable)loadDownloads().catch(e=>log(e.message));
 })();

@@ -3,7 +3,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const P=require('../performance_web/protocol.js'),T=P.TYPES;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-function harness({reply=true,length=26,code=0}={}){
+function harness({reply=true,length=26,code=0,appInfo=null}={}){
  const elements=new Map(),frames=[];let poll,ctx,choices=0,enabled=reply;
  const el=id=>{if(!elements.has(id))elements.set(id,{value:'',textContent:'',disabled:false,dataset:{},style:{},replaceChildren(){},appendChild(){},classList:{toggle(){}}});return elements.get(id);};
  const status=kind=>P.join(Uint8Array.of(code,kind,28,4),P.u32(0),P.u16(0),Uint8Array.of(41,32),P.u32(96000),P.u32(1),P.u16(16384),length===26?Uint8Array.of(1,0,1,0):new Uint8Array(length-22));
@@ -11,6 +11,7 @@ function harness({reply=true,length=26,code=0}={}){
   const packet=new P.Decoder().feed(Buffer.from(encoded,'base64'))[0];frames.push(packet);
   if(enabled)setImmediate(()=>ctx.onNativeBytes(Buffer.from(P.frame(T.ACK,packet.seq,status(packet.type))).toString('base64')));
  }};
+ if(appInfo)native.appInfo=()=>JSON.stringify(appInfo);
  const protocol={...P,Client:class extends P.Client{constructor(send,options){super(send,{...options,timeout:10,retries:2});}}};
  ctx={PerformanceProtocol:protocol,PhoneNative:native,document:{getElementById:el,createElement:()=>el('key')},Option:function(){},Uint8Array,ArrayBuffer,DataView,Promise,Error,console,setTimeout,clearTimeout,setInterval(fn){poll=fn;},atob:s=>Buffer.from(s,'base64').toString('binary'),btoa:s=>Buffer.from(s,'binary').toString('base64')};
  ctx.window=ctx;vm.createContext(ctx);vm.runInContext(fs.readFileSync(require.resolve('../performance_web/phone_app.js'),'utf8'),ctx);
@@ -57,6 +58,15 @@ async function main(){
  const oldNonce=Buffer.from(bounded.frames.at(-1).payload).toString('hex');
  bounded.ctx.onNativeDisconnected('reconnect');await bounded.ctx.onNativeConnected();
  assert.notEqual(Buffer.from(bounded.frames.at(-1).payload).toString('hex'),oldNonce);
+ const wifi=harness({reply:false});wifi.ctx.onNativeConnecting('wifi://192.168.4.1:333');
+ assert.match(wifi.el('gatewayStatus').textContent,/Wi-Fi TCP.*连接中/);
+ wifi.ctx.onNativeDisconnected('Binding socket to network 144 failed: EPERM (Operation not permitted)');
+ assert.match(wifi.el('calibrationStatus').textContent,/Wi-Fi TCP连接断开/);
+ assert.doesNotMatch(wifi.el('calibrationStatus').textContent,/蓝牙/);
+ assert.match(wifi.el('log').textContent,/EPERM/);
+ const version=harness({appInfo:{version:'0.3.2',manufacturer:'test-vendor',model:'test-model',sdk:35}});
+ assert.match(version.el('appVersion').textContent,/0\.3\.2/);
+ assert.match(version.el('log').textContent,/App 0\.3\.2.*Android API 35/);
  console.log('PASS: production handshake timeout/manual retry/automatic recovery, bounded retries, stable per-session nonce, new reconnect nonce, disconnect race, 22/26-byte ACK, rejection vs silence, malformed ACK, calibration gate and TX/RX diagnostics');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});
