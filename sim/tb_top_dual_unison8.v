@@ -42,10 +42,12 @@ module tb_top_dual_unison8;
         .CONTROL_UART_BAUD_RATE(TEST_UART_BAUD),
         .KEYBOARD_UART_BAUD_RATE(TEST_UART_BAUD),
         .DEFAULT_UNISON_COUNT(1),
-        .OSC_ENGINE_COUNT(2),
+        // 使用top默认引擎数，确保此测试覆盖实际工程配置。
         .SLOTS_PER_ENGINE(32),
         .EXTERNAL_WAVETABLE_ENABLE(0)
     ) dut (
+        .uart_tx(), .adc_drdy_n(1'b1), .adc_dout(1'b0),
+        .adc_cs_n(), .adc_sclk(), .adc_din(), .adc_reset_n(),
         .sys_clk (sys_clk),
         .rst_n   (rst_n),
         .uart_rx (uart_rx),
@@ -177,6 +179,15 @@ module tb_top_dual_unison8;
             send_uart_byte(8'h90); // MIDI通道1（内部编号0）
             send_uart_byte({1'b0, note});
             send_uart_byte(8'h7F);
+        end
+    endtask
+
+    task send_note_off;
+        input [6:0] note;
+        begin
+            send_uart_byte(8'h80);
+            send_uart_byte({1'b0, note});
+            send_uart_byte(8'h00);
         end
     endtask
 
@@ -347,8 +358,25 @@ module tb_top_dual_unison8;
             errors = errors + 1;
         end
 
+        // 短Release下释放全部64槽位，验证回收及随后重新分配。
+        send_cc(7'd27, 7'd0);
+        send_cc(7'd35, 7'd0);
+        for (note_index=0; note_index<8; note_index=note_index+1) begin
+            send_note_off(7'd48 + note_index);
+            repeat (12000) @(posedge sys_clk);
+        end
+        repeat (250000) @(posedge sys_clk);
+        if (dut.osc_a_active_task_count !== 0 || dut.osc_b_active_task_count !== 0) begin
+            $display("ERROR: release did not reclaim all tasks A=%0d B=%0d", dut.osc_a_active_task_count, dut.osc_b_active_task_count);
+            errors=errors+1;
+        end
         if (phase_init_checks!=64 || b_phase_count!=64) begin
             $display("ERROR: missing Phase/Rand trigger checks"); errors=errors+1;
+        end
+        send_note_on(7'd60);
+        repeat (12000) @(posedge sys_clk);
+        if (dut.osc_a_active_task_count !== 8 || dut.osc_b_active_task_count !== 8) begin
+            $display("ERROR: failed to reallocate after release"); errors=errors+1;
         end
         if (errors == 0)
             $display("PASS: top dual oscillator, 8 voices x Unison=8, 64 tasks per bank");

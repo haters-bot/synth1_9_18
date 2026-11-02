@@ -1,10 +1,10 @@
-// 双振荡器、每组32槽位时分复用与MAX98357A音频输出顶层。
+// 双振荡器：每组2个实体引擎、每引擎32槽位时分复用。
 module top #(
     parameter integer UART_BAUD_RATE = 31250,
     parameter integer CONTROL_UART_BAUD_RATE = 31250,
     parameter integer KEYBOARD_UART_BAUD_RATE = 31250,
     parameter integer DEFAULT_UNISON_COUNT = 1,
-    parameter integer OSC_ENGINE_COUNT = 1,
+    parameter integer OSC_ENGINE_COUNT = 2,
     parameter integer SLOTS_PER_ENGINE = 32,
     parameter integer EXTERNAL_WAVETABLE_ENABLE = 1
 )(
@@ -44,8 +44,8 @@ module top #(
     inout  wire [3:0]  ddr_dqs_n
 );
 
-    // 验证阶段：OSC A和OSC B各使用1个实体引擎，每个引擎时分复用32个槽位。
-    // 参数接口为后续扩展保留；当前活动计数与归一化路径按每组最多32任务验证。
+    // OSC A/B各有两个引擎，每个引擎处理32槽位；每组最多64个活动任务。
+    // 引擎并行，部分和和归一化乘法之间已有寄存器边界。
     localparam integer OSC_TOTAL_SLOTS      =
         OSC_ENGINE_COUNT * SLOTS_PER_ENGINE;
     wire clk_sys;

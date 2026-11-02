@@ -9,7 +9,9 @@ module tb_dual_osc_capacity #(
     parameter integer VOICE_COUNT        = 8,
     parameter integer UNISON_COUNT       = 8,
     parameter integer TICK_PERIOD_CLOCKS = 65,
-    parameter integer TEST_SAMPLES        = 12
+    parameter integer TEST_SAMPLES        = 12,
+    parameter integer EXTERNAL_TEST      = 0,
+    parameter integer EXPECT_OVERRUN     = 0
 );
 
     localparam integer TOTAL_SLOTS = ENGINE_COUNT * SLOTS_PER_ENGINE;
@@ -17,6 +19,16 @@ module tb_dual_osc_capacity #(
 
     reg clk;
     reg rst_n;
+    reg cache_clk = 0;
+    always #7 cache_clk = ~cache_clk;
+    reg cache_write_enable = 0;
+    reg cache_write_frame = 0;
+    reg [7:0] cache_write_address = 0;
+    reg [15:0] cache_write_data = 0;
+    reg cache_commit_toggle = 0;
+    integer cache_checks_a [0:ENGINE_COUNT-1];
+    integer cache_checks_b [0:ENGINE_COUNT-1];
+    integer cache_index;
     reg start_tick;
     reg clear_phase;
     reg [2:0] waveform_a;
@@ -81,12 +93,12 @@ module tb_dual_osc_capacity #(
         .decay_phase_step(decay_phase_step),
         .sustain_level(sustain_level),
         .release_phase_step(release_phase_step),
-        .external_wavetable_enable(1'b0),
-        .cache_load_clk(clk), .cache_load_rst_n(rst_n),
-        .cache_write_enable(1'b0), .cache_write_bank(1'b0),
-        .cache_write_frame(1'b0), .cache_write_address(8'd0),
-        .cache_write_data(16'd0), .cache_commit_toggle(1'b0),
-        .cache_commit_bank(1'b0), .cache_commit_fraction(8'd0),
+        .external_wavetable_enable(EXTERNAL_TEST != 0),
+        .cache_load_clk(cache_clk), .cache_load_rst_n(rst_n),
+        .cache_write_enable(cache_write_enable), .cache_write_bank(1'b0),
+        .cache_write_frame(cache_write_frame), .cache_write_address(cache_write_address),
+        .cache_write_data(cache_write_data), .cache_commit_toggle(cache_commit_toggle),
+        .cache_commit_bank(1'b0), .cache_commit_fraction(8'd128),
         .task_update_valid(task_update_valid),
         .task_update_slot(task_update_slot),
         .task_update_phase_step(task_update_phase_step),
@@ -121,12 +133,12 @@ module tb_dual_osc_capacity #(
         .decay_phase_step(decay_phase_step),
         .sustain_level(sustain_level),
         .release_phase_step(release_phase_step),
-        .external_wavetable_enable(1'b0),
-        .cache_load_clk(clk), .cache_load_rst_n(rst_n),
-        .cache_write_enable(1'b0), .cache_write_bank(1'b0),
-        .cache_write_frame(1'b0), .cache_write_address(8'd0),
-        .cache_write_data(16'd0), .cache_commit_toggle(1'b0),
-        .cache_commit_bank(1'b0), .cache_commit_fraction(8'd0),
+        .external_wavetable_enable(EXTERNAL_TEST != 0),
+        .cache_load_clk(cache_clk), .cache_load_rst_n(rst_n),
+        .cache_write_enable(cache_write_enable), .cache_write_bank(1'b0),
+        .cache_write_frame(cache_write_frame), .cache_write_address(cache_write_address),
+        .cache_write_data(cache_write_data), .cache_commit_toggle(cache_commit_toggle),
+        .cache_commit_bank(1'b0), .cache_commit_fraction(8'd128),
         .task_update_valid(task_update_valid),
         .task_update_slot(task_update_slot),
         .task_update_phase_step(task_update_phase_step),
@@ -143,6 +155,23 @@ module tb_dual_osc_capacity #(
         .debug_engine0_slot(debug_slot_b),
         .debug_engine0_slot_commit(debug_commit_b)
     );
+
+    // 检查每个独立引擎均收到相同加载广播、提交和插值结果。
+    genvar gi;
+    generate for (gi=0; gi<ENGINE_COUNT; gi=gi+1) begin: CHECK_CACHE
+        always @(posedge clk) if (rst_n && EXTERNAL_TEST != 0) begin
+            if (dut_a.GEN_ENGINE[gi].u_oscillator_tdm_core.external_sample_valid) begin
+                if (dut_a.GEN_ENGINE[gi].u_oscillator_tdm_core.external_wave_sample !== 16'sd6144)
+                    $fatal(1, "A external cache mismatch engine=%0d value=%d", gi, dut_a.GEN_ENGINE[gi].u_oscillator_tdm_core.external_wave_sample);
+                cache_checks_a[gi] = cache_checks_a[gi] + 1;
+            end
+            if (dut_b.GEN_ENGINE[gi].u_oscillator_tdm_core.external_sample_valid) begin
+                if (dut_b.GEN_ENGINE[gi].u_oscillator_tdm_core.external_wave_sample !== 16'sd6144)
+                    $fatal(1, "B external cache mismatch engine=%0d value=%d", gi, dut_b.GEN_ENGINE[gi].u_oscillator_tdm_core.external_wave_sample);
+                cache_checks_b[gi] = cache_checks_b[gi] + 1;
+            end
+        end
+    end endgenerate
 
     always #10 clk = ~clk; // 50 MHz
 
@@ -198,7 +227,7 @@ module tb_dual_osc_capacity #(
         clear_phase = 1'b1;
         // Bank A 使用 Acid 三维波表；Bank B 使用锯齿波，验证参数彼此独立。
         waveform_a = 3'd4;
-        waveform_b = 3'd3;
+        waveform_b = EXTERNAL_TEST ? 3'd4 : 3'd3;
         wt_position_a = 7'd64;
         wt_position_b = 7'd0;
         warp_mode = 4'd0;
@@ -215,6 +244,9 @@ module tb_dual_osc_capacity #(
         task_update_phase_reset = 1'b1;
         active_task_count = 7'd0;
         errors = 0;
+        for (cache_index=0; cache_index<ENGINE_COUNT; cache_index=cache_index+1) begin
+            cache_checks_a[cache_index]=0; cache_checks_b[cache_index]=0;
+        end
         valid_count = 0;
         commit_count_a = 0;
         commit_count_b = 0;
@@ -232,6 +264,17 @@ module tb_dual_osc_capacity #(
 
         repeat (4) @(posedge clk);
         rst_n = 1'b1;
+        if (EXTERNAL_TEST != 0) begin
+            for (update_index=0; update_index<512; update_index=update_index+1) begin
+                @(negedge cache_clk);
+                cache_write_enable=1;
+                cache_write_frame=(update_index>=256);
+                cache_write_address=update_index[7:0];
+                cache_write_data=cache_write_frame ? 16'd8192 : 16'd4096;
+            end
+            @(negedge cache_clk); cache_write_enable=0; cache_commit_toggle=1;
+            repeat (10) @(posedge clk);
+        end
         for (update_index = 0;
              update_index < REQUIRED_SLOTS;
              update_index = update_index + 1)
@@ -251,22 +294,27 @@ module tb_dual_osc_capacity #(
         end
         repeat (TICK_PERIOD_CLOCKS + 20) @(posedge clk);
 
-        if (overrun_a || overrun_b)
-            errors = errors + 1;
-        if (valid_count < TEST_SAMPLES-1)
-            errors = errors + 1;
-        if (commit_count_a < REQUIRED_SLOTS*(TEST_SAMPLES-1))
-            errors = errors + 1;
-        if (commit_count_b < REQUIRED_SLOTS*(TEST_SAMPLES-1))
-            errors = errors + 1;
-        if (!nonzero_seen_a || !nonzero_seen_b)
-            errors = errors + 1;
+        if (EXPECT_OVERRUN) begin
+            if (!overrun_seen_a || !overrun_seen_b) errors = errors + 1;
+        end else begin
+            if (EXTERNAL_TEST) begin
+                for (cache_index=0; cache_index<ENGINE_COUNT; cache_index=cache_index+1)
+                    if (cache_checks_a[cache_index] < SLOTS_PER_ENGINE || cache_checks_b[cache_index] < SLOTS_PER_ENGINE)
+                        errors = errors + 1;
+            end
+            if (overrun_seen_a || overrun_seen_b) errors = errors + 1;
+            if (valid_count < TEST_SAMPLES-1) errors = errors + 1;
+            if (commit_count_a < REQUIRED_SLOTS*(TEST_SAMPLES-1)) errors = errors + 1;
+            if (commit_count_b < REQUIRED_SLOTS*(TEST_SAMPLES-1)) errors = errors + 1;
+            if (!nonzero_seen_a || !nonzero_seen_b) errors = errors + 1;
+        end
 
         $display("RESULT: capacity=%0dx%0d voices=%0d unison=%0d total=%0d required=%0d valid=%0d commitsA=%0d commitsB=%0d overrunA=%0d overrunB=%0d errors=%0d",
                  ENGINE_COUNT, SLOTS_PER_ENGINE, VOICE_COUNT, UNISON_COUNT,
                  TOTAL_SLOTS, REQUIRED_SLOTS, valid_count,
                  commit_count_a, commit_count_b,
                  overrun_seen_a, overrun_seen_b, errors);
+        if (errors != 0) $fatal(1, "capacity test failed");
         $stop;
     end
 
