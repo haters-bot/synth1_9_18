@@ -17,12 +17,14 @@ module tb_ads1256_scanner;
     integer sample_count;
     time last_sclk_fall;
     reg have_sclk_fall;
+    reg din_at_rise;
     time sync_end_time;
     reg check_sync_gap;
     localparam [23:0] TEST_WORD = 24'hA5C33C;
 
     // 模拟ADC在SCLK上升沿改变DOUT，主机在下降沿采样。
     always @(posedge adc_sclk) begin
+        din_at_rise = adc_din;
         if (check_sync_gap && dut.sequence_kind == 4'd6) begin
             if ($time - sync_end_time < 3125) begin
                 $display("ERROR: SYNC to WAKEUP shorter than 24 CLKIN cycles");
@@ -40,6 +42,16 @@ module tb_ads1256_scanner;
             if (dut.sequence_kind == 4'd5 && dut.spi_bit_index == 0) begin
                 sync_end_time = $time;
                 check_sync_gap = 1'b1;
+            end
+        end
+    end
+    // 实际 ADC 在下降沿锁存 DIN；检查下降沿附近的数据保持。
+    always @(negedge adc_sclk) begin
+        if (rst_n && !adc_cs_n) begin
+            #1;
+            if (adc_din !== din_at_rise) begin
+                $display("ERROR: DIN changed on SCLK falling edge");
+                errors = errors + 1;
             end
         end
     end
@@ -114,6 +126,7 @@ module tb_ads1256_scanner;
         errors = 0;
         sample_count = 0;
         have_sclk_fall = 0;
+        din_at_rise = 0;
         check_sync_gap = 0;
         sync_end_time = 0;
         last_sclk_fall = 0;

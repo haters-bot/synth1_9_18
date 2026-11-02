@@ -103,6 +103,7 @@ module ads1256_scanner #(
     reg [15:0] spi_divider;
     reg [2:0] spi_bit_index;
     reg [7:0] spi_tx_shift;
+    reg spi_din_update_pending;
     reg [7:0] spi_rx_shift;
     reg [7:0] spi_rx_byte;
     reg spi_done;
@@ -177,11 +178,17 @@ module ads1256_scanner #(
             spi_divider <= 16'd0;
             spi_bit_index <= 3'd7;
             spi_tx_shift <= 8'd0;
+            spi_din_update_pending <= 1'b0;
             spi_rx_shift <= 8'd0;
             spi_rx_byte <= 8'd0;
             spi_done <= 1'b0;
         end else begin
             spi_done <= 1'b0;
+            // DIN在下降沿之后保持一个系统时钟，再准备下一位。
+            if (spi_din_update_pending) begin
+                adc_din <= spi_tx_shift[spi_bit_index];
+                spi_din_update_pending <= 1'b0;
+            end
             if (spi_start && !spi_busy) begin
                 spi_busy <= 1'b1;
                 spi_phase <= 1'b0;
@@ -207,7 +214,7 @@ module ads1256_scanner #(
                             spi_done <= 1'b1;
                         end else begin
                             spi_bit_index <= spi_bit_index - 3'd1;
-                            adc_din <= spi_tx_shift[spi_bit_index-1'b1];
+                            spi_din_update_pending <= 1'b1;
                         end
                     end
                 end else begin
