@@ -50,7 +50,11 @@ module performance_pitch_controller #(
     reg [31:0] vibrato_phase;
     wire [19:0] vibrato_rate_product;
     wire [31:0] vibrato_phase_increment;
-    wire signed [15:0] vibrato_sine;
+    // 相位仅在sample_tick变化：提前求出下一相位的正弦值并寄存，
+    // 把波表查找与深度乘法分开，同时保持颤音输出周期不变。
+    reg signed [15:0] vibrato_sine;
+    wire signed [15:0] vibrato_next_sine;
+    wire [31:0] vibrato_next_phase = vibrato_phase + vibrato_phase_increment;
     wire signed [23:0] vibrato_depth_product;
     wire [23:0] vibrato_depth_product_abs;
     wire [30:0] vibrato_positive_scaled;
@@ -95,8 +99,8 @@ module performance_pitch_controller #(
     assign vibrato_negative_scaled = vibrato_depth_product_abs * 7'd58;
 
     sine_lut u_vibrato_sine_lut (
-        .addr(vibrato_phase[31:24]),
-        .data(vibrato_sine)
+        .addr(vibrato_next_phase[31:24]),
+        .data(vibrato_next_sine)
     );
 
     freq_lut u_event_note_freq_lut (
@@ -194,6 +198,7 @@ module performance_pitch_controller #(
             target_pitch_q16 <= {MIN_NOTE, 16'd0};
             glide_base_step <= 32'd0;
             vibrato_phase <= 32'd0;
+            vibrato_sine <= 16'sd0;
             vibrato_ratio_delta_q16 <= 13'sd0;
             interp_note_0 <= MIN_NOTE;
             interp_note_1 <= MIN_NOTE + 7'd1;
@@ -341,8 +346,8 @@ module performance_pitch_controller #(
                 end
 
                 if (vibrato_enable) begin
-                    vibrato_phase <= vibrato_phase
-                                    + vibrato_phase_increment;
+                    vibrato_phase <= vibrato_next_phase;
+                    vibrato_sine <= vibrato_next_sine;
                     if (vibrato_depth_product[23])
                         vibrato_ratio_delta_q16
                             <= -$signed({1'b0,
@@ -353,6 +358,7 @@ module performance_pitch_controller #(
                                 vibrato_positive_scaled[27:16]});
                 end else begin
                     vibrato_phase <= 32'd0;
+                    vibrato_sine <= 16'sd0;
                     vibrato_ratio_delta_q16 <= 13'sd0;
                 end
             end

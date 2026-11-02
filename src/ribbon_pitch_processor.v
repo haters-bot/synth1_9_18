@@ -30,11 +30,15 @@ module ribbon_pitch_processor #(
     output reg [6:0]          event_velocity
 );
 
-    localparam [1:0] STATE_IDLE   = 2'd0;
-    localparam [1:0] STATE_MAP    = 2'd1;
-    localparam [1:0] STATE_COMMIT = 2'd2;
+    localparam [2:0] STATE_IDLE   = 3'd0;
+    localparam [2:0] STATE_MAP    = 3'd1;
+    localparam [2:0] STATE_COMMIT = 3'd2;
+    localparam [2:0] STATE_MEDIAN = 3'd3;
+    localparam [2:0] STATE_DELTA  = 3'd4;
+    localparam [2:0] STATE_FILTER = 3'd5;
+    localparam [2:0] STATE_MAG    = 3'd6;
 
-    reg [1:0] state;
+    reg [2:0] state;
     reg signed [23:0] history_0 [0:CHANNEL_COUNT-1];
     reg signed [23:0] history_1 [0:CHANNEL_COUNT-1];
     reg signed [27:0] filtered_value [0:CHANNEL_COUNT-1];
@@ -116,6 +120,13 @@ module ribbon_pitch_processor #(
     endfunction
 
     integer reset_index;
+    // 锁存输入与对应历史，拆开通道选择、中值比较及滤波计算。
+    // 每笔样本仍按原先的顺序处理，只增加四个系统时钟的处理延迟。
+    reg signed [23:0] work_sample;
+    reg signed [23:0] work_history_0;
+    reg signed [23:0] work_history_1;
+    reg signed [27:0] work_previous_filtered;
+    reg [1:0] work_history_count;
     reg signed [23:0] selected_median;
     reg signed [28:0] filter_delta;
     reg signed [28:0] filter_increment;
@@ -134,6 +145,11 @@ module ribbon_pitch_processor #(
             event_pitch_q8 <= 15'd0;
             event_velocity <= DEFAULT_VELOCITY;
             work_channel <= 3'd0;
+            work_sample <= 24'sd0;
+            work_history_0 <= 24'sd0;
+            work_history_1 <= 24'sd0;
+            work_previous_filtered <= 28'sd0;
+            work_history_count <= 2'd0;
             work_filtered <= 28'sd0;
             map_product <= 36'd0;
             mapped_pitch_q8 <= 15'd0;
@@ -169,45 +185,54 @@ module ribbon_pitch_processor #(
                         && sample_channel_valid) begin
                         work_channel <= sample_channel;
 
-                        if (history_count[sample_channel] < 2)
-                            selected_median = sample_data;
-                        else
-                            selected_median = median3(
-                                sample_data,
-                                history_0[sample_channel],
-                                history_1[sample_channel]);
-
-                        history_1[sample_channel]
-                            <= history_0[sample_channel];
+                        work_sample <= sample_data;
+                        work_history_0 <= history_0[sample_channel];
+                        work_history_1 <= history_1[sample_channel];
+                        work_previous_filtered <= filtered_value[sample_channel];
+                        work_history_count <= history_count[sample_channel];
+                        history_1[sample_channel] <= history_0[sample_channel];
                         history_0[sample_channel] <= sample_data;
                         if (history_count[sample_channel] < 2)
                             history_count[sample_channel]
                                 <= history_count[sample_channel] + 2'd1;
-
-                        if (history_count[sample_channel] == 0) begin
-                            filtered_candidate = selected_median;
-                        end else begin
-                            filter_delta = $signed(selected_median)
-                                         - filtered_value[sample_channel];
-                            absolute_filter_delta = filter_delta[28]
-                                ? -filter_delta : filter_delta;
-                            // 快速滑动时缩短时间常数，静止时加强抑制。
-                            if (absolute_filter_delta >= 29'd8000)
-                                filter_increment = filter_delta >>> 2;
-                            else if (absolute_filter_delta >= 29'd2000)
-                                filter_increment = filter_delta >>> 3;
-                            else
-                                filter_increment = filter_delta >>> 4;
-                            filtered_candidate
-                                = filtered_value[sample_channel]
-                                + filter_increment;
-                        end
-
-                        filtered_value[sample_channel]
-                            <= filtered_candidate[27:0];
-                        work_filtered <= filtered_candidate[27:0];
-                        state <= STATE_MAP;
+                        state <= STATE_MEDIAN;
                     end
+                end
+
+                STATE_MEDIAN: begin
+                    if (work_history_count < 2)
+                        selected_median <= work_sample;
+                    else
+                        selected_median <= median3(work_sample, work_history_0, work_history_1);
+                    state <= STATE_DELTA;
+                end
+
+                STATE_DELTA: begin
+                    filter_delta <= $signed(selected_median) - work_previous_filtered;
+                    state <= STATE_MAG;
+                end
+
+                STATE_MAG: begin
+                    absolute_filter_delta <= filter_delta[28] ? -filter_delta : filter_delta;
+                    state <= STATE_FILTER;
+                end
+
+                STATE_FILTER: begin
+                    if (work_history_count == 0) begin
+                        filtered_candidate = selected_median;
+                    end else begin
+                        // 保留原有阈值、算术右移和截断规则。
+                        if (absolute_filter_delta >= 29'd8000)
+                            filter_increment = filter_delta >>> 2;
+                        else if (absolute_filter_delta >= 29'd2000)
+                            filter_increment = filter_delta >>> 3;
+                        else
+                            filter_increment = filter_delta >>> 4;
+                        filtered_candidate = work_previous_filtered + filter_increment;
+                    end
+                    filtered_value[work_channel] <= filtered_candidate[27:0];
+                    work_filtered <= filtered_candidate[27:0];
+                    state <= STATE_MAP;
                 end
 
                 STATE_MAP: begin
