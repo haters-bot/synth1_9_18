@@ -223,15 +223,70 @@ module oscillator_task_scheduler #(
             ? detune_base_product_stage - rounded_detune_delta
             : detune_base_product_stage + rounded_detune_delta;
 
+    // 将抢占候选按连续8槽分组。组内选择最小槽号，组间再选最小组号，
+    // 与原来从槽0起首次命中的优先顺序完全一致，避免64级串行优先链。
+    localparam integer STEAL_GROUP_SIZE = 8;
+    localparam integer STEAL_GROUPS = (TOTAL_SLOTS + STEAL_GROUP_SIZE - 1) / STEAL_GROUP_SIZE;
+    wire [STEAL_GROUPS-1:0] group_steal_found;
+    wire [STEAL_GROUPS*7-1:0] group_steal_note;
+    wire [STEAL_GROUPS-1:0] group_steal_continuous;
+    wire [STEAL_GROUPS*3-1:0] group_steal_source;
+    genvar steal_group;
+    generate for (steal_group = 0; steal_group < STEAL_GROUPS; steal_group = steal_group + 1) begin : GEN_STEAL_GROUP
+        localparam integer GROUP_BASE = steal_group * STEAL_GROUP_SIZE;
+        localparam integer GROUP_COUNT = (TOTAL_SLOTS - GROUP_BASE < STEAL_GROUP_SIZE)
+                                           ? TOTAL_SLOTS - GROUP_BASE : STEAL_GROUP_SIZE;
+        reg found;
+        reg [6:0] note_value;
+        reg continuous_value;
+        reg [2:0] source_value;
+        integer member;
+        always @(*) begin
+            found = 1'b0;
+            note_value = 7'd0;
+            continuous_value = 1'b0;
+            source_value = 3'd0;
+            for (member = 0; member < GROUP_COUNT; member = member + 1) begin
+                if (!found && slot_active[GROUP_BASE+member]
+                    && ((slot_continuous[GROUP_BASE+member] != pending_is_continuous)
+                        || (slot_continuous[GROUP_BASE+member]
+                            && slot_source[GROUP_BASE+member] != pending_source)
+                        || (!slot_continuous[GROUP_BASE+member]
+                            && slot_note[GROUP_BASE+member] != pending_note))) begin
+                    found = 1'b1;
+                    note_value = slot_note[GROUP_BASE+member];
+                    continuous_value = slot_continuous[GROUP_BASE+member];
+                    source_value = slot_source[GROUP_BASE+member];
+                end
+            end
+        end
+        assign group_steal_found[steal_group] = found;
+        assign group_steal_note[steal_group*7 +: 7] = note_value;
+        assign group_steal_continuous[steal_group] = continuous_value;
+        assign group_steal_source[steal_group*3 +: 3] = source_value;
+    end endgenerate
+
+    integer group_index;
+    always @(*) begin
+        steal_note_found = 1'b0;
+        steal_note = 7'd0;
+        steal_is_continuous = 1'b0;
+        steal_source = 3'd0;
+        for (group_index = 0; group_index < STEAL_GROUPS; group_index = group_index + 1) begin
+            if (!steal_note_found && group_steal_found[group_index]) begin
+                steal_note_found = 1'b1;
+                steal_note = group_steal_note[group_index*7 +: 7];
+                steal_is_continuous = group_steal_continuous[group_index];
+                steal_source = group_steal_source[group_index*3 +: 3];
+            end
+        end
+    end
+
     always @(*) begin
         matching_note_found = 1'b0;
         matching_continuous_found = 1'b0;
         matching_continuous_releasing = 1'b0;
         matching_continuous_count = 4'd1;
-        steal_note_found = 1'b0;
-        steal_note = 7'd0;
-        steal_is_continuous = 1'b0;
-        steal_source = 3'd0;
         retired_task_count = 7'd0;
 
         for (search_index = 0;
@@ -256,24 +311,7 @@ module oscillator_task_scheduler #(
                         matching_continuous_releasing = 1'b1;
                 end
 
-                // Never choose a task that already belongs to the new note;
-                // this prevents repeated partial steals when resources are
-                // completely occupied.
-                if (!steal_note_found
-                    && ((slot_continuous[search_index]
-                         != pending_is_continuous)
-                        || (slot_continuous[search_index]
-                            && (slot_source[search_index]
-                                != pending_source))
-                        || (!slot_continuous[search_index]
-                            && (slot_note[search_index]
-                                != pending_note)))) begin
-                    steal_note_found = 1'b1;
-                    steal_note = slot_note[search_index];
-                    steal_is_continuous
-                        = slot_continuous[search_index];
-                    steal_source = slot_source[search_index];
-                end
+
             end
         end
     end
