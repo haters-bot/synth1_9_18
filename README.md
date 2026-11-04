@@ -1,6 +1,6 @@
 # synth1_9_18
 
-Gowin FPGA wavetable synthesizer project for the Tang Mega 138K platform.
+FPGA wavetable synthesizer project.
 
 Current audio path:
 
