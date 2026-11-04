@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tang Mega 138K 3D 接口全景导航</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    body { user-select: none; }
+    canvas { touch-action: none; }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased overflow-hidden h-screen flex flex-col font-sans">
+
+  <!-- 顶部导航栏 -->
+  <header class="h-14 border-b border-slate-800 bg-slate-900/90 backdrop-blur px-4 flex items-center justify-between z-10 shrink-0">
+    <div class="flex items-center space-x-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/20">
+        138K
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+          Tang Mega 138K Dock 
+          <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60">3D 全景交互图</span>
+        </h1>
+        <p class="text-[11px] text-slate-400">鼠标左键拖拽旋转 · 滚轮缩放 · 点击任意接口查看引脚与功能</p>
+      </div>
+    </div>
+
+    <!-- 分类筛选器 -->
+    <div class="flex items-center space-x-1.5 overflow-x-auto text-xs py-1" id="filter-bar">
+      <button onclick="setFilter('all')" class="filter-btn active px-2.5 py-1 rounded-md bg-cyan-600 text-white font-medium shadow-sm transition">全部接口</button>
+      <button onclick="setFilter('power')" class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">⚡ 供电与调试</button>
+      <button onclick="setFilter('display')" class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">🖥️ 屏幕与视频</button>
+      <button onclick="setFilter('comm')" class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">🌐 高速通信</button>
+      <button onclick="setFilter('audio')" class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">🎵 音频与外设</button>
+      <button onclick="setFilter('exp')" class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition">🔌 排针扩展</button>
+    </div>
+
+    <!-- 视角预设与模式切换 -->
+    <div class="flex items-center space-x-2 text-xs">
+      <button onclick="resetCamera('iso')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">3D透视</button>
+      <button onclick="resetCamera('top')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">正俯视</button>
+      <button onclick="resetCamera('left')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">左侧口</button>
+      <button onclick="resetCamera('right')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">右侧口</button>
+      <button onclick="toggleRealPhoto()" id="btn-photo" class="px-2.5 py-1 rounded bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/60 flex items-center gap-1 font-medium">
+        📷 实物对照
+      </button>
+    </div>
+  </header>
+
+  <!-- 主视图区 -->
+  <main class="flex-1 relative overflow-hidden flex">
+    <!-- 3D Canvas 容器 -->
+    <div class="flex-1 h-full relative cursor-grab active:cursor-grabbing" id="canvas-container">
+      <canvas id="boardCanvas" class="w-full h-full block"></canvas>
+
+      <!-- 悬停名片 Tooltip -->
+      <div id="tooltip" class="absolute pointer-events-none transform -translate-x-1/2 -translate-y-full opacity-0 transition-opacity duration-150 z-20">
+        <div class="bg-slate-900/95 border border-cyan-500/50 shadow-xl shadow-cyan-950/50 rounded-lg p-2.5 min-w-[180px] max-w-xs text-xs backdrop-blur">
+          <div class="flex items-center justify-between mb-1">
+            <span id="tt-name" class="font-bold text-cyan-400">接口名称</span>
+            <span id="tt-badge" class="px-1.5 py-0.2 rounded text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-800">分类</span>
+          </div>
+          <p id="tt-desc" class="text-slate-300 text-[11px]">简短说明</p>
+          <div class="mt-1 text-[10px] text-cyan-500 font-mono flex items-center gap-1">
+            <span>🖱️ 点击查看芯片与管脚详情</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 实物照片叠加层 (可切换) -->
+      <div id="photo-overlay" class="absolute inset-0 bg-slate-950/90 z-10 hidden flex items-center justify-center p-6">
+        <div class="relative max-w-4xl max-h-full flex flex-col items-center">
+          <img src="mega_138k_top.png" alt="Tang Mega 138K 俯视实物" class="rounded-xl border border-slate-700 shadow-2xl max-h-[75vh] object-contain">
+          <div class="mt-3 flex items-center justify-between w-full text-xs text-slate-400 px-2">
+            <span>📷 官方实物正视图 (高清晰度原厂贴片布局)</span>
+            <button onclick="toggleRealPhoto()" class="text-cyan-400 hover:underline">返回 3D 交互视角 ✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部控制提示 -->
+      <div class="absolute bottom-3 left-4 bg-slate-900/80 border border-slate-800/80 rounded-lg px-3 py-1.5 text-[11px] text-slate-400 flex items-center space-x-4 pointer-events-none backdrop-blur">
+        <span>🔄 <b>左键拖拽</b>：3D空间旋转</span>
+        <span>🔍 <b>滚轮</b>：缩放模型</span>
+        <span>🎯 <b>左键单击</b>：聚焦选中接口</span>
+        <span>✨ <b>双击空白</b>：复位视角</span>
+      </div>
+    </div>
+
+    <!-- 右侧接口详细信息抽屉 -->
+    <aside id="detail-drawer" class="w-80 md:w-96 border-l border-slate-800 bg-slate-900/95 backdrop-blur flex flex-col z-20 transition-all shrink-0">
+      <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <span id="detail-icon" class="text-xl">⚡</span>
+          <div>
+            <h2 id="detail-title" class="font-bold text-white text-sm">请点击左侧接口</h2>
+            <p id="detail-subtitle" class="text-[11px] text-slate-400">在 3D 视图中查看各个位置</p>
+          </div>
+        </div>
+        <span id="detail-tag" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">就绪</span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar text-xs" id="detail-content">
+        <!-- 默认未选中时指引 -->
+        <div id="empty-state" class="text-center py-10 space-y-3">
+          <div class="w-12 h-12 rounded-full bg-cyan-950/50 border border-cyan-800/60 mx-auto flex items-center justify-center text-2xl text-cyan-400 animate-pulse">
+            👆
+          </div>
+          <h3 class="font-semibold text-slate-200">点击任意板载组件或接口</h3>
+          <p class="text-slate-400 text-[11px] max-w-[240px] mx-auto leading-relaxed">
+            3D 模型已根据官方原理图进行完整建模，涵盖 SOM 核心板、USB3、PCIe、RGB屏、HDMI、网口、供电及全引脚映射。
+          </p>
+          <div class="pt-2 flex flex-wrap gap-1.5 justify-center">
+            <button onclick="selectComponentById('typec_debug')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300">烧录口 DEBUG-USB2</button>
+            <button onclick="selectComponentById('lcd_rgb')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-pink-300">RGB 屏幕接口</button>
+            <button onclick="selectComponentById('ch569_usb3')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-300">USB 3.0 高速口</button>
+            <button onclick="selectComponentById('pcie_gold')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300">PCIe x4 金手指</button>
+          </div>
+        </div>
+
+        <!-- 详细内容区域 -->
+        <div id="info-body" class="space-y-4 hidden">
+          <div>
+            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">功能描述</h4>
+            <p id="info-desc" class="text-slate-200 leading-relaxed text-[12px] bg-slate-800/50 p-2.5 rounded-lg border border-slate-800">
+              描述文本
+            </p>
+          </div>
+
+          <div id="box-schematic">
+            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">原理图与芯片位置</h4>
+            <div class="bg-slate-800/50 p-2.5 rounded-lg border border-slate-800 space-y-1 font-mono text-[11px]">
+              <div class="flex justify-between"><span class="text-slate-400">主控/芯片:</span> <span id="info-chip" class="text-cyan-300">-</span></div>
+              <div class="flex justify-between"><span class="text-slate-400">原理图 Sheet:</span> <span id="info-sheet" class="text-slate-300">-</span></div>
+              <div class="flex justify-between"><span class="text-slate-400">PCB 位号:</span> <span id="info-refdes" class="text-slate-300">-</span></div>
+            </div>
+          </div>
+
+          <div id="box-pins">
+            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1">关键引脚与 CST 约束</h4>
+            <div class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 overflow-x-auto">
+              <table class="w-full text-left font-mono text-[11px]">
+                <thead>
+                  <tr class="text-slate-500 border-b border-slate-800">
+                    <th class="pb-1">信号名</th>
+                    <th class="pb-1">引脚编号</th>
+                    <th class="pb-1">电平</th>
+                  </tr>
+                </thead>
+                <tbody id="info-pins-table" class="divide-y divide-slate-800/50 text-slate-300">
+                  <!-- 动态插入 -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="text-[11px] font-semibold uppercase tracking-wider text-amber-400/90 mb-1 flex items-center gap-1">
+              <span>⚠️</span> 使用与电气注意事项
+            </h4>
+            <div id="info-notes" class="text-amber-200/90 bg-amber-950/30 border border-amber-900/50 p-2.5 rounded-lg leading-relaxed text-[11px]">
+              注意事项
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // ==========================================
+    // 1. 硬件元器件定义 (依据原理图与 138K CST 真实定位)
+    // ==========================================
+    const COMPONENTS = [
+      // 核心板
+      {
+        id: "som_core",
+        name: "SOM 核心板 (GW5AST-138)",
+        category: "core",
+        icon: "🧠",
+        color: "#0284c7",
+        x: 0, y: -10, z: 8,
+        w: 120, h: 155, d: 8,
+        desc: "35x45mm 高密度核心板，集成高云 GW5AST-LV138 FPGA (22nm, 138K LUTs, PCIe/RISC-V硬核)、1GiB 32-bit DDR3 内存与 SPI Flash。通过 3 组 BTB 紧密连接底板。",
+        chip: "GW5AST-LV138PG484 + 2x DDR3",
+        sheet: "SOM_BTB0 / SOM_BTB1&2",
+        refdes: "SOM1 (BTB0, BTB1, BTB2)",
+        pins: [
+          { name: "sys_clk", loc: "V22", type: "LVCMOS33 (50MHz)" },
+          { name: "sys_rst_n", loc: "AA13", type: "LVCMOS33" },
+          { name: "DDR3_DQ[31:0]", loc: "Y2..Y4", type: "SSTL15" },
+          { name: "DDR3_ADDR[15:0]", loc: "R1..M1", type: "SSTL15" }
+        ],
+        notes: "核心板在重载或长时间高速运算（如SerDes、PCIe、深度学习）时发热量较大，强烈建议贴合散热片并连接 4Pin 风扇。"
+      },
+
+      // 左侧面：供电与调试接口
+      {
+        id: "dc_jack",
+        name: "12V DC 电源圆孔 (DC5521)",
+        category: "power",
+        icon: "🔌",
+        color: "#ef4444",
+        x: -165, y: -95, z: 12,
+        w: 26, h: 32, d: 20,
+        desc: "标准 DC 5.5x2.1mm 供电母座，输入额定电压 12V。用于大功耗工况（如带屏幕、高速USB3、PCIe扩展或大计算量项目）。",
+        chip: "板载 SY8288 / DC-DC 降压网络",
+        sheet: "P3: POWER_IC, P4: SYS_POWER",
+        refdes: "J12 (DC-005)",
+        pins: [
+          { name: "VIN_12V", loc: "Header", type: "DC 12V 推荐" },
+          { name: "GND", loc: "Shell", type: "Power GND" }
+        ],
+        notes: "严禁接入超过 12V 的电源（如 19V/24V 笔记本适配器），过高电压会击穿板载降压芯片！"
+      },
+      {
+        id: "batt_conn",
+        name: "3.7V 锂电池接口 (1S)",
+        category: "power",
+        icon: "🔋",
+        color: "#f97316",
+        x: -165, y: -55, z: 8,
+        w: 18, h: 22, d: 12,
+        desc: "PH2.0 2Pin 电池插座，支持标准 3.7V 单节锂离子/锂聚合物电池。底板自带充放电管理芯片，插入 DC 或 Type-C 时自动给电池充电。",
+        chip: "CW2015 电量计 + 充电管理",
+        sheet: "P3: POWER_IC (CW2015)",
+        refdes: "J16 (PH2.0-2P)",
+        pins: [
+          { name: "VBAT_3V7", loc: "Pin 1", type: "3.7V ~ 4.2V" },
+          { name: "GND", loc: "Pin 2", type: "Battery GND" }
+        ],
+        notes: "请确保接线极性正确（红正黑负），电池连续放电能力要求 ≥ 600mA，避免大动态负载导致欠压重启。"
+      },
+      {
+        id: "typec_debug",
+        name: "USB-JTAG/串口 (DEBUG-USB2)",
+        category: "power",
+        icon: "💻",
+        color: "#06b6d4",
+        x: -165, y: -15, z: 8,
+        w: 22, h: 25, d: 10,
+        desc: "标有 DEBUG-USB2 的 Type-C 接口。内建 FT2232 双通道芯片，无需外接下载器即可完成 FPGA JTAG 烧录与硬件 UART 串口通信。",
+        chip: "FT2232HL / BL616 调试器",
+        sheet: "P8: USB_JTAG",
+        refdes: "P3 (Type-C UFP)",
+        pins: [
+          { name: "JTAG_TCK/TMS/TDI/TDO", loc: "FT2232 A通道", type: "JTAG TAP" },
+          { name: "UART_TXD (txp)", loc: "U15", type: "LVCMOS33" },
+          { name: "UART_RXD (rxp)", loc: "V14", type: "LVCMOS33" }
+        ],
+        notes: "烧录时请务必连接此口；如果 Programmer 提示 'No USB Cable'，请确认设备管理器中已出现 FTDI 或 Dual Serial 驱动。"
+      },
+      {
+        id: "ch569_usb3",
+        name: "USB 3.0 高速口 (5Gbps)",
+        category: "comm",
+        icon: "🚀",
+        color: "#3b82f6",
+        x: -165, y: 25, z: 8,
+        w: 22, h: 25, d: 10,
+        desc: "Type-C USB 3.0 SuperSpeed (5Gbps) 接口，搭载沁恒 CH569W 高性能芯片，与 FPGA 通过 16-bit HSPI 高速并行总线桥接，适合超高速数据采集与图像推流。",
+        chip: "WCH CH569W (USB3.0 Controller)",
+        sheet: "P20: USBC_UFP, P21: USB3_PHY",
+        refdes: "P1 (Type-C SS)",
+        pins: [
+          { name: "HSPI_HTCLK", loc: "J20", type: "LVCMOS33" },
+          { name: "HSPI_HTREQ", loc: "J21", type: "LVCMOS33" },
+          { name: "HSPI_HTRDY", loc: "L19", type: "LVCMOS33" },
+          { name: "HSPI_HD[15:0]", loc: "G17..L16", type: "LVCMOS33 (16-bit数据)" }
+        ],
+        notes: "该口仅负责 USB3.0 数据通信与 5V 辅助供电，不能用于 FPGA 的 JTAG 固件烧录。"
+      },
+      {
+        id: "btn_pwr",
+        name: "PWR 智能电源开关键",
+        category: "power",
+        icon: "🔘",
+        color: "#a855f7",
+        x: -165, y: 65, z: 6,
+        w: 15, h: 15, d: 8,
+        desc: "电源控制微动按键。长按 2 秒触发电源开/关切换。",
+        chip: "硬件电源锁定与延迟电路",
+        sheet: "P3: POWER_IC",
+        refdes: "SW1 (PWRKEY)",
+        pins: [
+          { name: "PWRKEY_IN", loc: "PMU Trigger", type: "Long press 2s" }
+        ],
+        notes: "通电后板子可能处于待机状态， SOM 核心板灯不亮属于正常现象，长按此键 2 秒即可开机启动！"
+      },
+      {
+        id: "user_keys",
+        name: "用户按键群 (RST / Key0 / Key1)",
+        category: "power",
+        icon: "⌨️",
+        color: "#64748b",
+        x: -165, y: 105, z: 6,
+        w: 20, h: 45, d: 8,
+        desc: "包含全局复位按键与用户自定义输入按键，低电平有效，内置上拉电阻。",
+        chip: "FPGA GPIO 直连",
+        sheet: "P9: PERIPHERALS",
+        refdes: "SW2, SW3, SW4",
+        pins: [
+          { name: "sys_rst_n (RST)", loc: "AA13", type: "LVCMOS33 (PULL_UP)" },
+          { name: "Key_in[0]", loc: "AB13", type: "LVCMOS33 (PULL_UP)" },
+          { name: "Key_in[1]", loc: "Y12", type: "LVCMOS33 (PULL_UP)" }
+        ],
+        notes: "常在代码中作为系统重置或模式切换信号。"
+      },
+
+      // 右侧面：多媒体与网络
+      {
+        id: "eth_rj45",
+        name: "千兆以太网口 (GbE RJ45)",
+        category: "comm",
+        icon: "🌐",
+        color: "#10b981",
+        x: 165, y: -80, z: 16,
+        w: 30, h: 40, d: 24,
+        desc: "集成隔离变压器与双状态指示灯的标准 RJ45 金属网口，支持 10/100/1000M 速率。底板集成 RGMII 千兆 PHY 芯片直通 FPGA。",
+        chip: "YT8531 / RTL8211F (Gigabit PHY)",
+        sheet: "P11: RGMII_ETHNET",
+        refdes: "J2 (RJ45)",
+        pins: [
+          { name: "RGMII_GTXCLK", loc: "F20", type: "LVCMOS33" },
+          { name: "RGMII_TXEN", loc: "F21", type: "LVCMOS33" },
+          { name: "RGMII_TXD[3:0]", loc: "D21..E22", type: "LVCMOS33" },
+          { name: "PHY_CLK", loc: "V19", type: "LVCMOS33" }
+        ],
+        notes: "高速 RGMII 信号走线已做阻抗与等长控制，千兆吞吐下性能极高。"
+      },
+      {
+        id: "hdmi_conn",
+        name: "HDMI / DVI 视频接口 (TX/RX)",
+        category: "display",
+        icon: "📺",
+        color: "#f59e0b",
+        x: 165, y: -20, z: 12,
+        w: 28, h: 35, d: 16,
+        desc: "标准 HDMI Type-A 母座，4 对差分 TMDS 直连 FPGA 高速 Bank，既可作为 1080P 高清视频图像输出 (TX)，也可反向作为 HDMI 采集输入 (RX)。",
+        chip: "FPGA TMDS 差分直连 (Bank 3.3V)",
+        sheet: "P15: FPGA_TMDS",
+        refdes: "J1 (HDMI-A)",
+        pins: [
+          { name: "tmds_clk_p_0", loc: "G15, G16", type: "TMDS Diff" },
+          { name: "tmds_d_p_0[0]", loc: "J14, H14", type: "TMDS Diff" },
+          { name: "tmds_d_p_0[1]", loc: "J15, H15", type: "TMDS Diff" },
+          { name: "tmds_d_p_0[2]", loc: "K17, J17", type: "TMDS Diff" }
+        ],
+        notes: "DVI TX 与 RX 共用差分引脚，通过配置选择输入/输出工作模式。"
+      },
+      {
+        id: "headphone_jack",
+        name: "3.5mm 立体声音频插孔",
+        category: "audio",
+        icon: "🎧",
+        color: "#ec4899",
+        x: 165, y: 30, z: 8,
+        w: 20, h: 22, d: 12,
+        desc: "3.5mm 立体声耳机接口，连接板载高保真 I2S DAC 解码器芯片，输出纯净的立体声模拟信号。",
+        chip: "I2S DAC (MAX98357 或等效芯片)",
+        sheet: "P10: DAC+PA",
+        refdes: "J10 (PhoneJack)",
+        pins: [
+          { name: "HP_BCK (位时钟)", loc: "Y17", type: "LVCMOS33" },
+          { name: "HP_WS (左右声道)", loc: "AB17", type: "LVCMOS33" },
+          { name: "HP_DIN (音频数据)", loc: "AA16", type: "LVCMOS33" }
+        ],
+        notes: "仅支持立体声音频输出，不带麦克风输入触点。"
+      },
+      {
+        id: "speaker_fan",
+        name: "双扬声器端子 & 4Pin 风扇口",
+        category: "audio",
+        icon: "🔊",
+        color: "#e11d48",
+        x: 165, y: 80, z: 8,
+        w: 22, h: 36, d: 12,
+        desc: "配有 2 组 3W 功放喇叭接线座（PA_EN 控制防爆音）以及 1 组 4-Pin 5V PWM 调速/测速风扇接口。",
+        chip: "双声道音频功放 + PWM 风扇驱动",
+        sheet: "P9: PERIPHERALS, P10: DAC+PA",
+        refdes: "J7, J8 (SPK), J11 (FAN)",
+        pins: [
+          { name: "PA_EN (功放使能)", loc: "AB16", type: "LVCMOS33" },
+          { name: "FAN_PWM0", loc: "PWM Control", type: "5V FAN" },
+          { name: "FAN_TACHO", loc: "Speed Feedback", type: "Pulse" }
+        ],
+        notes: "长时间运行大吞吐项目时，建议插上 5V PWM 风扇压制 FPGA 与 DDR3 结温。"
+      },
+
+      // 上侧面：显示屏与扩展
+      {
+        id: "lcd_rgb",
+        name: "40P RGB 屏幕接口 (带触摸 CTP)",
+        category: "display",
+        icon: "📱",
+        color: "#06b6d4",
+        x: -40, y: -130, z: 4,
+        w: 60, h: 18, d: 6,
+        desc: "40Pin 0.5mm 间距下接翻盖 FPC 排线座，支持 18/24-bit RGB888 接口 LCD 屏（如当前工程配置的 800x480、1024x600 屏），同时引出 GT911 电容触摸屏 I2C 与背光控制信号。",
+        chip: "FPGA GPIO (当前工程已适配)",
+        sheet: "P12: LCD_DPI",
+        refdes: "J15 (40P FPC)",
+        pins: [
+          { name: "lcd_pclk", loc: "L19", type: "LVCMOS33" },
+          { name: "lcd_de", loc: "L14", type: "LVCMOS33" },
+          { name: "lcd_bl (背光)", loc: "P20", type: "LVCMOS33 (PWM)" },
+          { name: "touch_scl / sda", loc: "W16 / U16", type: "I2C (GT911)" },
+          { name: "touch_int / rst", loc: "T16 / T15", type: "LVCMOS33" }
+        ],
+        notes: "插入 FPC 软排线前请完全断电，且必须保证排线金手指朝向正确平齐，避免引脚错位短路！"
+      },
+      {
+        id: "cam_dvp",
+        name: "24P DVP 摄像头接口",
+        category: "display",
+        icon: "📷",
+        color: "#14b8a6",
+        x: 40, y: -130, z: 4,
+        w: 45, h: 18, d: 6,
+        desc: "24Pin 0.5mm FPC 接口，专为 OV5640 等 500 万像素高清摄像头设计，包含 8 位并行数据总线、像素时钟、同步信号及 I2C (SCCB) 配置总线。",
+        chip: "OV5640 / DVP 传感器",
+        sheet: "P17: DVP_CAMERA",
+        refdes: "J14 (24P FPC)",
+        pins: [
+          { name: "cmos_pclk", loc: "AB20", type: "LVCMOS33" },
+          { name: "cmos_vsync / href", loc: "Y21 / AB21", type: "LVCMOS33" },
+          { name: "cmos_db[7:0]", loc: "AA20..P14", type: "LVCMOS33" },
+          { name: "cmos_scl / sda", loc: "AA14 / Y13", type: "I2C/SCCB" }
+        ],
+        notes: "该接口与底板上方的部分 40P 排针及 PMOD 信号存在复用关系，使用时需注意排针不要短接。"
+      },
+      {
+        id: "sd_slot",
+        name: "MicroSD / TF 卡槽",
+        category: "comm",
+        icon: "💾",
+        color: "#eab308",
+        x: 105, y: -130, z: 5,
+        w: 30, h: 25, d: 6,
+        desc: "自弹式 MicroSD 卡槽，支持标准 SPI 模式或 1-bit SDIO 模式，用于存取 FAT32 固件、视频多媒体文件或 RISC-V 操作系统根文件系统。",
+        chip: "FPGA 直连 (带上拉)",
+        sheet: "P16: SYS_STORAGE",
+        refdes: "J9 (TF Card)",
+        pins: [
+          { name: "sd_clk", loc: "V15", type: "LVCMOS33" },
+          { name: "sd_cs / dat3", loc: "W15", type: "LVCMOS33" },
+          { name: "sd_mosi / cmd", loc: "Y16", type: "LVCMOS33" },
+          { name: "sd_miso / dat0", loc: "AA15", type: "LVCMOS33" }
+        ],
+        notes: "推荐使用 Class 10 / U1 规格的优质 TF 卡，格式化为 FAT32 格式。"
+      },
+
+      // 下侧面：PCIe 3.0 x4 金手指
+      {
+        id: "pcie_gold",
+        name: "PCIe 3.0 x4 金手指 (插槽端)",
+        category: "comm",
+        icon: "⚡",
+        color: "#eab308",
+        x: 0, y: 145, z: 2,
+        w: 160, h: 25, d: 3,
+        desc: "标准 PCIe 3.0 x4 金手指，可直接插入台式电脑或服务器主板。配合 FPGA 内置硬核 PCIe 3.0 控制器及 4 路高速 SerDes，支持高达 5~8Gbps 每通道的数据吞吐。",
+        chip: "FPGA 内置硬核 PCIe 3.0 控制器",
+        sheet: "P13: SERDES_PCIE",
+        refdes: "CON_PCIE_X4",
+        pins: [
+          { name: "PETp/n [3:0]", loc: "SerDes TX [3:0]", type: "PCIe 3.0 8Gbps" },
+          { name: "PERp/n [3:0]", loc: "SerDes RX [3:0]", type: "PCIe 3.0 8Gbps" },
+          { name: "REFCLKp/n", loc: "SerDes RefClk", type: "100MHz 差分时钟" },
+          { name: "PERST#", loc: "Host Reset", type: "PCIe 复位信号" }
+        ],
+        notes: "插入主机 PCIe 插槽前请务必确认主机完全断电！严禁带电热插拔，防止由于插拔歪斜导致引脚对地短路。"
+      },
+
+      // 板面交互指示灯
+      {
+        id: "leds_bar",
+        name: "8 颗通用 LED + WS2812 幻彩灯",
+        category: "audio",
+        icon: "💡",
+        color: "#22c55e",
+        x: 75, y: 35, z: 4,
+        w: 55, h: 14, d: 4,
+        desc: "一字排列的 8 颗绿色用户状态 LED（`LEDs[7:0]`）以及 1 颗幻彩 WS2812 单总线 RGB 灯珠，便于实时监视系统心跳、状态机指示与调试波形。",
+        chip: "FPGA GPIO (直连限流电阻)",
+        sheet: "P9: PERIPHERALS",
+        refdes: "LED1..LED8, D1 (WS2812)",
+        pins: [
+          { name: "LEDs[0..7]", loc: "T18, R18, R17..", type: "LVCMOS33 (高/低电平亮)" },
+          { name: "WS2812", loc: "J16", type: "单总线归零码" }
+        ],
+        notes: "在当前工程中，`led[0]` (T18) 与 `led[1]` (R18) 已被例化为触摸与运行状态指示。"
+      }
+    ];
+
+    // ==========================================
+    // 2. 交互式 3D 渲染引擎 (纯原生 Canvas，无外部依赖)
+    // ==========================================
+    const canvas = document.getElementById("boardCanvas");
+    const ctx = canvas.getContext("2d");
+    const container = document.getElementById("canvas-container");
+    const tooltip = document.getElementById("tooltip");
+
+    let width = 0, height = 0;
+    let rotX = 0.85;  // 俯仰角
+    let rotZ = 0.55;  // 旋转角
+    let zoom = 1.35;
+    let isDragging = false;
+    let lastMouseX = 0, lastMouseY = 0;
+    let hoveredComp = null;
+    let selectedComp = null;
+    let currentFilter = 'all';
+
+    function resize() {
+      width = container.clientWidth;
+      height = container.clientHeight;
+      canvas.width = width * window.devicePixelRatio;
+      canvas.height = height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      render();
+    }
+    window.addEventListener("resize", resize);
+
+    // 3D 旋转与投影数学
+    function project(x, y, z) {
+      // 绕 Z 轴旋转
+      const cosZ = Math.cos(rotZ), sinZ = Math.sin(rotZ);
+      const x1 = x * cosZ - y * sinZ;
+      const y1 = x * sinZ + y * cosZ;
+      const z1 = z;
+
+      // 绕 X 轴旋转
+      const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+      const x2 = x1;
+      const y2 = y1 * cosX - z1 * sinX;
+      const z2 = y1 * sinX + z1 * cosX;
+
+      // 正交 / 轻度透视投影
+      const scale = zoom * 1.55;
+      const screenX = width / 2 + x2 * scale;
+      const screenY = height / 2 + y2 * scale;
+      return { x: screenX, y: screenY, depth: z2 };
+    }
+
+    // 绘制 3D 长方体
+    function draw3DBox(x, y, z, w, h, d, color, isHovered, isSelected, label) {
+      const hw = w / 2, hh = h / 2;
+      const corners = [
+        project(x - hw, y - hh, z),
+        project(x + hw, y - hh, z),
+        project(x + hw, y + hh, z),
+        project(x - hw, y + hh, z),
+        project(x - hw, y - hh, z + d),
+        project(x + hw, y - hh, z + d),
+        project(x + hw, y + hh, z + d),
+        project(x - hw, y + hh, z + d),
+      ];
+
+      // 顶面
+      ctx.beginPath();
+      ctx.moveTo(corners[4].x, corners[4].y);
+      ctx.lineTo(corners[5].x, corners[5].y);
+      ctx.lineTo(corners[6].x, corners[6].y);
+      ctx.lineTo(corners[7].x, corners[7].y);
+      ctx.closePath();
+
+      if (isSelected) {
+        ctx.fillStyle = "#38bdf8";
+        ctx.shadowColor = "#38bdf8";
+        ctx.shadowBlur = 15;
+      } else if (isHovered) {
+        ctx.fillStyle = "#67e8f9";
+        ctx.shadowColor = "#67e8f9";
+        ctx.shadowBlur = 10;
+      } else {
+        ctx.fillStyle = color;
+        ctx.shadowBlur = 0;
+      }
+      ctx.fill();
+
+      // 描边
+      ctx.strokeStyle = isSelected ? "#e0f2fe" : (isHovered ? "#a5f3fc" : "rgba(255,255,255,0.25)");
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 侧面（透视前侧）
+      ctx.beginPath();
+      ctx.moveTo(corners[7].x, corners[7].y);
+      ctx.lineTo(corners[6].x, corners[6].y);
+      ctx.lineTo(corners[2].x, corners[2].y);
+      ctx.lineTo(corners[3].x, corners[3].y);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fill();
+      ctx.stroke();
+
+      // 右侧面
+      ctx.beginPath();
+      ctx.moveTo(corners[5].x, corners[5].y);
+      ctx.lineTo(corners[6].x, corners[6].y);
+      ctx.lineTo(corners[2].x, corners[2].y);
+      ctx.lineTo(corners[1].x, corners[1].y);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fill();
+      ctx.stroke();
+
+      // 绘制顶部简易图标或标识
+      if (label && zoom > 0.9) {
+        const topCenter = project(x, y, z + d);
+        ctx.fillStyle = isSelected ? "#082f49" : "#ffffff";
+        ctx.font = "bold 9px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, topCenter.x, topCenter.y);
+      }
+    }
+
+    // 渲染全景场景
+    function render() {
+      ctx.clearRect(0, 0, width, height);
+
+      // 1. 绘制网格背景
+      ctx.strokeStyle = "rgba(30, 41, 59, 0.4)";
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let i = -width; i < width * 2; i += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, height);
+        ctx.stroke();
+      }
+      for (let j = -height; j < height * 2; j += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, j);
+        ctx.lineTo(width, j);
+        ctx.stroke();
+      }
+
+      // 2. 绘制 PCB 主板底板 (哑光墨绿色/深灰底板)
+      draw3DBox(0, 0, 0, 310, 260, 4, "#0f172a", false, false, "");
+
+      // 绘制 PCB 丝印边框与导向金手指印记
+      const pcbTop = project(0, 0, 4);
+      ctx.save();
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
+      ctx.setLineDash([4, 4]);
+      const p1 = project(-148, -122, 4);
+      const p2 = project(148, -122, 4);
+      const p3 = project(148, 122, 4);
+      const p4 = project(-148, 122, 4);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.lineTo(p4.x, p4.y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+
+      // 3. 排序所有元器件 (根据深度 Depth 保证遮挡关系正确)
+      const sorted = COMPONENTS.map(c => {
+        const pr = project(c.x, c.y, c.z);
+        return { comp: c, proj: pr };
+      }).sort((a, b) => a.proj.depth - b.proj.depth);
+
+      // 4. 逐个渲染组件
+      sorted.forEach(({ comp, proj }) => {
+        const isHover = hoveredComp && hoveredComp.id === comp.id;
+        const isSel = selectedComp && selectedComp.id === comp.id;
+        const isMatchFilter = currentFilter === 'all' || comp.category === currentFilter;
+
+        let col = comp.color;
+        if (!isMatchFilter) {
+          col = "#334155"; // 未选中分类半透明
+        }
+
+        draw3DBox(comp.x, comp.y, comp.z, comp.w, comp.h, comp.d, col, isHover, isSel, comp.icon);
+
+        // 如果被选中或高亮，绘制浮动光柱引导线
+        if (isSel || (isHover && isMatchFilter)) {
+          const base = project(comp.x, comp.y, comp.z + comp.d);
+          const pole = project(comp.x, comp.y, comp.z + comp.d + 35);
+          ctx.beginPath();
+          ctx.strokeStyle = isSel ? "#38bdf8" : "#a5f3fc";
+          ctx.lineWidth = 1.5;
+          ctx.moveTo(base.x, base.y);
+          ctx.lineTo(pole.x, pole.y);
+          ctx.stroke();
+
+          // 浮动光球
+          ctx.beginPath();
+          ctx.arc(pole.x, pole.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = isSel ? "#38bdf8" : "#a5f3fc";
+          ctx.shadowColor = ctx.fillStyle;
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // 浮动文字标签
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 11px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(comp.name.split(" ")[0], pole.x, pole.y - 8);
+        }
+      });
+    }
+
+    // ==========================================
+    // 3. 鼠标交互与拾取检测 (Raycasting / Hit Test)
+    // ==========================================
+    function getComponentUnderMouse(mx, my) {
+      // 从上到下倒序查找（优先检测最前端组件）
+      for (let i = COMPONENTS.length - 1; i >= 0; i--) {
+        const c = COMPONENTS[i];
+        const p = project(c.x, c.y, c.z + c.d / 2);
+        const radius = Math.max(c.w, c.h) * 0.7 * zoom;
+        const dx = mx - p.x;
+        const dy = my - p.y;
+        if (dx * dx + dy * dy < radius * radius) {
+          return c;
+        }
+      }
+      return null;
+    }
+
+    container.addEventListener("mousedown", (e) => {
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    });
+
+    window.addEventListener("mouseup", (e) => {
+      isDragging = false;
+    });
+
+    container.addEventListener("mousemove", (e) => {
+      const rect = container.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+
+      if (isDragging) {
+        const dx = e.clientX - lastMouseX;
+        const dy = e.clientY - lastMouseY;
+        rotZ += dx * 0.008;
+        rotX = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, rotX + dy * 0.008));
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+        render();
+        tooltip.style.opacity = "0";
+      } else {
+        const comp = getComponentUnderMouse(mx, my);
+        if (comp !== hoveredComp) {
+          hoveredComp = comp;
+          render();
+          if (comp) {
+            showTooltip(comp, mx, my);
+          } else {
+            tooltip.style.opacity = "0";
+          }
+        } else if (comp) {
+          positionTooltip(mx, my);
+        }
+      }
+    });
+
+    container.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      zoom = Math.max(0.6, Math.min(3.0, zoom - e.deltaY * 0.0015));
+      render();
+    });
+
+    container.addEventListener("click", (e) => {
+      const rect = container.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const comp = getComponentUnderMouse(mx, my);
+      if (comp) {
+        selectComponent(comp);
+      }
+    });
+
+    container.addEventListener("dblclick", () => {
+      resetCamera('iso');
+    });
+
+    // ==========================================
+    // 4. 信息展示与卡片联动
+    // ==========================================
+    function showTooltip(comp, mx, my) {
+      document.getElementById("tt-name").innerText = comp.name;
+      document.getElementById("tt-badge").innerText = comp.category.toUpperCase();
+      document.getElementById("tt-desc").innerText = comp.desc.substring(0, 45) + "...";
+      positionTooltip(mx, my);
+      tooltip.style.opacity = "1";
+    }
+
+    function positionTooltip(mx, my) {
+      tooltip.style.left = `${mx}px`;
+      tooltip.style.top = `${my - 12}px`;
+    }
+
+    function selectComponent(comp) {
+      selectedComp = comp;
+      render();
+
+      document.getElementById("empty-state").classList.add("hidden");
+      document.getElementById("info-body").classList.remove("hidden");
+
+      document.getElementById("detail-icon").innerText = comp.icon;
+      document.getElementById("detail-title").innerText = comp.name;
+      document.getElementById("detail-subtitle").innerText = `位号: ${comp.refdes} · 分类: ${comp.category}`;
+      document.getElementById("detail-tag").innerText = comp.category.toUpperCase();
+      document.getElementById("detail-tag").className = "text-[11px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono";
+
+      document.getElementById("info-desc").innerText = comp.desc;
+      document.getElementById("info-chip").innerText = comp.chip;
+      document.getElementById("info-sheet").innerText = comp.sheet;
+      document.getElementById("info-refdes").innerText = comp.refdes;
+      document.getElementById("info-notes").innerText = comp.notes;
+
+      const tbody = document.getElementById("info-pins-table");
+      tbody.innerHTML = "";
+      if (comp.pins && comp.pins.length > 0) {
+        document.getElementById("box-pins").classList.remove("hidden");
+        comp.pins.forEach(p => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td class="py-1 text-cyan-400 font-semibold">${p.name}</td>
+            <td class="py-1 text-amber-300 font-bold">${p.loc}</td>
+            <td class="py-1 text-slate-400">${p.type}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } else {
+        document.getElementById("box-pins").classList.add("hidden");
+      }
+    }
+
+    function selectComponentById(id) {
+      const comp = COMPONENTS.find(c => c.id === id);
+      if (comp) selectComponent(comp);
+    }
+
+    function setFilter(cat) {
+      currentFilter = cat;
+      document.querySelectorAll(".filter-btn").forEach(btn => {
+        btn.classList.remove("bg-cyan-600", "text-white");
+        btn.classList.add("bg-slate-800", "text-slate-300");
+      });
+      event.target.classList.remove("bg-slate-800", "text-slate-300");
+      event.target.classList.add("bg-cyan-600", "text-white");
+      render();
+    }
+
+    function resetCamera(mode) {
+      if (mode === 'iso') {
+        rotX = 0.85;
+        rotZ = 0.55;
+        zoom = 1.35;
+      } else if (mode === 'top') {
+        rotX = 0.01;
+        rotZ = 0;
+        zoom = 1.45;
+      } else if (mode === 'left') {
+        rotX = 1.3;
+        rotZ = 1.55;
+        zoom = 1.8;
+      } else if (mode === 'right') {
+        rotX = 1.3;
+        rotZ = -1.55;
+        zoom = 1.8;
+      }
+      render();
+    }
+
+    function toggleRealPhoto() {
+      const overlay = document.getElementById("photo-overlay");
+      const btn = document.getElementById("btn-photo");
+      if (overlay.classList.contains("hidden")) {
+        overlay.classList.remove("hidden");
+        btn.classList.add("bg-indigo-600", "text-white");
+      } else {
+        overlay.classList.add("hidden");
+        btn.classList.remove("bg-indigo-600", "text-white");
+      }
+    }
+
+    // 初始化运行
+    resize();
+    selectComponent(COMPONENTS[0]); // 默认选中核心板
+  </script>
+</body>
+</html>

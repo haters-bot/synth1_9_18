@@ -1,0 +1,465 @@
+diff --git a/sim/run_full_top_elaboration.do b/sim/run_full_top_elaboration.do
+index efe27f1..53d455e 100644
+--- a/sim/run_full_top_elaboration.do
++++ b/sim/run_full_top_elaboration.do
+@@ -6,7 +6,7 @@ if {![file isdirectory sim/work_full_top]} {
+ vmap work_full_top sim/work_full_top
+ 
+ # 厂商IP使用接口桩，只检查完整SD/DDR/音频顶层的RTL语法和层次连接。
+-vlog -sv -work work_full_top \
++vlog +define+SIM -sv -work work_full_top \
+     sim/fir_decimator_8x_ip_stub.v \
+     sim/sys_pll_50m_ip_stub.v \
+     sim/ddr3_vendor_ip_stubs.v \
+diff --git a/sim/run_global_filter_test.do b/sim/run_global_filter_test.do
+index 2183364..34b5ad1 100644
+--- a/sim/run_global_filter_test.do
++++ b/sim/run_global_filter_test.do
+@@ -5,7 +5,7 @@ if {![file isdirectory sim/work_global_filter]} {
+ }
+ vmap work_global_filter sim/work_global_filter
+ 
+-vlog -work work_global_filter \
++vlog +define+SIM -work work_global_filter \
+     src/global_svf_filter.v \
+     sim/tb_global_svf_filter.v
+ 
+diff --git a/sim/run_top_dual_unison8_test.do b/sim/run_top_dual_unison8_test.do
+index aeb736c..d437845 100644
+--- a/sim/run_top_dual_unison8_test.do
++++ b/sim/run_top_dual_unison8_test.do
+@@ -5,7 +5,7 @@ if {![file isdirectory sim/work_top_dual_unison8]} {
+ }
+ vmap work_top_dual_unison8 sim/work_top_dual_unison8
+ 
+-vlog -work work_top_dual_unison8 \
++vlog +define+SIM -work work_top_dual_unison8 \
+     sim/fir_decimator_8x_ip_stub.v \
+     sim/sys_pll_50m_ip_stub.v \
+     src/reset_release_sync.v \
+diff --git a/sim/run_top_midi_test.do b/sim/run_top_midi_test.do
+index 1768b75..a9af02c 100644
+--- a/sim/run_top_midi_test.do
++++ b/sim/run_top_midi_test.do
+@@ -5,7 +5,7 @@ if {![file isdirectory sim/work_top_midi]} {
+ }
+ vmap work_top_midi sim/work_top_midi
+ 
+-vlog -work work_top_midi \
++vlog +define+SIM -work work_top_midi \
+     sim/fir_decimator_8x_ip_stub.v \
+     sim/sys_pll_50m_ip_stub.v \
+     src/reset_release_sync.v \
+diff --git a/src/global_comb_filter.v b/src/global_comb_filter.v
+index dc49e18..7116f7b 100644
+--- a/src/global_comb_filter.v
++++ b/src/global_comb_filter.v
+@@ -48,9 +48,14 @@ module global_comb_filter #(
+ 
+     reg [3:0] state;
+ 
+-    // 两个属性分别兼容高云综合器和常见仿真/综合工具的RAM推断语法。
+-    (* syn_ramstyle = "block_ram", ram_style = "block" *)
+-    reg signed [15:0] delay_memory [0:DELAY_DEPTH-1];
++    // 延迟线使用两片8位SP单口RAM组成2048x16存储器。
++    // 直接实例化Gowin原语，避免数组读写被综合成数万级寄存器和LUT。
++    wire [7:0]  delay_ram_low_do;
++    wire [7:0]  delay_ram_high_do;
++    wire [13:0] delay_ram_address;
++    wire        delay_ram_write_enable;
++    wire signed [15:0] delay_ram_write_value;
++    wire signed [15:0] delay_ram_read_data;
+ 
+     reg [ADDR_WIDTH-1:0] write_pointer;
+     reg [ADDR_WIDTH:0]   filled_samples;
+@@ -66,7 +71,6 @@ module global_comb_filter #(
+     reg                  history_2_valid_latched;
+     reg                  negative_feedback_latched;
+     reg signed [15:0]    input_latched;
+-    reg signed [15:0]    memory_read_data;
+     reg signed [15:0]    sample_minus_1;
+     reg signed [15:0]    sample_0;
+     reg signed [15:0]    sample_1;
+@@ -170,7 +174,7 @@ module global_comb_filter #(
+     // 三次乘法在连续状态中复用同一条乘法寄存路径。
+     assign delay_fraction_signed = {1'b0, delay_fraction_latched};
+     assign sample_2_effective = history_2_valid_latched
+-                              ? memory_read_data : 16'sd0;
++                              ? delay_ram_read_data : 16'sd0;
+     assign sample_minus_1_extended =
+         {{4{sample_minus_1[15]}}, sample_minus_1};
+     assign sample_0_extended = {{4{sample_0[15]}}, sample_0};
+@@ -246,20 +250,39 @@ module global_comb_filter #(
+         end
+     endfunction
+ 
+-    // 单口RAM在四个连续状态读取四个相邻样本，在写状态写回当前样本。
+-    always @(posedge clk) begin
+-        if (state == STATE_READ_MINUS_1)
+-            memory_read_data <= delay_memory[read_address_minus_1_latched];
+-        else if (state == STATE_READ_0)
+-            memory_read_data <= delay_memory[read_address_0_latched];
+-        else if (state == STATE_READ_1)
+-            memory_read_data <= delay_memory[read_address_1_latched];
+-        else if (state == STATE_READ_2)
+-            memory_read_data <= delay_memory[read_address_2_latched];
+-        else if (state == STATE_WRITE)
+-            delay_memory[write_pointer]
+-                <= saturate_s18_to_s16(write_value_wide);
+-    end
++    // SP原语的14位地址中，8位数据模式使用AD[13:3]作为11位字地址。
++    // 四个读状态依次改变地址；SP输出寄存器的一个周期延迟与原数组
++    // 的同步读时序一致。写状态由两个SP实例同时写入高低字节。
++    assign delay_ram_address = {
++        (state == STATE_READ_MINUS_1) ? read_address_minus_1_latched :
++        (state == STATE_READ_0)       ? read_address_0_latched       :
++        (state == STATE_READ_1)       ? read_address_1_latched       :
++        (state == STATE_READ_2)       ? read_address_2_latched       :
++                                        write_pointer,
++        3'b000
++    };
++    assign delay_ram_write_enable = (state == STATE_WRITE);
++    assign delay_ram_write_value = saturate_s18_to_s16(write_value_wide);
++
++    audio_delay_ram8 u_delay_ram_low (
++        .clk          (clk),
++        .address      (delay_ram_address),
++        .write_enable (delay_ram_write_enable),
++        .write_data   (delay_ram_write_value[7:0]),
++        .read_data    (delay_ram_low_do)
++    );
++
++    audio_delay_ram8 u_delay_ram_high (
++        .clk          (clk),
++        .address      (delay_ram_address),
++        .write_enable (delay_ram_write_enable),
++        .write_data   (delay_ram_write_value[15:8]),
++        .read_data    (delay_ram_high_do)
++    );
++
++    assign delay_ram_read_data = {
++        delay_ram_high_do[7:0], delay_ram_low_do[7:0]
++    };
+ 
+     always @(posedge clk or negedge rst_n) begin
+         if (!rst_n) begin
+@@ -347,19 +370,19 @@ module global_comb_filter #(
+ 
+                 STATE_READ_0: begin
+                     sample_minus_1 <= history_minus_1_valid_latched
+-                                    ? memory_read_data : 16'sd0;
++                                    ? delay_ram_read_data : 16'sd0;
+                     state <= STATE_READ_1;
+                 end
+ 
+                 STATE_READ_1: begin
+                     sample_0 <= history_valid_latched
+-                              ? memory_read_data : 16'sd0;
++                              ? delay_ram_read_data : 16'sd0;
+                     state <= STATE_READ_2;
+                 end
+ 
+                 STATE_READ_2: begin
+                     sample_1 <= history_1_valid_latched
+-                              ? memory_read_data : 16'sd0;
++                              ? delay_ram_read_data : 16'sd0;
+                     state <= STATE_COEFFICIENTS;
+                 end
+ 
+@@ -446,3 +469,48 @@ module global_comb_filter #(
+     end
+ 
+ endmodule
++
++// 8位、2048深度同步单口RAM。仿真使用行为模型，Gowin构建使用SP原语。
++// 两个实例分别承载16位延迟样本的高低字节，保持一个时钟读延迟。
++module audio_delay_ram8 (
++    input  wire       clk,
++    input  wire [13:0] address,
++    input  wire       write_enable,
++    input  wire [7:0] write_data,
++    output wire [7:0] read_data
++);
++`ifdef SIM
++    reg [7:0] memory [0:2047];
++    reg [7:0] read_data_q;
++
++    always @(posedge clk) begin
++        if (write_enable)
++            memory[address[13:3]] <= write_data;
++        else
++            read_data_q <= memory[address[13:3]];
++    end
++
++    assign read_data = read_data_q;
++`else
++    wire [31:0] primitive_do;
++
++    SP #(
++        .READ_MODE (1'b0),
++        .WRITE_MODE(2'b00),
++        .BIT_WIDTH (8),
++        .BLK_SEL   (3'b000)
++    ) u_sp (
++        .DO    (primitive_do),
++        .DI    ({24'd0, write_data}),
++        .BLKSEL(3'b000),
++        .AD    (address),
++        .WRE   (write_enable),
++        .CLK   (clk),
++        .CE    (1'b1),
++        .OCE   (1'b1),
++        .RESET (1'b0)
++    );
++
++    assign read_data = primitive_do[7:0];
++`endif
++endmodule
+diff --git a/src/oscillator_tdm_core.v b/src/oscillator_tdm_core.v
+index 27d26f8..c782de8 100644
+--- a/src/oscillator_tdm_core.v
++++ b/src/oscillator_tdm_core.v
+@@ -156,6 +156,13 @@ module oscillator_tdm_core #(
+     reg [31:0] pipe_envelope_phase;
+     reg [15:0] pipe_release_start_level;
+ 
++    // 提交级再加一拍样本寄存。这样波表插值、包络乘法和部分和累加
++    // 不再全部落在同一个50 MHz周期内，吞吐率仍保持每拍一个槽位。
++    reg        sample_pipe_valid;
++    reg        sample_pipe_enabled;
++    reg [7:0]  sample_pipe_slot;
++    reg signed [15:0] sample_pipe_value;
++
+     wire [31:0] issue_phase;
+     wire [7:0] issue_raw_wave_address;
+     wire [7:0] issue_warped_wave_address;
+@@ -388,9 +395,9 @@ module oscillator_tdm_core #(
+     assign commit_enabled = pipe_valid && pipe_enable && !pipe_cancel
+                           && ((pipe_waveform_select != WAVE_ACID)
+                               || selected_wavetable_valid);
+-    assign extended_sample = commit_enabled
+-        ? {{(PARTIAL_SUM_WIDTH-16){enveloped_wave_sample[15]}},
+-           enveloped_wave_sample}
++    assign extended_sample = sample_pipe_enabled
++        ? {{(PARTIAL_SUM_WIDTH-16){sample_pipe_value[15]}},
++           sample_pipe_value}
+         : {PARTIAL_SUM_WIDTH{1'b0}};
+     assign sum_with_current_slot = mix_accumulator + extended_sample;
+ 
+@@ -454,6 +461,10 @@ module oscillator_tdm_core #(
+             pipe_waveform_select <= 3'd2;
+             pipe_envelope_phase <= 32'd0;
+             pipe_release_start_level <= 16'd0;
++            sample_pipe_valid <= 1'b0;
++            sample_pipe_enabled <= 1'b0;
++            sample_pipe_slot <= 8'd0;
++            sample_pipe_value <= 16'sd0;
+ 
+             for (reset_index = 0;
+                  reset_index < SLOTS_PER_ENGINE;
+@@ -552,6 +563,15 @@ module oscillator_tdm_core #(
+                         <= request_release_start_level;
+                 end
+ 
++                // 将波表/包络组合结果寄存一拍，再交给部分和累加器。
++                // sample_pipe_slot 与 sample_pipe_value 始终属于同一个槽位。
++                sample_pipe_valid <= pipe_valid;
++                if (pipe_valid) begin
++                    sample_pipe_slot    <= pipe_slot;
++                    sample_pipe_enabled <= commit_enabled;
++                    sample_pipe_value   <= enveloped_wave_sample;
++                end
++
+                 // 没有新槽位发出时，请求有效信号自然排空流水线尾部。
+                 request_valid <= 1'b0;
+ 
+@@ -642,11 +662,15 @@ module oscillator_tdm_core #(
+                         endcase
+                     end
+ 
+-                    if (pipe_slot == (SLOTS_PER_ENGINE-1)) begin
++                end
++
++                // 样本寄存级排空后再累加。最后一个槽位的partial_valid
++                // 只延后一拍，银行级ready/valid协议保持不变。
++                if (sample_pipe_valid) begin
++                    if (sample_pipe_slot == (SLOTS_PER_ENGINE-1)) begin
+                         partial_sum     <= sum_with_current_slot;
+                         partial_valid   <= 1'b1;
+                         mix_accumulator <= {PARTIAL_SUM_WIDTH{1'b0}};
+-                        pipe_valid      <= 1'b0;
+                         busy            <= 1'b0;
+                     end else begin
+                         mix_accumulator <= sum_with_current_slot;
+diff --git a/src/top.v.v b/src/top.v.v
+index 52a8d4a..0122220 100644
+--- a/src/top.v.v
++++ b/src/top.v.v
+@@ -6,7 +6,8 @@ module top #(
+     parameter integer DEFAULT_UNISON_COUNT = 1,
+     parameter integer OSC_ENGINE_COUNT = 1,
+     parameter integer SLOTS_PER_ENGINE = 32,
+-    parameter integer EXTERNAL_WAVETABLE_ENABLE = 1
++    parameter integer EXTERNAL_WAVETABLE_ENABLE = 1,
++    parameter integer EFFECTS_ENABLE = 1
+ )(
+     input  wire sys_clk,       // 50 MHz板载时钟，引脚V22
+     input  wire rst_n,         // 低电平有效的板载复位，引脚AA13
+@@ -1233,6 +1234,8 @@ module top #(
+         .input_overrun    (global_filter_input_overrun)
+     );
+ 
++    generate
++        if (EFFECTS_ENABLE != 0) begin : GEN_GLOBAL_EFFECTS_ENABLED
+     global_effects u_global_effects (
+         .clk             (clk_sys),
+         .rst_n           (rst_n_sys),
+@@ -1274,6 +1277,15 @@ module top #(
+         .sample_out      (effect_processed_sample),
+         .input_overrun   (global_effects_input_overrun)
+     );
++        end else begin : GEN_GLOBAL_EFFECTS_BYPASS
++            // Resource-reduced validation profile: retain the global filter,
++            // master gain, I2S output and OSC A/B visualization taps while
++            // bypassing the five-stage effects chain.
++            assign global_effects_input_ready  = 1'b1;
++            assign global_effects_output_valid = global_filter_output_valid;
++            assign effect_processed_sample    = global_filtered_sample;
++        end
++    endgenerate
+ 
+     // Master Level位于全局滤波器和效果器之后。Q1.8乘法结果先保持宽位，再在一个
+     // 50 MHz周期内完成饱和和寄存；该延迟远小于一个96 kHz采样周期。
+diff --git a/tools/build_audio_isolated.py b/tools/build_audio_isolated.py
+index 5db1216..5ca64b7 100644
+--- a/tools/build_audio_isolated.py
++++ b/tools/build_audio_isolated.py
+@@ -18,21 +18,66 @@ def main():
+         p=item.attrib['path']
+         if (ROOT/p).is_file():paths.append(p)
+         elif item.attrib.get('enable')=='1':raise FileNotFoundError(ROOT/p)
++    external_wavetable=getattr(args,'external_wavetable','on')
++    effects_enable=getattr(args,'effects_enable','on')
++    slots_per_engine=getattr(args,'slots_per_engine',32)
++    correct_hold=getattr(args,'correct_hold','off')
++    clock_route_order=getattr(args,'clock_route_order',1)
+     manifest={}
+     for name in dict.fromkeys(paths):
+         dest=out/name;dest.parent.mkdir(parents=True,exist_ok=True)
+         shutil.copy2(ROOT/name,dest)
++        if name=='src/top.v.v' and external_wavetable=='off':
++            source=dest.read_text(encoding='utf-8')
++            marker='parameter integer EXTERNAL_WAVETABLE_ENABLE = 1,'
++            replacement='parameter integer EXTERNAL_WAVETABLE_ENABLE = 0,'
++            if marker not in source:
++                raise RuntimeError('top.v.v does not contain the expected EXTERNAL_WAVETABLE_ENABLE default')
++            dest.write_text(source.replace(marker,replacement,1),encoding='utf-8')
++        if name=='src/top.v.v' and effects_enable=='off':
++            source=dest.read_text(encoding='utf-8')
++            marker='parameter integer EFFECTS_ENABLE = 1'
++            replacement='parameter integer EFFECTS_ENABLE = 0'
++            if marker not in source:
++                raise RuntimeError('top.v.v does not contain the expected EFFECTS_ENABLE default')
++            dest.write_text(source.replace(marker,replacement,1),encoding='utf-8')
++        if name=='src/top.v.v' and slots_per_engine != 32:
++            source=dest.read_text(encoding='utf-8')
++            marker='parameter integer SLOTS_PER_ENGINE = 32,'
++            replacement=f'parameter integer SLOTS_PER_ENGINE = {slots_per_engine},'
++            if marker not in source:
++                raise RuntimeError('top.v.v does not contain the expected SLOTS_PER_ENGINE default')
++            dest.write_text(source.replace(marker,replacement,1),encoding='utf-8')
++        if name=='constraints/tang_mega_138k_full_synth.cst' and external_wavetable=='off':
++            constraint_text=dest.read_text(encoding='utf-8')
++            constraint_text='\n'.join(
++                line for line in constraint_text.splitlines()
++                if not line.lstrip().startswith('INS_LOC "GEN_WAVETABLE_STORAGE.')
++            )+'\n'
++            dest.write_text(constraint_text,encoding='utf-8')
++        if name=='constraints/full_synth.sdc' and external_wavetable=='off':
++            sdc_text=dest.read_text(encoding='utf-8')
++            sdc_text='\n'.join(
++                line for line in sdc_text.splitlines()
++                if not any(token in line for token in (
++                    'GEN_WAVETABLE_STORAGE.', 'ddr_clk400', 'ddr_user_clk100'
++                ))
++            )+'\n'
++            dest.write_text(sdc_text,encoding='utf-8')
+         manifest[name]=hashlib.sha256(dest.read_bytes()).hexdigest()
+-    tcl='''set project_dir [file dirname [file normalize [info script]]]
++    place_option=getattr(args,'place_option',2)
++    route_option=getattr(args,'route_option',1)
++    tcl=f'''set project_dir [file dirname [file normalize [info script]]]
+ open_project [file join $project_dir synth1_9_18.gprj]
+ set_option -verilog_std sysv2017
+ set_option -top_module top
+ set_option -use_cpu_as_gpio 1
+ set_option -use_sspi_as_gpio 1
+ set_option -timing_driven 1
+-set_option -correct_hold_violation 1
+-set_option -place_option 3
+-set_option -route_option 2
++set_option -correct_hold_violation {1 if correct_hold == 'on' else 0}
++set_option -place_option {place_option}
++set_option -route_option {route_option}
++set_option -clock_route_order {clock_route_order}
+ # Each build uses a fresh source-only directory, with no incremental P&R data.
+ # Gowin 1.9.11.03 does not expose inc_place/inc_pnr as set_option switches.
+ run all
+@@ -42,7 +87,13 @@ exit
+     manifest['build_audio.tcl']=hashlib.sha256((out/'build_audio.tcl').read_bytes()).hexdigest()
+     (out/'source_manifest.json').write_text(json.dumps(manifest,indent=2))
+     metadata=dict(commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+-        profile='Signoff',tool=str(GOWIN),project=project,started=datetime.now().isoformat())
++        profile='Signoff',place_option=place_option,route_option=route_option,
++        external_wavetable=external_wavetable,
++        effects_enable=effects_enable,
++        slots_per_engine=slots_per_engine,
++        correct_hold=correct_hold,
++        clock_route_order=clock_route_order,
++        tool=str(GOWIN),project=project,started=datetime.now().isoformat())
+     (out/'build_metadata.json').write_text(json.dumps(metadata,indent=2))
+     with (out/'build.log').open('w',encoding='utf-8') as log:
+         p=subprocess.Popen([str(GOWIN),'build_audio.tcl'],cwd=out,stdout=log,stderr=subprocess.STDOUT)
+@@ -58,12 +109,28 @@ if __name__=='__main__':
+     parser=argparse.ArgumentParser(description=__doc__)
+     parser.add_argument('--background',action='store_true',help='Launch outside the terminal job with a hidden WMI process')
+     parser.add_argument('--launch-log',type=Path,help=argparse.SUPPRESS)
++    parser.add_argument('--place-option',type=int,choices=(1,2,3,4),default=2)
++    parser.add_argument('--route-option',type=int,choices=(1,2),default=1)
++    parser.add_argument('--external-wavetable',choices=('on','off'),default='on')
++    parser.add_argument('--effects-enable',choices=('on','off'),default='on')
++    parser.add_argument('--slots-per-engine',type=int,choices=(8,16,32),default=32,
++                        help='TDM slots per oscillator engine; lower values reduce polyphony and routing pressure')
++    parser.add_argument('--correct-hold',choices=('on','off'),default='off',
++                        help='Enable Gowin automatic hold correction; off preserves setup margin')
++    parser.add_argument('--clock-route-order',type=int,choices=(0,1),default=1,
++                        help='Clock routing order: 1 prioritizes clock frequency, 0 fanout')
+     args=parser.parse_args()
+     if args.background:
+         launch=ROOT/'impl'/('audio_launcher_'+datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
+         launch.mkdir(parents=True)
+         log=launch/'supervisor.log'
+-        cmd=subprocess.list2cmdline([sys.executable,str(Path(__file__).resolve()),'--launch-log',str(log)])
++        cmd=subprocess.list2cmdline([sys.executable,str(Path(__file__).resolve()),'--launch-log',str(log),
++                                     '--place-option',str(args.place_option),'--route-option',str(args.route_option),
++                                     '--external-wavetable',args.external_wavetable,
++                                     '--effects-enable',args.effects_enable,
++                                     '--slots-per-engine',str(args.slots_per_engine),
++                                     '--correct-hold',args.correct_hold,
++                                     '--clock-route-order',str(args.clock_route_order)])
+         quote=lambda s:"'"+str(s).replace("'","''")+"'"
+         ps=("$s=([wmiclass]'Win32_ProcessStartup').CreateInstance(); $s.ShowWindow=0; "
+             "$r=([wmiclass]'Win32_Process').Create("+quote(cmd)+","+quote(ROOT)+",$s); "
+diff --git a/tools/test_integrated_audio.py b/tools/test_integrated_audio.py
+index 163e504..313094c 100644
+--- a/tools/test_integrated_audio.py
++++ b/tools/test_integrated_audio.py
+@@ -66,7 +66,7 @@ def main():
+             raise RuntimeError(out/(name+'.log'))
+         return log
+     run('library',[MS/'vlib.exe','work'])
+-    run('compile',[MS/'vlog.exe','-sv',*sources])
++    run('compile',[MS/'vlog.exe','+define+SIM','-sv',*sources])
+     run('full_top_elaboration',[MS/'vsim.exe','-c','top','-do','run 0; quit -f'])
+     benches=['tb_performance_pitch_controller','tb_pitch_modulated_core','tb_top_midi_input',
+              'tb_top_dual_unison8','tb_audio_visual_preservation']

@@ -1,5 +1,5 @@
-# Gowin implementation output
-/impl/
+# Gowin implementation output (any depth)
+impl/
 
 # Simulation output
 /sim/work*/
@@ -27,3 +27,17 @@
 __pycache__/
 *.py[cod]
 
+# Keil/STM32 build output (RGB peripheral project)
+/RGB/MDK-ARM/RGB/
+/RGB/MDK-ARM/*.lst
+/RGB/MDK-ARM/*.log
+*.uvguix.*
+/RGB/DebugConfig/
+/RGB/MDK-ARM/RTE/
+
+# Wavetable render scratch (score_print)
+/score_print/output/
+
+
+# Local security scanner state
+.mimosa/
