@@ -1,0 +1,6 @@
+// Generated from audio WAVEBANK.WTB; no names in WTB1.
+// SHA256 ac2253f3eacc7397ace79c6d9f54f266409eac6f69383c45ad1d8da7f95437ee
+`ifndef UI_WAVETABLE_CATALOG_VH
+`define UI_WAVETABLE_CATALOG_VH
+`define UI_WAVETABLE_COUNT 12
+`endif

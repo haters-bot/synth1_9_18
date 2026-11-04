@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:">
+  <title>FPGA Performance</title>
+  <link rel="stylesheet" href="style.css?v=0.3.3">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div id="appVersion" class="eyebrow">FPGA PERFORMANCE · 0.3.3</div>
+        <h1>演奏控制台</h1>
+      </div>
+      <div class="status-row">
+        <span id="gatewayStatus" class="pill">通信模块／板卡未连接</span>
+        <span id="songStatus" class="pill muted">未载入曲谱</span>
+      </div>
+    </header>
+
+    <section class="control-card">
+      <div class="file-line">
+        <button id="chooseMidiButton" class="file-button">选择 MIDI 曲谱</button>
+        <input id="songFile" type="file" accept=".mid,.midi,audio/midi,audio/x-midi" hidden>
+        <button id="connectButton" class="primary">连接设备</button>
+        <button id="uploadButton">发送到板卡</button>
+      </div>
+      <div id="calibrationStatus" class="progress-label action-status" role="status" aria-live="polite">连接后在 UI 板点击 CALIBRATE，按实体键盘最左键完成校准。</div>
+      <pre id="linkDiagnostic" class="progress-label">App TX 0帧/0B · RX 0B · 等待连接</pre>
+      <div id="actionStatus" class="progress-label action-status" role="status" aria-live="polite">先校准键盘，再适配并发送曲谱</div>
+      <div class="control-grid">
+        <label>键盘起始音
+          <select id="baseNote" disabled><option value="41">等待板卡校准</option></select>
+        </label>
+        <label>演奏模式
+          <select id="modeSelect">
+            <option value="0">0 试听：曲谱自动播放</option>
+            <option value="1">1 跟弹：指引后等实体键</option>
+            <option value="2" selected>2 弹奏：自由演奏＋灯带</option>
+          </select>
+        </label>
+        <label>播放控制
+          <span class="button-group">
+            <button id="playButton">播放</button>
+            <button id="pauseButton">暂停</button>
+            <button id="stopButton">停止</button>
+          </span>
+        </label>
+        <label>录音
+          <span class="button-group">
+            <button id="recordButton">开始录音</button>
+            <button id="downloadButton" disabled>下载 WAV</button>
+            <button id="cancelDownloadButton" disabled>暂停并保留进度</button>
+          </span>
+        </label>
+        <label>录音回传声道
+          <select id="exportChannels"><option value="1">8kHz 单声道（较快）</option><option value="2">8kHz 双声道（较慢）</option></select>
+        </label>
+      </div>
+      <div class="song-line">
+        <strong id="songTitle">尚未选择曲谱</strong>
+        <span id="songMeta">上传 MIDI 后显示事件和时长</span>
+      </div>
+      <div class="adaptation-tools">
+        <label class="compression-option"><input id="compressRange" type="checkbox">允许八度压缩（仅超出音域时生效，有损）</label>
+        <label class="placement-option">琴键位置：左 ↔ 右
+          <input id="songPosition" type="range" min="0" max="100" step="1" value="0" aria-label="歌曲在32键上的左右位置">
+          <output id="songPositionValue">默认最低音从第1键开始</output>
+        </label>
+        <div class="button-group"><button id="positionLeft">靠左</button><button id="positionCenter">居中</button><button id="positionRight">靠右</button></div>
+        <p class="hint">正常曲目整曲移调，节奏和音程保持。超范围可选八度压缩：保留节奏及移调后的音名，但旋律音程、和弦位置可能改变；重叠同键会合并。原MIDI文件不变，修改后请重新发送。音域压缩不会解除板卡事件容量限制。</p>
+      </div>
+      <p id="adaptationStatus" class="hint" role="status">默认最低音从最左键开始。超出32键时，可主动开启有损八度压缩并预览。</p>
+      <div class="progress-track"><div id="progress" class="progress"></div></div>
+      <div id="progressLabel" class="progress-label">未开始传输</div>
+      <div class="recording-tools">
+        <p id="recordingStatus" class="hint" role="status">连接板卡后可查询当前录音。板端DDR仅保留一段，录新音会覆盖，断电／重配会失效。</p>
+        <div class="button-group">
+          <button id="refreshRecordingButton" disabled>刷新板上录音</button>
+          <button id="discardRecordingButton" disabled>丢弃板上录音</button>
+        </div>
+        <p id="speedStatus" class="hint">ESP-01S Wi-Fi桥接目标为1 Mbps；手机先连接模块热点，再选择 Wi-Fi TCP。蓝牙仍可继续使用。</p>
+      </div>
+    </section>
+
+    <section class="control-card" aria-label="手机录音缓存">
+      <h2>手机录音缓存</h2>
+      <p class="hint">每个完整数据块确认后保存到手机。断连或退出App后保留进度，重连后手动继续；完整缓存可离线导出WAV。旧板端固件不支持跨连接验证录音身份，只能在同一次连接内续传。卸载App会清除这些缓存，请及时导出。</p>
+      <div id="localRecordings" class="local-recordings" role="status">正在读取本地缓存…</div>
+    </section>
+
+    <section class="guide-card">
+      <div class="guide-head">
+        <div>
+          <div class="eyebrow">GUIDANCE</div>
+          <h2 id="nextNote">等待曲谱</h2>
+        </div>
+        <div id="eventStats" class="stats">0 events</div>
+      </div>
+      <div id="piano" class="piano" aria-label="虚拟钢琴"></div>
+      <p class="hint">试听自动发送音符，跟弹和弹奏由实体琴键发声；录音采集音频板 I²S。每次连接后，请在板端 CALIBRATE 并按最左键。已确认安全起音：0x29、0x35、0x41、0x4D；演奏中调整八度后需重新校准和上传。</p>
+    </section>
+
+    <pre id="log" class="log" aria-live="polite"></pre>
+  </main>
+  <script src="protocol.js?v=0.3.3"></script>
+  <script src="midi.js?v=0.3.3"></script>
+  <script src="phone_app.js?v=0.3.3"></script>
+</body>
+</html>

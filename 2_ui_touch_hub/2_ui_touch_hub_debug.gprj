@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW5AST-138B" pn="GW5AST-LV138PG484AC1/I0">gw5ast138b-011</Device>
+    <FileList>
+        <File path="rtl/dvi_tx/dvi_tx_clk_drv.v" type="file.verilog" enable="1"/>
+        <File path="rtl/dvi_tx/dvi_tx_tmds_enc.v" type="file.verilog" enable="1"/>
+        <File path="rtl/dvi_tx/dvi_tx_tmds_phy.v" type="file.verilog" enable="1"/>
+        <File path="rtl/dvi_tx/dvi_tx_top.v" type="file.verilog" enable="1"/>
+        <File path="rtl/pll/gowin_pll.v" type="file.verilog" enable="1"/>
+        <File path="rtl/timing/video_timing_ctrl.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/params.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/font_3x5.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/font_7x10.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/pixel_coverage.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/sine_table.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/knob_vector_unit.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/osc_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/filter_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/env_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/button_vector_unit.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/fx_matrix_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/fx_editor_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/audio_controls_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/synth_preset_ui.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/synth_preset_panel.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/synth_preset_controller.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/audio_controls_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/fx_strip_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_smooth_table.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_binding_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/modulation_preview.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/modulation_overlay.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_editor_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/lfo_panel_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/curve_hint_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/ui_top_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/ui_navigation_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/ui_user_settings.v" type="file.verilog" enable="1"/>
+        <File path="rtl/knob_spi_intake/knob_ui_control.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/ui_navigation_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/navigation_font.vh" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/uart_touch_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/hspi_touch_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/pll/gowin_pll_usb.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/usb_hid_host_rom.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/usb_hid_host.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/usb_touch_intake.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/touch_event_router.v" type="file.verilog" enable="1"/>
+        <File path="rtl/touch_intake/curve_touch_editor.v" type="file.verilog" enable="1"/>
+        <File path="rtl/knob_spi_intake/knob_spi_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/i2s_visual_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_fft_tables.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_fft_analyzer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_phase_plot.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_pcm_metrics.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_stereo_meter.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_correlation_cursor.v" type="file.verilog" enable="1"/>
+        <File path="rtl/audio/audio_waveform_capture.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_event_scheduler.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_piano_roll.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_key_state.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_note_arbiter.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_pcm_capture.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_async_fifo.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_pcm_store.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_recording_subsystem.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_record_status.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_progress.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_led_white_mapper.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_uart_rx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_packet_parser.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_packet_tx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_phone_transport.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_phone_session.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_audio_export.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_export_filter.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_command_decoder.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_touch_controls.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_user_port_adapter.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_wavetable_wrapper.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/reset_release_sync.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/pll_init.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_pll_400m_ip.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_pll_400m_ip_mod.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ddr_ip/ddr3_wavetable_ip.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/ws2812_driver.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_vector_engine/performance_page_renderer.v" type="file.verilog" enable="1"/>
+        <File path="rtl/param_merger/param_merger.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/static_cc_sync.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/midi_uart_tx.v" type="file.verilog" enable="1"/>
+        <File path="rtl/debug/ui_debug_trace.v" type="file.verilog" enable="1"/>
+        <File path="rtl/debug/knob_ascii_trace.v" type="file.verilog" enable="1"/>
+        <File path="rtl/ui_touch_hub_top.v" type="file.verilog" enable="1"/>
+        <File path="rtl/midi_uart_tx/lfo_sysex_tx.v" type="file.verilog" enable="1"/>
+        <File path="constraints/ui_touch_hub_debug_combined.cst" type="file.cst" enable="1"/>
+        <File path="constraints/ui_touch_hub_debug.sdc" type="file.sdc" enable="1"/>
+        <File path="rtl/ui_touch_hub_debug_top.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/keyboard_midi_parser.v" type="file.verilog" enable="1"/>
+        <File path="rtl/performance/performance_score_audio.v" type="file.verilog" enable="1"/>
+    </FileList>
+</Project>
+

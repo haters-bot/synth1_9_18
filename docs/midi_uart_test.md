@@ -1,7 +1,7 @@
 # USB-UART MIDI测试说明
 
-> 当前硬件顶层已恢复USB-UART MIDI输入，使用V14作为`uart_rx`，
-> 默认采用31250 baud、8N1格式。
+> 当前硬件顶层同时提供V14板载USB-UART调试RX和PMOD1 IO2/AB21跨板RX，
+> 默认31250 baud、8N1。两路RX在逻辑上合并；每次只从一个UART TX发包。
 
 ## 数据通路
 
@@ -9,14 +9,17 @@
 电脑上位机
   -> JTAG|UART USB-C接口
   -> 板载USB-UART
-  -> FPGA V14 (uart_rx)
+  -> FPGA V14 USB-UART RX 或 PMOD1 IO2/AB21 (跨板 `midi_gpio_rx`)
   -> UART接收器
   -> MIDI消息解析器和通道路由器
   -> 32槽位音符分配器
   -> TDM振荡器、FIR和MAX98357A I2S输出
 ```
 
-FPGA默认使用标准MIDI串口格式：`31250 baud, 8N1`。解析器可以识别所有16个
+FPGA默认使用标准MIDI串口格式：`31250 baud, 8N1`。板间连线为UI板J8 pin 9
+（PMOD1 IO2/AB21）到音频板J8 pin 9，J8 pin 3或4共地；不要连接PMOD电源脚。
+PMOD1 IO2还复用DVP/SDRAM1扩展信号，接线前拔除/避免相机和SDRAM1扩展设备。
+解析器可以识别所有16个
 MIDI通道，路由器只允许通道1的Note On/Off进入声部调度器，并只允许通道16的
 Control Change写入合成参数。当前支持Running Status以及`Note On velocity=0`
 形式的Note Off。
@@ -36,8 +39,8 @@ Control Change写入合成参数。当前支持Running Status以及`Note On velo
 | 96～127 | 锯齿波 |
 
 复位默认值为方波。切换只改变共享波形读取来源，不会清除各槽位相位。
-完整的通道分工、CC映射、Detune计算和未来双UART迁移方案见
-[`midi_control_protocol.md`](midi_control_protocol.md)。
+完整音频参数表见[`midi_control_protocol.md`](midi_control_protocol.md)；
+UI v1跨板实际映射见[`ui_uart_integration_v1.md`](ui_uart_integration_v1.md)。
 
 ## 上位机运行
 
@@ -50,15 +53,14 @@ python tools/midi_uart_sender.py
 
 操作步骤：
 
-1. 使用PCB上标有`JTAG|UART`的USB-C接口连接电脑。
+1. 使用PCB上标有`JTAG|UART`的USB-C接口连接电脑，或按跨板GPIO方案连接UI板和音频板；两路不可同时发包。
 2. 下载位流后关闭Gowin Programmer，避免其继续占用调试器。
 3. 在上位机中选择标记为`FTDI B / UART推荐`的端口，波特率选择31250并连接。
 4. 鼠标按住虚拟琴键，或者使用电脑键盘`A W S E D F T G Y H U J K`演奏。
 5. 使用双振荡器参数区域分别发送OSC A/B的WT Position、Detune、Unison和ADSR控制。
 6. 松开按键会发送Note Off；“全部停止”会逐个释放当前由上位机开启的音符。
 
-如果31250 baud无法工作，可将FPGA顶层参数`UART_BAUD_RATE`改为115200，重新生成位流，
-并在上位机中选择115200。电脑和FPGA两端的波特率必须完全一致。
+若更改`UART_BAUD_RATE`，所有发送端必须同时改到相同波特率；UI正式联调基线固定31250。
 
 部分旧版板载调试器固件会让实际UART速率变成设置值的四倍。在FPGA仍使用31250时，
 可以先在上位机波特率框输入`7812`进行诊断；若此时能够发声，说明应更新板载调试器

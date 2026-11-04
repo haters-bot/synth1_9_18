@@ -1,0 +1,41 @@
+// Physical PCB index to UI parameter, shared by settings and control.
+    function [7:0] knob_param_id;
+        input [4:0] knob;
+        begin
+            case(knob)
+                5'd0:knob_param_id=`PARAM_ID_OSCA_WT_POS;
+                5'd1:knob_param_id=`PARAM_ID_OSCA_WARP;
+                5'd2:knob_param_id=`PARAM_ID_OSCA_PAN;
+                5'd3:knob_param_id=`PARAM_ID_OSCA_VOL;
+                5'd4:knob_param_id=`PARAM_ID_OSCA_UNISON;
+                5'd5:knob_param_id=`PARAM_ID_OSCA_DETUNE;
+                5'd6:knob_param_id=`PARAM_ID_OSCA_BLEND;
+                5'd7:knob_param_id=`PARAM_ID_OSCA_PHASE;
+                5'd8:knob_param_id=`PARAM_ID_ENV1_ATTACK;
+                5'd9:knob_param_id=`PARAM_ID_ENV1_HOLD;
+                5'd10:knob_param_id=`PARAM_ID_ENV1_DECAY;
+                5'd11:knob_param_id=`PARAM_ID_ENV1_SUSTAIN;
+                5'd12:knob_param_id=`PARAM_ID_ENV1_RELEASE;
+                5'd13:knob_param_id=`PARAM_ID_MASTER_VOL;
+                5'd14:knob_param_id=`PARAM_ID_MACRO1;
+                5'd15:knob_param_id=`PARAM_ID_MACRO2;
+                5'd16:knob_param_id=`PARAM_ID_OSCB_WT_POS;
+                5'd17:knob_param_id=`PARAM_ID_OSCB_WARP;
+                5'd18:knob_param_id=`PARAM_ID_OSCB_PAN;
+                5'd19:knob_param_id=`PARAM_ID_OSCB_VOL;
+                5'd20:knob_param_id=`PARAM_ID_OSCB_UNISON;
+                5'd21:knob_param_id=`PARAM_ID_OSCB_DETUNE;
+                5'd22:knob_param_id=`PARAM_ID_OSCB_BLEND;
+                5'd23:knob_param_id=`PARAM_ID_OSCB_PHASE;
+                5'd24:knob_param_id=`PARAM_ID_FLT_CUTOFF;
+                5'd25:knob_param_id=`PARAM_ID_FLT_RES;
+                5'd26:knob_param_id=`PARAM_ID_FLT_PAN;
+                5'd27:knob_param_id=`PARAM_ID_FLT_DRIVE;
+                5'd28:knob_param_id=`PARAM_ID_FLT_FAT;
+                5'd29:knob_param_id=`PARAM_ID_FLT_MIX;
+                5'd30:knob_param_id=`PARAM_ID_FX_REVERB;
+                5'd31:knob_param_id=`PARAM_ID_FX_DELAY;
+                default:knob_param_id=`PARAM_ID_NONE;
+            endcase
+        end
+    endfunction

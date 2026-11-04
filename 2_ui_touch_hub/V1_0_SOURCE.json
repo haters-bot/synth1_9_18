@@ -1,0 +1,9 @@
+{
+  "version": "UI V1.0.0",
+  "ui_release_commit": "2e110e888940c59024de5987a097e1aafdd154b2",
+  "verified_rtl_commit": "c988661",
+  "upstream_audio_base": "85edc8264efe103aa238b300b938729e77b80e19",
+  "bitstream_sha256": "3974EC45CAAA7FC88B8B2358ECC81CF563E5C2E0132572065CB94B52F2D8DC20",
+  "source_zip_sha256": "A62D6D3C8F0BFC21ADF28E01D7E7475D4088AA3B0A25279966CFF9AB1980EE41",
+  "status": "R15I UI hardware accepted; audio integration and timing closure pending"
+}

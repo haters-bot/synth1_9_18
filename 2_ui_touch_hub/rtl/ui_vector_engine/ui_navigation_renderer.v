@@ -1,0 +1,678 @@
+`include "params.vh"
+`include "font_3x5.vh"
+`include "pixel_coverage.vh"
+// Five stages after raster entry; native font and PCM-driven visualizations.
+module ui_navigation_renderer #(
+ parameter PRESET_ENABLE=0,
+ parameter integer PERFORMANCE_KEY_COUNT=32,
+ parameter integer PERFORMANCE_BASE_NOTE=7'h29,
+ parameter PERFORMANCE_CALIBRATION_ENABLE=0,
+ parameter PERFORMANCE_PIANO_ROLL_ENABLE=0
+)(
+ input wire clk,rst_n,
+ input wire [2:0] preset_category,
+ input wire [3:0] preset_active_index,
+ input wire preset_applied_valid,preset_busy,preset_pending,preset_custom_notice,
+ input wire [13:0] in_x,in_y,
+ input wire [2:0] view,
+ input wire [7:0] settings_section_id,
+ input wire show_diagnostics,usb_connected,usb_error,
+ input wire [27:0] macro_values,
+ input wire [63:0] knob_steps,
+ input wire [1:0] knob_page,apply_step,
+ input wire [23:0] plot_scales,
+ input wire audio_sample_valid,
+ input wire signed [15:0] audio_sample,
+ input wire signed [15:0] audio_right_sample,
+ input wire audio_stereo_valid,
+ input wire audio_link_up,
+ input wire signed [15:0] audio_xy_a,audio_xy_b,
+ input wire audio_xy_valid,audio_xy_available,
+ input wire [PERFORMANCE_KEY_COUNT-1:0] performance_active_keys,
+ input wire [PERFORMANCE_KEY_COUNT-1:0] performance_guide_keys,
+ input wire [15:0] performance_progress,
+ input wire        performance_running,
+ input wire        performance_paused,
+ input wire [1:0]  performance_mode,
+ input wire        performance_gateway_up,
+ input wire [6:0] performance_base_note,
+ input wire [2:0] performance_calibration_state,
+ input wire performance_range_warning,
+ input wire        performance_recording,
+ input wire [3:0]  performance_record_status,
+ input wire [5:0]  performance_next_key,
+ input wire        performance_next_key_valid,
+ input wire [8:0]  performance_next_key_y,
+ input wire [31:0] performance_roll_body_keys,
+ input wire [31:0] performance_roll_onset_keys,
+ output reg out_hit,
+ output reg [23:0] out_rgb
+);
+ wire preset_hit4;
+ wire [23:0] preset_rgb4;
+ generate if(PRESET_ENABLE)begin:g_presets
+  synth_preset_panel u_panel(.clk(clk),.rst_n(rst_n),.x(in_x),.y(in_y),
+   .visible(view==3 && settings_section_id==4),.category(preset_category),
+   .active_index(preset_active_index),.applied_valid(preset_applied_valid),
+   .busy(preset_busy),.pending(preset_pending),.custom_notice(preset_custom_notice),.hit(preset_hit4),.rgb(preset_rgb4));
+ end else begin:g_no_presets
+  assign preset_hit4=0;assign preset_rgb4=0;
+ end endgenerate
+ // Page state changes only in vertical blank. A preserved local text copy
+ // isolates glyph selection from distant touch/menu control decode.
+ reg [2:0] text_view /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ always @(posedge clk or negedge rst_n)
+  if(!rst_n)text_view<=0;else text_view<=view;
+ // Keep the settings selector local to the pixel renderer.  It changes only
+ // on a touch-tab action, so one pixel clock of settling does not alter the
+ // seven-clock raster latency while removing a long state-to-label fanout.
+ reg [7:0] render_settings_section_id /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ always @(posedge clk or negedge rst_n)
+  if(!rst_n)render_settings_section_id<=8'd1;
+  else render_settings_section_id<=settings_section_id;
+ // USB host state originates at clk_usb. Synchronize its two status bits
+ // before they enter the pixel-domain text rectangle and character logic.
+ reg text_usb_connected_meta,text_usb_error_meta /* synthesis syn_preserve=1 syn_keep=1 */;
+ reg text_usb_connected,text_usb_error /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin
+   text_usb_connected_meta<=0;text_usb_connected<=0;text_usb_error_meta<=0;text_usb_error<=0;
+  end else begin
+   text_usb_connected_meta<=usb_connected;text_usb_connected<=text_usb_connected_meta;
+   text_usb_error_meta<=usb_error;text_usb_error<=text_usb_error_meta;
+  end
+ end
+ `include "navigation_font_hd.vh"
+ `include "knob_setting_labels.vh"
+ `include "audio_plot_gain.vh"
+ reg hit;reg [23:0] bg;
+ reg [1:0] macro_row;
+ reg macro_number;
+ reg [6:0] number;
+ reg [5:0] number_char;
+ wire waveform_ready;
+
+ reg [4:0] spectrum_address0,history_band0;
+ reg [5:0] history_column0;
+ reg [12:0] phase_address0;
+ wire [5:0] spectrum_value,history_value;
+ wire spectrum_ready,phase_ready,phase_pixel;
+ wire [4:0] spectrum_peak_band;
+ wire spectrum_peak_valid,spectrum_frame_valid;
+ wire [9:0] spectrum_peak_bin;
+ wire [15:0] spectrum_peak_hz,spectrum_centroid_hz;
+ wire metrics_ready,metrics_frame_valid,metrics_corr_valid;
+ wire [15:0] metrics_rms_l,metrics_rms_r,metrics_peak_l,metrics_peak_r,metrics_peak_hold;
+ wire signed [11:0] metrics_rms_db,metrics_peak_db,metrics_hold_db;
+ wire [11:0] metrics_crest;
+ wire signed [7:0] metrics_corr,metrics_balance;
+ wire [5:0] metrics_clip;
+ wire [3:0] metrics_transient;
+ `include "navigation_labels.vh"
+ audio_pcm_metrics u_metrics(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
+  .ready(metrics_ready),.frame_valid(metrics_frame_valid),.rms_left(metrics_rms_l),.rms_right(metrics_rms_r),
+  .peak_left(metrics_peak_l),.peak_right(metrics_peak_r),.peak_hold(metrics_peak_hold),
+  .rms_db10(metrics_rms_db),.peak_db10(metrics_peak_db),.hold_db10(metrics_hold_db),.crest_db10(metrics_crest),
+  .correlation(metrics_corr),.balance(metrics_balance),.correlation_valid(metrics_corr_valid),
+  .clip_hold(metrics_clip),.transient_hold(metrics_transient));
+ wire signed [11:0] stereo_db_l,stereo_db_r;
+ wire [7:0] stereo_width_l,stereo_width_r,stereo_hold_l,stereo_hold_r;
+ audio_stereo_meter u_stereo_meter(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .frame_valid(metrics_frame_valid),.rms_l(metrics_rms_l),.rms_r(metrics_rms_r),
+  .peak_l(metrics_peak_l),.peak_r(metrics_peak_r),.gain(plot_scales[21:20]),
+  .db_l(stereo_db_l),.db_r(stereo_db_r),.width_l(stereo_width_l),.width_r(stereo_width_r),
+  .hold_width_l(stereo_hold_l),.hold_width_r(stereo_hold_r));
+ reg [5:0] metric_decimal_delay;
+ always @(posedge clk or negedge rst_n)
+  if(!rst_n)metric_decimal_delay<=0;else metric_decimal_delay<={metric_decimal_delay[4:0],metrics_frame_valid};
+ audio_fft_analyzer u_spectrum(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .sample_valid(audio_sample_valid),.sample(audio_sample),
+  .spectrum_address(spectrum_address0),.spectrum_value(spectrum_value),
+  .history_column(history_column0),.history_band(history_band0),.history_scale(plot_scales[19:18]),
+  .history_value(history_value),.ready(spectrum_ready),.frame_valid(spectrum_frame_valid),
+  .peak_band(spectrum_peak_band),.peak_valid(spectrum_peak_valid),.peak_bin(spectrum_peak_bin),
+  .peak_hz(spectrum_peak_hz),.centroid_hz(spectrum_centroid_hz));
+ // Final-output stereo phase needs no separate OSC A/B return transport.
+ audio_phase_plot u_phase(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .pair_valid(audio_stereo_valid),.left_sample(audio_sample),.right_sample(audio_right_sample),
+  .read_address(phase_address0),.pixel(phase_pixel),.ready(phase_ready),
+  .gain_x(plot_scales[11:10]),.gain_y(plot_scales[9:8]));
+
+ // Convert seven changing values in parallel, one binary bit per clock.
+ // The raster only selects precomputed digit nibbles; no / or log in pixels.
+ function [19:0] decimal_step;
+  input [19:0] digits;input bit_value;
+  integer d;reg [19:0] adjusted;
+  begin
+   adjusted=digits;
+   for(d=0;d<5;d=d+1)if(digits[d*4+:4]>=5)adjusted[d*4+:4]=digits[d*4+:4]+4'd3;
+   decimal_step={adjusted[18:0],bit_value};
+  end
+ endfunction
+ reg [16:0] decimal_binary[0:8];
+ reg [19:0] decimal_work[0:8],audio_digits[0:8];
+ reg decimal_busy;
+ reg [4:0] decimal_bit;
+ reg corr_negative,bal_negative,corr_pending_sign,bal_pending_sign;
+ reg [7:0] peak_width,rms_width,hold_width,crest_width;
+ wire [13:0] correlation_x;
+ audio_correlation_cursor u_correlation_cursor(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .value_valid(metrics_frame_valid),.correlation(metrics_corr),.position(correlation_x),.position_valid());
+ reg [12:0] energy_radius2;
+ integer decimal_index;
+ wire [15:0] energy_rms=metrics_rms_l>metrics_rms_r ? metrics_rms_l : metrics_rms_r;
+ wire signed [15:0] energy_scaled=plot_gain($signed({1'b0,energy_rms[15:1]}),plot_scales[1:0]);
+ wire [6:0] energy_radius_raw=7'd8+energy_scaled[14:9];
+ wire [6:0] energy_radius=energy_radius_raw>52 ? 7'd52 : energy_radius_raw;
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin
+   decimal_busy<=0;decimal_bit<=0;corr_negative<=0;bal_negative<=0;
+   peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;energy_radius2<=64;
+   for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
+  end else if(!audio_link_up)begin
+   decimal_busy<=0;peak_width<=0;rms_width<=0;hold_width<=0;crest_width<=0;
+   energy_radius2<=64;corr_negative<=0;bal_negative<=0;
+   for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)audio_digits[decimal_index]<=0;
+  end else begin
+   if(metrics_frame_valid)begin
+    peak_width<=(12'sd960+metrics_peak_db)/12'd6;
+    rms_width<=(12'sd960+metrics_rms_db)/12'd6;
+    hold_width<=metrics_hold_db>=0 ? 8'd159 : (12'sd960+metrics_hold_db)/12'd6;
+    crest_width<=metrics_crest>=240 ? 8'd160 : (metrics_crest*12'd2)/12'd3;
+    energy_radius2<=energy_radius*energy_radius;
+   end
+   if(!decimal_busy && (metric_decimal_delay[5] || spectrum_frame_valid))begin
+    decimal_busy<=1;decimal_bit<=0;
+    decimal_binary[0]<=-metrics_rms_db;decimal_binary[1]<=-metrics_peak_db;
+    decimal_binary[2]<=metrics_crest;
+    decimal_binary[7]<=-stereo_db_l;decimal_binary[8]<=-stereo_db_r;
+    decimal_binary[3]<=spectrum_peak_hz;decimal_binary[4]<=spectrum_centroid_hz;
+    decimal_binary[5]<=metrics_corr[7] ? -metrics_corr : metrics_corr;
+    decimal_binary[6]<=metrics_balance[7] ? -metrics_balance : metrics_balance;
+    corr_pending_sign<=metrics_corr[7];bal_pending_sign<=metrics_balance[7];
+    for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)decimal_work[decimal_index]<=0;
+   end else if(decimal_busy)begin
+    decimal_bit<=decimal_bit+1'b1;
+    for(decimal_index=0;decimal_index<9;decimal_index=decimal_index+1)begin
+     decimal_work[decimal_index]<=decimal_step(decimal_work[decimal_index],decimal_binary[decimal_index][16]);
+     decimal_binary[decimal_index]<=decimal_binary[decimal_index]<<1;
+     if(decimal_bit==16)audio_digits[decimal_index]<=decimal_step(decimal_work[decimal_index],decimal_binary[decimal_index][16]);
+    end
+    if(decimal_bit==16)begin
+     decimal_busy<=0;corr_negative<=corr_pending_sign;bal_negative<=bal_pending_sign;
+    end
+   end
+  end
+ end
+
+ wire master_hole=view==0 && in_x>=1140 && in_x<=1230 && in_y<44;
+ wire [23:0] tile_color[0:5];
+ wire [23:0] tile_demo_color[0:5];
+ wire [5:0] tile_demo_hit;
+ wire [5:0] tile_hit;
+ genvar tile;
+ generate for(tile=0;tile<6;tile=tile+1)begin: visual_tile
+  localparam X=24+(tile%3)*418,Y=96+(tile/3)*296;
+  wire inside_tile=in_x>=X && in_x<=X+396 && in_y>=Y && in_y<=Y+278;
+  wire border=in_x==X || in_x==X+396 || in_y==Y || in_y==Y+278;
+  wire plot=in_y>=Y+72 && in_y<Y+232 && in_x>=X+16 && in_x<X+380;
+  wire axis=in_x==X+198 || in_y==Y+140;
+  wire grid=in_x[5:0]==0 || in_y[5:0]==0;
+  wire [8:0] gx=in_x-(X+16);
+  wire [7:0] gy=in_y-(Y+80);
+  wire graph_area=plot && in_y>=Y+80 && in_y<Y+232;
+  if(tile==0)begin: live_overview
+   // The measured energy ring is pipelined below with the other RAM plots.
+   wire channel_l=audio_link_up&&metrics_ready&&metrics_rms_l>=8;
+   wire channel_r=audio_link_up&&metrics_ready&&metrics_rms_r>=8;
+   wire lamp_l=in_x>=262&&in_x<278&&in_y>=296&&in_y<308;
+   wire lamp_r=in_x>=342&&in_x<358&&in_y>=296&&in_y<308;
+   assign tile_demo_hit[tile]=lamp_l||lamp_r;
+   assign tile_demo_color[tile]=(lamp_l&&channel_l)||(lamp_r&&channel_r) ? 24'h61DED1 : 24'h26394B;
+  end else if(tile==1)begin: live_waveform
+   wire live_wave=audio_link_up&&waveform_ready;
+   wire [18:0] held_scaled={3'd0,metrics_peak_hold}<<plot_scales[5:4];
+   wire [6:0] held_amplitude=held_scaled>=32768 ? 7'd64 : held_scaled[15:9];
+   wire hold_line=live_wave&&metrics_ready&&metrics_peak_hold!=0&&in_x>=496&&in_x<752&&
+       in_x[3:0]<4&&(in_y==14'd248-held_amplitude||in_y==14'd248+held_amplitude);
+   // The live trace is composed after the registered RAM read below.
+   assign tile_demo_hit[tile]=hold_line||(graph_area && !live_wave && gy>=8'd70 && gy<=8'd74);
+   assign tile_demo_color[tile]=hold_line ? 24'hF5D36A : 24'hD5AD78;
+  end else if(tile==2)begin: live_phase
+   assign tile_demo_hit[tile]=1'b0;
+   assign tile_demo_color[tile]=24'h26394B;
+  end else if(tile==3)begin: live_spectrum
+   assign tile_demo_hit[tile]=1'b0;
+   assign tile_demo_color[tile]=24'h65CDA4;
+  end else if(tile==4)begin: live_spectrogram
+   wire legend=in_x>=512&&in_x<768&&in_y>=618&&in_y<626;
+   assign tile_demo_hit[tile]=legend;
+   assign tile_demo_color[tile]=heat_color((in_x-14'd512)>>2);
+  end else begin: live_levels
+   wire bar_l=in_y>=512&&in_y<540&&in_x>=1064&&in_x<1224;
+   wire bar_r=in_y>=576&&in_y<604&&in_x>=1064&&in_x<1224;
+   wire [8:0] level_x=in_x-1064;
+   wire filled=audio_link_up&&metrics_ready&&((bar_l&&level_x<stereo_width_l)||(bar_r&&level_x<stereo_width_r));
+   wire held=audio_link_up&&metrics_ready&&((bar_l&&stereo_hold_l!=0&&level_x==stereo_hold_l-1'b1)||(bar_r&&stereo_hold_r!=0&&level_x==stereo_hold_r-1'b1));
+   wire [23:0] zone=level_x>=150 ? 24'hE87565 : level_x>=120 ? 24'hF5D36A : 24'h65CDA4;
+   assign tile_demo_hit[tile]=bar_l||bar_r;
+   assign tile_demo_color[tile]=held ? 24'hFFFFFF : filled ? zone : 24'h26394B;
+  end
+  assign tile_hit[tile]=inside_tile;
+  assign tile_color[tile]=!inside_tile ? 24'd0 : border ? 24'h35495F :
+   in_y<Y+48 ? 24'h1B2B3C : plot ? (tile_demo_hit[tile] ? tile_demo_color[tile] : (axis ? 24'h26394B : grid ? 24'h152331 : 24'h0B131D)) : 24'h111B28;
+ end endgenerate
+ wire performance_hit;
+ wire [23:0] performance_rgb;
+ performance_page_renderer #(.KEY_COUNT(PERFORMANCE_KEY_COUNT),.BASE_NOTE(PERFORMANCE_BASE_NOTE),.CALIBRATION_ENABLE(PERFORMANCE_CALIBRATION_ENABLE),.PIANO_ROLL_ENABLE(PERFORMANCE_PIANO_ROLL_ENABLE)) u_performance_page(
+   .calibration_state(performance_calibration_state),
+   .in_x(in_x),.in_y(in_y),
+   .active_keys(performance_active_keys),.guide_keys(performance_guide_keys),
+   .song_progress(performance_progress),.song_running(performance_running),.song_paused(performance_paused),.mode(performance_mode),
+   .gateway_up(performance_gateway_up),.recording(performance_recording),.record_status(performance_record_status),
+   .next_key(performance_next_key),.next_key_valid(performance_next_key_valid),.next_key_y(performance_next_key_y),
+   .roll_body_keys(performance_roll_body_keys),.roll_onset_keys(performance_roll_onset_keys),
+   .out_hit(performance_hit),.out_rgb(performance_rgb));
+ wire [23:0] visual_bg=(|tile_hit) ? tile_color[0]|tile_color[1]|tile_color[2]|tile_color[3]|tile_color[4]|tile_color[5] : 24'h101318;
+ reg [11:0] bcd[0:3];
+ genvar n;
+ generate for(n=0;n<4;n=n+1)begin: decimal_cache
+  wire [6:0] value=macro_values[n*7+:7];
+  wire [3:0] hundreds=value/7'd100,tens=(value%7'd100)/7'd10,ones=value%7'd10;
+  always @(posedge clk)bcd[n]<={hundreds,tens,ones};
+ end endgenerate
+ // Independent rectangle tests and masked colors avoid a 32-button priority
+ // mux followed by several page muxes on the raster-to-b0 path. The masks
+ // preserve the original overlap priorities and add no pipeline latency.
+ wire [31:0] knob_button_hit,knob_button_selected;
+ wire [23:0] plot_button_hit;
+ genvar kr,kc,bg_sr,bg_sc;
+ generate for(kr=0;kr<8;kr=kr+1)begin: background_knob_row
+  for(kc=0;kc<4;kc=kc+1)begin: background_knob_column
+   assign knob_button_hit[kr*4+kc]=in_y>=208+kr*44 && in_y<244+kr*44 &&
+    in_x>=352+kc*80 && in_x<416+kc*80;
+   assign knob_button_selected[kr*4+kc]=knob_button_hit[kr*4+kc] &&
+    knob_steps[(knob_page*8+kr)*2+:2]==kc;
+  end
+ end
+ for(bg_sr=0;bg_sr<6;bg_sr=bg_sr+1)begin: background_plot_row
+  for(bg_sc=0;bg_sc<4;bg_sc=bg_sc+1)begin: background_plot_column
+   assign plot_button_hit[bg_sr*4+bg_sc]=!((bg_sr==0 || bg_sr==5)&&bg_sc>=2) &&
+    in_y>=200+bg_sr*56 && in_y<240+bg_sr*56 && in_x>=528+bg_sc*160 && in_x<656+bg_sc*160;
+  end
+ end endgenerate
+ wire background_panel=((in_x>=32 && in_x<=680)||(in_x>=712 && in_x<=1248)) && in_y>=120 && in_y<=616;
+ wire background_border=in_x==32||in_x==680||in_x==712||in_x==1248||in_y==120||in_y==616;
+ wire background_detail=in_x>=736 && in_x<=1216 && in_y>=196 && in_y<=552;
+ wire knob_apply=in_y>=144 && in_y<176 && in_x>=432 && in_x<656;
+ wire knob_page_button=in_y>=576 && in_y<612 && ((in_x>=48 && in_x<208)||(in_x>=496 && in_x<656));
+ wire knob_diagnostics=in_x>=880 && in_x<=1216 && in_y>=520 && in_y<=584;
+ wire knob_selected=(|knob_button_selected) && !knob_page_button;
+ wire knob_plain=((|knob_button_hit) && !(|knob_button_selected)) || knob_page_button;
+ wire knob_special=knob_selected || knob_plain || knob_apply || knob_diagnostics;
+ wire settings_tab=in_y>=88 && in_y<120;
+ wire settings_tab_selected=(render_settings_section_id==1 && in_x>=32 && in_x<336)||
+  (render_settings_section_id==2 && in_x>=336 && in_x<632)||
+  (render_settings_section_id==3 && in_x>=632 && in_x<928)||
+  (render_settings_section_id==4 && in_x>=928 && in_x<=1248);
+ wire nav_selected=(view==0 && in_x>=128 && in_x<320)||
+  (view==1 && in_x>=336 && in_x<576)||(view==2 && in_x>=592 && in_x<800)||
+  (view==3 && in_x>=816 && in_x<1040);
+ wire nav_menu=in_x>=20 && in_x<=40 && (in_y==14 || in_y==19 || in_y==24 || in_y==29);
+ wire card_hit=in_y>=160 && in_y<=480 &&
+  ((in_x>=48 && in_x<=416)||(in_x>=456 && in_x<=824)||(in_x>=864 && in_x<=1232));
+ wire card_stripe=in_y>=280 && in_y<=336 && in_x[5:0]>=16 && in_x[5:0]<=48;
+ wire card_border=in_y==160 || in_y==480;
+ wire [23:0] nav_bg=({24{nav_selected}} & 24'h204152)|
+  ({24{!nav_selected && nav_menu}} & 24'hC4D7E8)|
+  ({24{!nav_selected && !nav_menu && in_y==42}} & 24'h2C94A8)|
+  ({24{!nav_selected && !nav_menu && in_y!=42}} & 24'h151D29);
+ wire [23:0] knob_bg=({24{knob_selected}} & 24'h246B68)|
+  ({24{knob_plain}} & 24'h22374C)|({24{knob_apply}} & 24'h24545B)|
+  ({24{knob_diagnostics && show_diagnostics}} & 24'h205148)|
+  ({24{knob_diagnostics && !show_diagnostics}} & 24'h25384D)|
+  ({24{!knob_special && background_panel}} & 24'h142030)|
+  ({24{!knob_special && !background_panel}} & 24'h101318);
+ wire [23:0] generic_settings_bg=({24{background_detail}} & 24'h192A3B)|
+  ({24{!background_detail && background_border}} & 24'h35495F)|
+  ({24{!background_detail && !background_border && background_panel}} & 24'h142030)|
+  ({24{!background_detail && !background_border && !background_panel}} & 24'h101820);
+ wire plot_shortcut=render_settings_section_id==2 && (|plot_button_hit);
+ wire [23:0] settings_body_bg=({24{plot_shortcut}} & 24'h223C4C)|
+  ({24{!plot_shortcut && render_settings_section_id==1}} & knob_bg)|
+  ({24{!plot_shortcut && render_settings_section_id!=1}} & generic_settings_bg);
+ wire [23:0] settings_bg=settings_tab ?
+  (in_y==119 ? 24'h347B90 : settings_tab_selected ? 24'h285064 : 24'h1A2735) : settings_body_bg;
+ wire [23:0] cards_bg=({24{!card_hit}} & 24'h101318)|
+  ({24{card_hit && card_stripe}} & 24'h25465C)|
+  ({24{card_hit && !card_stripe && card_border}} & 24'h3E8495)|
+  ({24{card_hit && !card_stripe && !card_border}} & 24'h17283B);
+ always @(*)begin
+  hit=(in_y<44 && !master_hole) || view!=0;
+  bg=({24{in_y<44}} & nav_bg)|
+   ({24{in_y>=44 && view==1}} & visual_bg)|
+   ({24{in_y>=44 && view==2}} & performance_rgb)|
+   ({24{in_y>=44 && view==3}} & settings_bg)|
+   ({24{in_y>=44 && view==4}} & cards_bg)|
+   ({24{in_y>=44 && view!=1 && view!=2 && view!=3 && view!=4}} & 24'h101318);
+  macro_row=(in_y-248)>>6;
+  macro_number=0;
+  case(macro_row)
+   0:number=macro_values[0+:7];1:number=macro_values[7+:7];
+   2:number=macro_values[14+:7];default:number=macro_values[21+:7];
+  endcase
+  case((in_x-416)>>4)
+   0:number_char=number>=100 ? `CH_1 : `CH_SPACE;
+   1:number_char=`CH_0+bcd[macro_row][7:4];
+   default:number_char=`CH_0+bcd[macro_row][3:0];
+  endcase
+ end
+ `include "navigation_shortcuts.vh"
+ reg h0,h1,h2,h3;
+ // Stage 0 computes page backgrounds independently. Stage 1 selects their
+ // registered colors, using page/rectangle flags from that SAME pixel. This
+ // uses the existing delay slot and keeps the total raster latency unchanged.
+ reg [23:0] nav_bg0,visual_bg0,performance_bg0,knob_bg0,generic_bg0,cards_bg0;
+ reg [2:0] background_view0;
+ reg background_top0,settings_tab0,settings_tab_selected0,settings_line0;
+ reg plot_shortcut0,settings_knobs0;
+ wire [23:0] settings_bg1=settings_tab0 ?
+  (settings_line0 ? 24'h347B90 : settings_tab_selected0 ? 24'h285064 : 24'h1A2735) :
+  plot_shortcut0 ? 24'h223C4C : settings_knobs0 ? knob_bg0 : generic_bg0;
+ wire [23:0] background1=background_top0 ? nav_bg0 :
+  background_view0==1 ? visual_bg0 : background_view0==2 ? performance_bg0 :
+  background_view0==3 ? settings_bg1 : background_view0==4 ? cards_bg0 : 24'h101318;
+ reg [23:0] b1,b2,b3,fg0,fg1,fg2,fg3;
+ reg [6:0] id0 /* synthesis syn_preserve=1 syn_keep=1 syn_maxfan=16 */;
+ // Split the 127-label reduction across the existing raster/ROM boundary.
+ // Each group belongs to the SAME pixel; the ROM still reads on stage 1.
+ reg [5:0] col_group0[0:7] /* synthesis syn_preserve=1 syn_keep=1 */;
+ wire [5:0] col0=col_group0[0]|col_group0[1]|col_group0[2]|col_group0[3]|
+                  col_group0[4]|col_group0[5]|col_group0[6]|col_group0[7];
+ genvar col_group,col_bit;
+ generate for(col_group=0;col_group<8;col_group=col_group+1)begin: text_column_group
+  localparam WIDTH=col_group==7 ? 15 : 16;
+  always @(posedge clk)begin
+   col_group0[col_group]<={|nav_col_b5[col_group*16+:WIDTH],|nav_col_b4[col_group*16+:WIDTH],
+    |nav_col_b3[col_group*16+:WIDTH],|nav_col_b2[col_group*16+:WIDTH],
+    |nav_col_b1[col_group*16+:WIDTH],|nav_col_b0[col_group*16+:WIDTH]};
+  end
+ end endgenerate
+ reg [5:0] rom_ch1,digit1;
+ reg number1;
+ reg [3:0] recorder_status0;
+ reg recorder_select1;
+ reg [5:0] recorder_ch1;
+ wire [5:0] ch1=number1 ? digit1 : recorder_select1 ? recorder_ch1 : rom_ch1;
+ always @(posedge clk)recorder_ch1<=recorder_char_rom[{recorder_status0,col0[4:0]}];
+ // Unconditional synchronous read lets Gowin map the character table to
+ // block ROM, instead of another deep combinational case decoder.
+ always @(posedge clk)rom_ch1<=navigation_char_rom[{id0,col0}];
+ reg [3:0] rx0;reg [4:0] ry0;
+ reg large0;
+ reg tv0,tv1;reg [5:0] digit0;
+ reg number0;reg compact0;
+ reg shortcut_warning0;
+ function [2:0] scale_tile;
+  input [6:0] id;
+  begin case(id)
+   NAV_SCALE_VALUE1:scale_tile=1;NAV_SCALE_VALUE2:scale_tile=2;
+   NAV_SCALE_VALUE3:scale_tile=3;NAV_SCALE_VALUE4:scale_tile=4;
+   NAV_SCALE_VALUE5:scale_tile=5;default:scale_tile=0;
+  endcase end
+ endfunction
+ reg audio_number;
+ reg [5:0] audio_number_char;
+ function [5:0] audio_digit;
+  input [19:0] digits;input [2:0] place;input valid;
+  reg [19:0] shifted;
+  begin shifted=digits>>(place*4);audio_digit=valid ? `CH_0+shifted[3:0] : `CH_MINUS;end
+ endfunction
+ always @* begin
+  audio_number=0;audio_number_char=`CH_SPACE;
+  case(id0)
+   NAV_KNOB0,NAV_KNOB1,NAV_KNOB2,NAV_KNOB3,NAV_KNOB4,NAV_KNOB5,NAV_KNOB6,NAV_KNOB7:begin
+    if(col0<18)begin audio_number=1;audio_number_char=knob_caption({knob_page,3'd0}+(id0-NAV_KNOB0),col0);end
+   end
+   NAV_SCALE_VALUE0,NAV_SCALE_VALUE1,NAV_SCALE_VALUE2,NAV_SCALE_VALUE3,NAV_SCALE_VALUE4,NAV_SCALE_VALUE5:begin
+    if(col0==1 || (col0==4 && id0!=NAV_SCALE_VALUE0 && id0!=NAV_SCALE_VALUE5))begin
+     audio_number=1;audio_number_char=`CH_0+(4'd1<<plot_scales[scale_tile(id0)*4+(col0==4 ? 2 : 0)+:2]);
+    end
+   end
+   NAV_KNOB_PAGE:if(col0==16)begin audio_number=1;audio_number_char=`CH_1+knob_page;end
+
+   NAV_SPECTRUM_RANGE:if(col0>=3 && col0<=7)begin
+    audio_number=1;
+    case(plot_scales[15:14])
+     0:case(col0)3:audio_number_char=`CH_4;4:audio_number_char=`CH_8;default:audio_number_char=`CH_0;endcase
+     1:case(col0)3,6:audio_number_char=`CH_0;4:audio_number_char=`CH_2;5:audio_number_char=`CH_9;default:audio_number_char=`CH_6;endcase
+     2:case(col0)3,4:audio_number_char=`CH_0;5:audio_number_char=`CH_8;default:audio_number_char=`CH_4;endcase
+     3:case(col0)3,4:audio_number_char=`CH_0;5:audio_number_char=`CH_4;6:audio_number_char=`CH_6;default:audio_number_char=`CH_9;endcase
+    endcase
+   end
+   NAV_WAVE_SPAN:if(col0>=11 && col0<=15)begin
+    audio_number=1;
+    case(plot_scales[7:6])
+     0:case(col0)11:audio_number_char=`CH_1;12:audio_number_char=`CH_0;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_6;default:audio_number_char=`CH_7;endcase
+     1:case(col0)11:audio_number_char=`CH_SPACE;12:audio_number_char=`CH_5;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_3;default:audio_number_char=`CH_3;endcase
+     2:case(col0)11:audio_number_char=`CH_SPACE;12:audio_number_char=`CH_2;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_6;default:audio_number_char=`CH_7;endcase
+     3:case(col0)11:audio_number_char=`CH_SPACE;12:audio_number_char=`CH_1;13:audio_number_char=`CH_DOT;14:audio_number_char=`CH_3;default:audio_number_char=`CH_3;endcase
+    endcase
+   end
+   NAV_OV_RMS,NAV_OV_PEAK:begin
+    if(col0==5 || col0==6 || col0==8)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[id0==NAV_OV_RMS ? 0 : 1],
+      col0==5 ? 3'd2 : col0==6 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
+    end
+   end
+   NAV_LEVEL_PEAK,NAV_LEVEL_RMS,NAV_LEVEL_CREST,NAV_LEVEL_L:begin
+    if(col0==3 || col0==4 || col0==6)begin
+     audio_number=1;audio_number_char=audio_digit(audio_digits[id0==NAV_LEVEL_PEAK ? 1 : id0==NAV_LEVEL_RMS ? 8 : id0==NAV_LEVEL_L ? 7 : 2],
+      col0==3 ? 3'd2 : col0==4 ? 3'd1 : 3'd0,metrics_ready&&audio_link_up);
+    end
+   end
+   NAV_OV_HZ:if(col0<5)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd4-col0[2:0],audio_link_up&&spectrum_peak_valid);
+   end
+   NAV_PEAK_HZ:if(col0>=5 && col0<=9)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[3],3'd1-col0[2:0],audio_link_up&&spectrum_peak_valid);
+   end
+   NAV_CENTROID:if(col0>=7 && col0<=11)begin
+    audio_number=1;audio_number_char=audio_digit(audio_digits[4],3'd3-col0[2:0],audio_link_up&&spectrum_peak_valid);
+   end
+  endcase
+ end
+ reg [2:0] glyph_x1,glyph_x2;
+ reg [3:0] glyph_y1;
+ reg [13:0] glyph_row2;
+ reg glyph_valid2;
+ reg [1:0] coverage3;
+ // Keep the verified 7x10 font and mapping, but split row lookup from
+ // column selection. Blend moves into the existing output register:
+ // address -> character/map -> glyph row -> coverage -> blended output.
+ function [2:0] glyph_x;
+  input heading;input [3:0] rx;
+  begin
+   if(heading)glyph_x=rx[3:1];
+   else case(rx)
+    0,1:glyph_x=0;2,3:glyph_x=1;4,5:glyph_x=2;6,7:glyph_x=3;
+    8,9:glyph_x=4;10:glyph_x=5;default:glyph_x=6;
+   endcase
+  end
+ endfunction
+ function [3:0] glyph_y;
+  input heading;input [4:0] ry;
+  begin
+   if(heading)glyph_y=ry[4:1];
+   else case(ry)
+    0,1:glyph_y=0;2,3:glyph_y=1;4:glyph_y=2;5,6:glyph_y=3;
+    7:glyph_y=4;8,9:glyph_y=5;10:glyph_y=6;11,12:glyph_y=7;
+    13:glyph_y=8;default:glyph_y=9;
+   endcase
+  end
+ endfunction
+ function [1:0] glyph_column;
+  input [13:0] row_bits;input [2:0] column;
+  begin case(column)
+   0:glyph_column=row_bits[13:12];1:glyph_column=row_bits[11:10];
+   2:glyph_column=row_bits[9:8];3:glyph_column=row_bits[7:6];
+   4:glyph_column=row_bits[5:4];5:glyph_column=row_bits[3:2];
+   6:glyph_column=row_bits[1:0];default:glyph_column=0;
+  endcase end
+ endfunction
+ reg [6:0] wave_addr0;
+ wire [7:0] wave_sample1,wave_previous1;
+ wire [7:0] wave_right1,wave_right_previous1;
+ reg [7:0] wave_gy0,wave_gy1;
+ wire triggered_wave;
+ audio_waveform_capture #(.STEREO(1)) u_waveform(.clk(clk),.rst_n(rst_n),.link_up(audio_link_up),
+  .sample_valid(audio_stereo_valid),.sample(audio_sample),.right_sample(audio_right_sample),
+  .read_address(wave_addr0),.time_zoom(plot_scales[7:6]),
+  .plot_sample(wave_sample1),.plot_previous(wave_previous1),.ready(waveform_ready),
+  .plot_right(wave_right1),.plot_right_previous(wave_right_previous1),
+  .frame_valid(),.triggered(triggered_wave));
+ reg wave_area0,wave_area1,wave_hit2,wave_right_hit2;
+ wire signed [15:0] scaled_wave=plot_gain({wave_sample1,8'd0},plot_scales[5:4]);
+ wire signed [15:0] scaled_previous=plot_gain({wave_previous1,8'd0},plot_scales[5:4]);
+ wire [7:0] wave_y1=8'd72-{{1{scaled_wave[15]}},scaled_wave[15:9]};
+ wire [7:0] wave_previous_y1=8'd72-{{1{scaled_previous[15]}},scaled_previous[15:9]};
+ wire [7:0] wave_low1=wave_y1<wave_previous_y1 ? wave_y1 : wave_previous_y1;
+ wire [7:0] wave_high1=wave_y1>wave_previous_y1 ? wave_y1 : wave_previous_y1;
+ wire signed [15:0] scaled_right=plot_gain({wave_right1,8'd0},plot_scales[5:4]);
+ wire signed [15:0] scaled_right_previous=plot_gain({wave_right_previous1,8'd0},plot_scales[5:4]);
+ wire [7:0] right_y1=8'd72-{{1{scaled_right[15]}},scaled_right[15:9]};
+ wire [7:0] right_previous_y1=8'd72-{{1{scaled_right_previous[15]}},scaled_right_previous[15:9]};
+ wire [7:0] right_low1=right_y1<right_previous_y1 ? right_y1 : right_previous_y1;
+ wire [7:0] right_high1=right_y1>right_previous_y1 ? right_y1 : right_previous_y1;
+ always @(posedge clk or negedge rst_n) begin
+  if(!rst_n)begin wave_area0<=0;wave_area1<=0;wave_hit2<=0;wave_right_hit2<=0;end
+  else begin
+   wave_area0<=view==1 && audio_link_up && waveform_ready &&
+       in_x>=14'd496 && in_x<14'd752 && in_y>=14'd176 && in_y<14'd328;
+   wave_area1<=wave_area0;
+   wave_hit2<=wave_area1 && ({1'b0,wave_gy1}+9'd2)>={1'b0,wave_low1} &&
+       {1'b0,wave_gy1}<=({1'b0,wave_high1}+9'd2);
+   wave_right_hit2<=wave_area1 && ({1'b0,wave_gy1}+9'd2)>={1'b0,right_low1} &&
+       {1'b0,wave_gy1}<=({1'b0,right_high1}+9'd2);
+  end
+ end
+ always @(posedge clk) begin
+  // x=496 is column zero in the immutable displayed capture bank.
+  wave_addr0<=in_x[7:1]-7'd120;
+  wave_gy0<=in_y[7:0]-8'd176;wave_gy1<=wave_gy0;
+ end
+
+ // Stage 0: raster -> RAM addresses; stage 1: synchronous RAM output;
+ // stage 2: coverage/color; merge alongside the waveform at stage 3.
+ // No extra video pipeline clocks and no asynchronous RAM lookup.
+ wire [13:0] phase_dx=in_x-14'd930,phase_dy=in_y-14'd184;
+ wire [13:0] spectrum_dx=in_x-14'd94;
+ wire [13:0] history_dx=in_x-14'd512,history_dy=in_y-14'd480;
+ reg phase_area0,phase_area1,phase_hit2;
+ reg spectrum_area0,spectrum_area1,spectrum_hit2;
+ reg spectrum_peak0,spectrum_peak1,spectrum_peak2;
+ reg history_area0,history_area1,history_hit2;
+ reg [7:0] spectrum_y0,spectrum_y1;
+ reg [23:0] history_rgb2;
+ wire signed [8:0] energy_dx=$signed({1'b0,in_x[7:0]})-9'sd140;
+ wire signed [9:0] energy_dy=$signed({1'b0,in_y[8:0]})-10'sd248;
+ reg [17:0] energy_x2_0,energy_y2_0;
+ reg [18:0] energy_distance1;
+ reg energy_area0,energy_area1,energy_hit2;
+ reg [23:0] energy_rgb2;
+ function [23:0] heat_color;
+  input [5:0] level;
+  begin case(level[5:3])
+   0:heat_color=24'h17344D;1:heat_color=24'h245C83;
+   2:heat_color=24'h368DAC;3:heat_color=24'h4ABCB9;
+   4:heat_color=24'h70D6A2;5:heat_color=24'hD6CF79;
+   6:heat_color=24'hE7A466;default:heat_color=24'hEF7060;
+  endcase end
+ endfunction
+ always @(posedge clk)begin
+  energy_x2_0<=energy_dx*energy_dx;energy_y2_0<=energy_dy*energy_dy;
+  energy_distance1<={1'b0,energy_x2_0}+{1'b0,energy_y2_0};
+  energy_rgb2<=energy_distance1<=energy_radius2 ? 24'h61DED1 :
+    metrics_clip!=0 ? 24'hE87565 : metrics_transient!=0 ? 24'hF5D36A : 24'h368DAC;
+  phase_address0<={phase_dy[6:1],phase_dx[7:1]};
+  spectrum_address0<=spectrum_dx[7:3]>>plot_scales[15:14];
+  history_column0<=history_dx[7:2];history_band0<=5'd31-history_dy[6:2];
+  spectrum_y0<=14'd616-in_y;spectrum_y1<=spectrum_y0;
+  history_rgb2<=heat_color(({6'd0,history_value}<<plot_scales[17:16])>63 ? 6'd63 : (history_value<<plot_scales[17:16]));
+ end
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin
+   energy_area0<=0;energy_area1<=0;energy_hit2<=0;
+   phase_area0<=0;phase_area1<=0;phase_hit2<=0;
+   spectrum_area0<=0;spectrum_area1<=0;spectrum_hit2<=0;
+   spectrum_peak0<=0;spectrum_peak1<=0;spectrum_peak2<=0;
+   history_area0<=0;history_area1<=0;history_hit2<=0;
+  end else begin
+   energy_area0<=view==1&&audio_link_up&&metrics_ready&&in_x>=64&&in_x<216&&in_y>=184&&in_y<312;
+   energy_area1<=energy_area0;
+   energy_hit2<=energy_area1 && ((energy_distance1>=2809&&energy_distance1<=3600)||
+     (energy_rms>=8&&energy_distance1<=energy_radius2));
+   phase_area0<=view==1 && audio_link_up && phase_ready &&
+     in_x>=930 && in_x<1186 && in_y>=184 && in_y<312;
+   phase_area1<=phase_area0;phase_hit2<=phase_area1 && phase_pixel;
+   spectrum_area0<=view==1 && audio_link_up && spectrum_ready &&
+     in_x>=94 && in_x<350 && spectrum_dx[2:0]<6 && in_y>=480 && in_y<=616;
+   spectrum_area1<=spectrum_area0;
+   spectrum_hit2<=spectrum_area1 && spectrum_value!=0 &&
+     {3'b000,spectrum_y1}<({5'd0,spectrum_value}<<(plot_scales[13:12]+3'd1));
+   spectrum_peak0<=view==1 && audio_link_up && spectrum_ready && spectrum_peak_valid &&
+     in_x>=94 && in_x<350 && spectrum_dx[2:0]<6 &&
+     in_y>=480 && in_y<=616 &&
+     (spectrum_dx[7:3]>>plot_scales[15:14])==spectrum_peak_band;
+   spectrum_peak1<=spectrum_peak0;
+   // Highlight only the measured bar. Silent frames have no winner marker.
+   spectrum_peak2<=spectrum_peak1 && spectrum_value!=0 &&
+     {3'b000,spectrum_y1}<({5'd0,spectrum_value}<<(plot_scales[13:12]+3'd1));
+   history_area0<=view==1 && audio_link_up && spectrum_ready &&
+     in_x>=512 && in_x<768 && in_y>=480 && in_y<608;
+   history_area1<=history_area0;history_hit2<=history_area1 && history_value!=0;
+  end
+ end
+ function [7:0] demo_wave;input [4:0] phase;begin case(phase)
+ 0:demo_wave=72;1:demo_wave=84;2:demo_wave=96;3:demo_wave=105;4:demo_wave=111;5:demo_wave=117;6:demo_wave=120;7:demo_wave=121;
+ 8:demo_wave=121;9:demo_wave=120;10:demo_wave=117;11:demo_wave=111;12:demo_wave=105;13:demo_wave=96;14:demo_wave=84;15:demo_wave=72;
+ 16:demo_wave=72;17:demo_wave=60;18:demo_wave=48;19:demo_wave=39;20:demo_wave=33;21:demo_wave=27;22:demo_wave=24;23:demo_wave=23;
+ 24:demo_wave=23;25:demo_wave=24;26:demo_wave=27;27:demo_wave=33;28:demo_wave=39;29:demo_wave=48;30:demo_wave=60;default:demo_wave=72;
+ endcase end endfunction
+ always @(posedge clk or negedge rst_n)begin
+  if(!rst_n)begin
+   h0<=0;h1<=0;h2<=0;h3<=0;out_hit<=0;out_rgb<=0;
+   glyph_valid2<=0;coverage3<=0;
+  end
+  else begin
+   h0<=hit;fg0<=text_color;id0<=text_id;
+   nav_bg0<=nav_bg;visual_bg0<=visual_bg;performance_bg0<=performance_rgb;
+   knob_bg0<=knob_bg;generic_bg0<=generic_settings_bg;cards_bg0<=cards_bg;
+   background_view0<=view;background_top0<=in_y<44;
+   settings_tab0<=settings_tab;settings_tab_selected0<=settings_tab_selected;
+   settings_line0<=in_y==119;plot_shortcut0<=plot_shortcut;
+   settings_knobs0<=render_settings_section_id==1;
+   recorder_status0<=performance_record_status;
+   recorder_select1<=id0==NAV_RECORDER_STATUS;
+   tv0<=text_valid||macro_number||shortcut;number0<=macro_number||shortcut;digit0<=shortcut ? shortcut_char : number_char;
+   compact0<=shortcut;
+   shortcut_warning0<=PERFORMANCE_CALIBRATION_ENABLE && view==2 && performance_range_warning;
+   rx0<=shortcut ? shortcut_x : macro_number ? in_x[3:0] : text_rx;
+   ry0<=shortcut ? shortcut_y : macro_number ? ((in_y-248)&63) : text_ry;
+   large0<=!macro_number && text_large;
+   h1<=h0;b1<=background1;fg1<=compact0 ? (shortcut_warning0 ? 24'hF0AD55 : 24'h9ED6D3) : fg0;
+   tv1<=tv0 && (compact0 ? (rx0<7 && ry0<10) : large0 ? (rx0<14 && ry0<20) : (rx0<12 && ry0<16));
+   number1<=number0||audio_number;digit1<=number0 ? digit0 : audio_number_char;
+   glyph_x1<=compact0 ? rx0[2:0] : glyph_x(large0,rx0);glyph_y1<=compact0 ? ry0[3:0] : glyph_y(large0,ry0);
+   h2<=h1;b2<=b1;fg2<=fg1;
+   glyph_row2<=get_font_7x10_row(ch1,glyph_y1);glyph_x2<=glyph_x1;glyph_valid2<=tv1;
+   h3<=h2;b3<=energy_hit2 ? energy_rgb2 : (wave_hit2 && wave_right_hit2) ? 24'hE6F4FF :
+     wave_hit2 ? 24'h61DED1 : wave_right_hit2 ? 24'hF5AD78 : phase_hit2 ? 24'h67CDE0 :
+       spectrum_peak2 ? 24'hF5D36A : spectrum_hit2 ? 24'h65CDA4 :
+       history_hit2 ? history_rgb2 : b2;fg3<=fg2;
+   coverage3<=glyph_valid2 ? glyph_column(glyph_row2,glyph_x2) : 0;
+   out_hit<=h3 || preset_hit4;out_rgb<=preset_hit4 ? preset_rgb4 : blend_rgb_q4(fg3,b3,font_alpha_q4(coverage3));
+  end
+ end
+endmodule

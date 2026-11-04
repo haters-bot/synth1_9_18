@@ -340,10 +340,29 @@ module top #(
     // 外接I2S DAC输出同一组96 kHz立体声样本。
     assign MAX_SD   = 1'b1;
     assign MAX_GAIN = 1'b1;
-    // 第二组排针直接镜像同一组I2S信号，不增加采样、缓存或时钟域。
-    assign VIS_BCLK = MAX_BCLK;
-    assign VIS_LRC  = MAX_LRC;
-    assign VIS_DIN  = MAX_DIN;
+    // VIS V2 retains final-output PCM and adds coherent pre-FX OSC A/B.
+    // Two matched anti-alias FIRs decimate the independent oscillator taps;
+    // neither the audible mix nor its processing chain is changed.
+    wire signed [15:0] visual_a_input,visual_b_input,visual_a,visual_b;
+    wire visual_a_valid,visual_b_valid;
+    reg signed [15:0] visual_a_pair,visual_b_pair;
+    assign visual_a_input=saturate_mix_q8({osc_a_scaled_product[25],osc_a_scaled_product});
+    assign visual_b_input=saturate_mix_q8({osc_b_scaled_product[25],osc_b_scaled_product});
+    fir_decimator_8x_wrapper u_visual_a_fir(.clk(clk_sys),.rst_n(rst_n_sys),
+        .in_valid(oscillator_mix_valid),.sample_in(visual_a_input),
+        .out_valid(visual_a_valid),.sample_out(visual_a),.in_ready(),.input_overrun());
+    fir_decimator_8x_wrapper u_visual_b_fir(.clk(clk_sys),.rst_n(rst_n_sys),
+        .in_valid(oscillator_mix_valid),.sample_in(visual_b_input),
+        .out_valid(visual_b_valid),.sample_out(visual_b),.in_ready(),.input_overrun());
+    always @(posedge clk_sys or negedge rst_n_sys)
+        if(!rst_n_sys)begin visual_a_pair<=0;visual_b_pair<=0;end
+        else if(visual_a_valid && visual_b_valid)begin
+            visual_a_pair<=visual_a;visual_b_pair<=visual_b;
+        end
+    i2s_visual_tx u_visual_tx(.clk(clk_sys),.rst_n(rst_n_sys),
+        .final_left(master_output_sample),.final_right(master_output_sample),
+        .osc_a(visual_a_pair),.osc_b(visual_b_pair),
+        .bclk(VIS_BCLK),.lrck(VIS_LRC),.sdata(VIS_DIN));
 
     sys_clock_manager u_sys_clock_manager (
         .clk_ref_50m(sys_clk),

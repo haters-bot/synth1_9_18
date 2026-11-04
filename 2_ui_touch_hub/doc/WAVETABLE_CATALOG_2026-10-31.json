@@ -1,0 +1,106 @@
+{
+  "format": "WTB1",
+  "count": 12,
+  "frames_per_table": 256,
+  "samples_per_frame": 256,
+  "sample_bits": 16,
+  "endian": "little",
+  "names_in_file": false,
+  "bytes": 1572896,
+  "sha256": "ac2253f3eacc7397ace79c6d9f54f266409eac6f69383c45ad1d8da7f95437ee",
+  "tables": [
+    {
+      "index": 0,
+      "label": "SD 00",
+      "sha256": "a6f7533b3d2c5a05546084d59336ff579bf56ebd2e5653cb5543269519eb76bd",
+      "min": -32216,
+      "max": 20946
+    },
+    {
+      "index": 1,
+      "label": "SD 01",
+      "sha256": "0b30d331cc09079389c7fe0ad14280e6bea83687e567d084af9523aa4d55e95a",
+      "min": -32762,
+      "max": 19713
+    },
+    {
+      "index": 2,
+      "label": "SD 02",
+      "sha256": "916a84c543fe76beb6721131b36c01a0b6542f4b7455c848a84ab71ee4f67d98",
+      "min": -30879,
+      "max": 30605
+    },
+    {
+      "index": 3,
+      "label": "SD 03",
+      "sha256": "282ce3940e36ebccdc915b83fe3a5274c60dbab9b2751c191a477343e3262758",
+      "min": -32548,
+      "max": 32767
+    },
+    {
+      "index": 4,
+      "label": "SD 04",
+      "sha256": "0af36f38e2f767e4ac9495e12419a6e6b295de1d7b6040b0cb07a1768995c373",
+      "min": -32767,
+      "max": 32767
+    },
+    {
+      "index": 5,
+      "label": "SD 05",
+      "sha256": "c67e7566414550f521df4c54434e5b367731b6a58a4dddace27e37f1a82afae0",
+      "min": -32768,
+      "max": 31241
+    },
+    {
+      "index": 6,
+      "label": "SD 06",
+      "sha256": "43a179bacc8b299a185c3d496a6c693d2478a8db3af9199c2646ec2c4c8622c8",
+      "min": -31610,
+      "max": 31725
+    },
+    {
+      "index": 7,
+      "label": "SD 07",
+      "sha256": "bc18af625320a936596000d583131d7e28c336250132e653fa686149d21d3359",
+      "min": -32763,
+      "max": 32766
+    },
+    {
+      "index": 8,
+      "label": "SD 08",
+      "sha256": "476e223291509632dc414fa27b24a37768984bdf73a984959b3177c5db34f730",
+      "min": -31129,
+      "max": 9666
+    },
+    {
+      "index": 9,
+      "label": "SD 09",
+      "sha256": "3a7291eebf39ff8dbb5339c8f975432a86a28a0dc3b9e324a437536ea70e4114",
+      "min": -31129,
+      "max": 9439
+    },
+    {
+      "index": 10,
+      "label": "SD 10",
+      "sha256": "4efe9fb0326d5296e27ce0c5ad2d65dbb9eaa7949edeb80842b9af07e502ebe5",
+      "min": -26882,
+      "max": 29490
+    },
+    {
+      "index": 11,
+      "label": "SD 11",
+      "sha256": "cb8e8aea0ad6c8c79c2afe1c196d60cc09976178c54ee626508d101c5fc9c614",
+      "min": -24009,
+      "max": 29490
+    }
+  ],
+  "preview": {
+    "kind": "local_source_bank",
+    "frames": 16,
+    "phase_samples": 128,
+    "sample_bits": 8,
+    "rom_bytes": 24576,
+    "frame_interpolation": true,
+    "canonical_lf_sha256": "d188a7f8523d01dcb72f6c00813a50b4517724ccf18cf4424ea85fb66e8828ec"
+  }
+}

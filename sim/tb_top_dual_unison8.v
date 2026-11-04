@@ -51,6 +51,7 @@ module tb_top_dual_unison8;
         .sys_clk (sys_clk),
         .rst_n   (rst_n),
         .uart_rx (uart_rx),
+        .midi_gpio_rx(1'b1),
         .control_uart_rx(control_uart_rx),
         .keyboard_uart_rx(keyboard_uart_rx),
         .MAX_SD  (MAX_SD),

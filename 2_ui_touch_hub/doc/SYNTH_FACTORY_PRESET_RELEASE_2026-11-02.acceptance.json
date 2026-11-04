@@ -1,0 +1,242 @@
+{
+  "passed": true,
+  "time": "2026-11-02T06:27:26.860409",
+  "kind": "ui_sram_release",
+  "source_commit": "9ee5dce473774f85e8010ec0add1d4e942047855",
+  "factory_reference_commit": "f0da2279eba79c3b368248718f96033f0cc8f9b6",
+  "build": "E:\\gaoyun_builds\\R16A_build_20261102_060044",
+  "audit_path": "E:\\gaoyun_builds\\R16A_build_20261102_060044\\audit_20261102_062137_424718.json",
+  "sha256": "FF2A32811EF2AC11F2933C99F8AB5EA409AB946C4C2380BCC3A477512A18BF13",
+  "fs_bytes": 41215585,
+  "source_inputs": 124,
+  "matched_test_inputs": 136,
+  "pins": 124,
+  "timing_closed": true,
+  "five_violation_types_zero": true,
+  "clocks": [
+    {
+      "clock": "sys_clk",
+      "required_mhz": 50.0,
+      "actual_mhz": 228.636,
+      "logic_levels": 5
+    },
+    {
+      "clock": "clk_pixel",
+      "required_mhz": 50.0,
+      "actual_mhz": 54.027,
+      "logic_levels": 13
+    },
+    {
+      "clock": "clk_5x_bit",
+      "required_mhz": 250.0,
+      "actual_mhz": 393.797,
+      "logic_levels": 1
+    },
+    {
+      "clock": "clk_usb",
+      "required_mhz": 59.999,
+      "actual_mhz": 88.3,
+      "logic_levels": 12
+    },
+    {
+      "clock": "ch569_htclk",
+      "required_mhz": 50.0,
+      "actual_mhz": 421.941,
+      "logic_levels": 4
+    },
+    {
+      "clock": "ddr_clk400",
+      "required_mhz": 400.0,
+      "actual_mhz": 2016.129,
+      "logic_levels": 1
+    },
+    {
+      "clock": "ddr_user_clk100",
+      "required_mhz": 100.0,
+      "actual_mhz": 112.592,
+      "logic_levels": 4
+    }
+  ],
+  "slack_tables": {
+    "setup": {
+      "reported_paths": 250,
+      "worst_slack_ns": 0.73,
+      "oser10_reset_endpoints": []
+    },
+    "hold": {
+      "reported_paths": 50,
+      "worst_slack_ns": 0.138,
+      "oser10_reset_endpoints": []
+    },
+    "recovery": {
+      "reported_paths": 262,
+      "worst_slack_ns": 0.365,
+      "oser10_reset_endpoints": [
+        "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+        "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+        "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET"
+      ]
+    },
+    "removal": {
+      "reported_paths": 262,
+      "worst_slack_ns": 0.299,
+      "oser10_reset_endpoints": [
+        "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+        "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+        "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET"
+      ]
+    },
+    "pulse_width": {
+      "reported_paths": 10,
+      "worst_slack_ns": 0.366
+    }
+  },
+  "resources": {
+    "logic_used": 76706,
+    "logic_total": 138240,
+    "register_used": 40191,
+    "register_total": 139095,
+    "bsram_used": 185,
+    "bsram_total": 340
+  },
+  "deployment": {
+    "time": "2026-11-02T06:23:24.023361",
+    "status": "ui_sram_programmed_and_readonly_verified",
+    "run": "D:\\github\\synth1_9_18\\2_ui_touch_hub\\impl\\deploy_runs\\20261102_062216_UI_FACTORY_PRESETS_20261102",
+    "build": "E:\\gaoyun_builds\\R16A_build_20261102_060044",
+    "build_commit": "9ee5dce473774f85e8010ec0add1d4e942047855",
+    "sha256": "FF2A32811EF2AC11F2933C99F8AB5EA409AB946C4C2380BCC3A477512A18BF13",
+    "operation": 2,
+    "programming_attempts": 1,
+    "user_code": "0x0000617D",
+    "status_code": "0x00026230",
+    "source_inputs": 124,
+    "pins": 124,
+    "timing_closed": true,
+    "clocks": [
+      {
+        "clock": "sys_clk",
+        "required_mhz": 50.0,
+        "actual_mhz": 228.636,
+        "logic_levels": 5
+      },
+      {
+        "clock": "clk_pixel",
+        "required_mhz": 50.0,
+        "actual_mhz": 54.027,
+        "logic_levels": 13
+      },
+      {
+        "clock": "clk_5x_bit",
+        "required_mhz": 250.0,
+        "actual_mhz": 393.797,
+        "logic_levels": 1
+      },
+      {
+        "clock": "clk_usb",
+        "required_mhz": 59.999,
+        "actual_mhz": 88.3,
+        "logic_levels": 12
+      },
+      {
+        "clock": "ch569_htclk",
+        "required_mhz": 50.0,
+        "actual_mhz": 421.941,
+        "logic_levels": 4
+      },
+      {
+        "clock": "ddr_clk400",
+        "required_mhz": 400.0,
+        "actual_mhz": 2016.129,
+        "logic_levels": 1
+      },
+      {
+        "clock": "ddr_user_clk100",
+        "required_mhz": 100.0,
+        "actual_mhz": 112.592,
+        "logic_levels": 4
+      }
+    ],
+    "slack_tables": {
+      "setup": {
+        "reported_paths": 250,
+        "worst_slack_ns": 0.73,
+        "oser10_reset_endpoints": []
+      },
+      "hold": {
+        "reported_paths": 50,
+        "worst_slack_ns": 0.138,
+        "oser10_reset_endpoints": []
+      },
+      "recovery": {
+        "reported_paths": 262,
+        "worst_slack_ns": 0.365,
+        "oser10_reset_endpoints": [
+          "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+          "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+          "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET"
+        ]
+      },
+      "removal": {
+        "reported_paths": 262,
+        "worst_slack_ns": 0.299,
+        "oser10_reset_endpoints": [
+          "u_dvi_tx/gen_enc[0].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+          "u_dvi_tx/gen_enc[1].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET",
+          "u_dvi_tx/gen_enc[2].dvi_tx_tmds_phy_inst/tmds_serdes_inst0/RESET"
+        ]
+      },
+      "pulse_width": {
+        "reported_paths": 10,
+        "worst_slack_ns": 0.366
+      }
+    },
+    "flash_touched": false,
+    "audio_or_esp_written": false,
+    "physical_ui_and_led_acceptance": "pending user; electrical connections deferred"
+  },
+  "reports": {
+    "preset_run": {
+      "path": "E:\\gaoyun_builds\\synth_presets_20261102_055548_037074\\result.json",
+      "sha256": "f7715c34a4ba5f0e49b97155250cc7601c9452fe99dd17fd13dd6c4ac12d12fc",
+      "passed": true
+    },
+    "ui_run": {
+      "path": "E:\\gaoyun_builds\\synth_preset_ui_20261102_055637_643734\\result.json",
+      "sha256": "1bf074d460e2c1bdcd9277a1eee73e1b3d14192541c796460c072f17f9db625c",
+      "passed": true
+    },
+    "elaboration": {
+      "path": "E:\\gaoyun_builds\\ui_elaboration_20261102_055657_920737\\result.json",
+      "sha256": "9eb49f6e0da1ee1dd126575b53a1b64376c8c6650be5b9dfbede8b22bb6c97d3",
+      "passed": true
+    },
+    "regression": {
+      "path": "E:\\gaoyun_builds\\six_fix_20261102_055548_138957\\result.json",
+      "sha256": "062a8f980f7582f28f7559b48f40313c8b1ee8eb4e33ca2b225a40f802a1581a",
+      "passed": true
+    },
+    "fx_run": {
+      "path": "D:\\github\\synth1_9_18\\2_ui_touch_hub\\impl\\fx_input_pipeline_20261102_055704_553134\\result.json",
+      "sha256": "bd6462e055e04a6105ef9c1e0f9bb5d31b3131ca7cad444b488dd55c48e88684",
+      "passed": true
+    },
+    "legacy_baseline": {
+      "path": "E:\\gaoyun_builds\\preset_legacy_baseline_20261102_012941_449260\\result.json",
+      "sha256": "6d717dd8bec25883cf7b6764c6f25f7abca168dfd446b6aa2199538b1c87bf7d",
+      "passed": true
+    }
+  },
+  "rtl_regressions": 17,
+  "preset_control_bytes_compared": 11343,
+  "failed_builds_preserved": [
+    "E:/gaoyun_builds/R16A_build_20261102_044748",
+    "E:/gaoyun_builds/R16A_build_20261102_052003"
+  ],
+  "whole_sram_sha_readback_claimed": false,
+  "physical_ui_and_sound_acceptance": "pending user; camera does not show UI screen",
+  "flash_written": false,
+  "audio_written": false,
+  "esp_written": false,
+  "pushed": false
+}
